@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm ci
 
 # Copy application code
 COPY . .
@@ -14,8 +14,8 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Expose port
+# Expose port (Render uses PORT env var)
 EXPOSE 3000
 
-# Start the application
-CMD ["npm", "start"]
+# Start the application with PORT from environment
+CMD ["sh", "-c", "npx next start -H 0.0.0.0 -p ${PORT:-3000}"]

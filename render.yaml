@@ -28,17 +28,14 @@ services:
   # Frontend Service
   - type: web
     name: delivery-frontend
-    runtime: node
+    runtime: docker
     region: oregon
     plan: free
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    startCommand: npx next start -H 0.0.0.0 -p $PORT
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: https://delivery-backend.onrender.com
-      - key: NODE_VERSION
-        value: 20
 
 databases:
   - name: delivery-db
