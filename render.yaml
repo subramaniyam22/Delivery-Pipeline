@@ -33,7 +33,7 @@ services:
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: npx next start -H 0.0.0.0 -p $PORT
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: https://delivery-backend.onrender.com
