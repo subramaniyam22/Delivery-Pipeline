@@ -1,9 +1,10 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
+import os
 
 
 class Settings(BaseSettings):
-    # Database
+    # Database - Handle Render's postgres:// URL format
     DATABASE_URL: str = "postgresql://delivery_user:delivery_pass@localhost:5432/delivery_db"
     
     # JWT
@@ -18,11 +19,24 @@ class Settings(BaseSettings):
     # OpenAI (optional)
     OPENAI_API_KEY: Optional[str] = None
     
-    # CORS
-    CORS_ORIGINS: list = ["http://localhost:3000", "http://frontend:3000"]
+    # CORS - parse from environment variable
+    CORS_ORIGINS: str = "http://localhost:3000,http://frontend:3000"
     
     # Frontend URL for client links
     FRONTEND_URL: str = "http://localhost:3000"
+    
+    @property
+    def database_url_fixed(self) -> str:
+        """Fix Render's postgres:// to postgresql:// for SQLAlchemy"""
+        url = self.DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        return url
+    
+    @property
+    def cors_origins_list(self) -> list:
+        """Parse CORS origins from comma-separated string"""
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
     
     class Config:
         env_file = ".env"
