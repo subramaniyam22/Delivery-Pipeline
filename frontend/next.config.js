@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    // Output standalone for cloud deployment (Render, Vercel, etc.)
-    output: 'standalone',
-    
     // InfoSec: Security headers
     async headers() {
         return [

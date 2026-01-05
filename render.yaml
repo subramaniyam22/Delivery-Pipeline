@@ -33,16 +33,12 @@ services:
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
-    startCommand: node .next/standalone/server.js
+    startCommand: npm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: https://delivery-backend.onrender.com
       - key: NODE_VERSION
         value: 20
-      - key: PORT
-        value: 3000
-      - key: HOSTNAME
-        value: 0.0.0.0
 
 databases:
   - name: delivery-db
