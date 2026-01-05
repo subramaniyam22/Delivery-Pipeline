@@ -8,10 +8,9 @@ services:
     runtime: python
     region: oregon
     plan: free
-    buildCommand: |
-      cd backend && pip install -r requirements.txt
-    startCommand: |
-      cd backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -20,6 +19,8 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: CORS_ORIGINS
+        value: https://delivery-frontend.onrender.com
+      - key: FRONTEND_URL
         value: https://delivery-frontend.onrender.com
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -30,15 +31,18 @@ services:
     runtime: node
     region: oregon
     plan: free
-    buildCommand: |
-      cd frontend && npm install && npm run build
-    startCommand: |
-      cd frontend && npm start
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: node .next/standalone/server.js
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: https://delivery-backend.onrender.com
       - key: NODE_VERSION
         value: 20
+      - key: PORT
+        value: 3000
+      - key: HOSTNAME
+        value: 0.0.0.0
 
 databases:
   - name: delivery-db

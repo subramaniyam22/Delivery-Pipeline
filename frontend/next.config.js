@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    // Output standalone for cloud deployment (Render, Vercel, etc.)
+    output: 'standalone',
+    
     // InfoSec: Security headers
     async headers() {
         return [
@@ -36,20 +39,12 @@ const nextConfig = {
                         key: 'Strict-Transport-Security',
                         value: 'max-age=31536000; includeSubDomains',
                     },
-                    // Content Security Policy
+                    // Content Security Policy - allow Render URLs
                     {
                         key: 'Content-Security-Policy',
-                        value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' http://localhost:* http://backend:*; frame-ancestors 'none';",
+                        value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.onrender.com http://localhost:* http://backend:*; frame-ancestors 'none';",
                     },
                 ],
-            },
-        ];
-    },
-    async rewrites() {
-        return [
-            {
-                source: '/api/:path*',
-                destination: 'http://backend:8000/:path*',
             },
         ];
     },
