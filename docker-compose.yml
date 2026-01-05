@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: delivery_postgres
+    environment:
+      POSTGRES_USER: delivery_user
+      POSTGRES_PASSWORD: delivery_pass
+      POSTGRES_DB: delivery_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - delivery_network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U delivery_user -d delivery_db" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: delivery_backend
+    environment:
+      DATABASE_URL: postgresql://delivery_user:delivery_pass@postgres:5432/delivery_db
+      SECRET_KEY: your-secret-key-change-in-production-use-openssl-rand-hex-32
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      UPLOAD_DIR: /uploads
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/uploads
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - delivery_network
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  frontend:
+    build: ./frontend
+    container_name: delivery_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - delivery_network
+
+volumes:
+  postgres_data:
+  uploads:
+
+
+networks:
+  delivery_network:
+    driver: bridge
