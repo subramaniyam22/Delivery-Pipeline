@@ -1,8 +1,26 @@
 import axios from 'axios';
 
-// Use environment variable or fallback to localhost:8000
-// The NEXT_PUBLIC_API_URL is set in docker-compose.yml
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Determine API URL based on environment
+// In production (Render), use the deployed backend URL
+// In development, use localhost
+const getApiUrl = () => {
+    // If env var is set, use it
+    if (process.env.NEXT_PUBLIC_API_URL) {
+        return process.env.NEXT_PUBLIC_API_URL;
+    }
+    // In browser, check if we're on Render
+    if (typeof window !== 'undefined') {
+        const hostname = window.location.hostname;
+        if (hostname.includes('onrender.com')) {
+            // Production: use the Render backend
+            return 'https://delivery-backend-vx6f.onrender.com';
+        }
+    }
+    // Default: localhost for development
+    return 'http://localhost:8000';
+};
+
+const API_BASE_URL = getApiUrl();
 
 // Create axios instance
 const api = axios.create({
