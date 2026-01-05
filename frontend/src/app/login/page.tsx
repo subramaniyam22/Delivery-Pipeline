@@ -15,9 +15,18 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(email, password);
+      console.log('Attempting login...');
+      const token = await login(email, password);
+      console.log('Login successful, token received:', token ? 'yes' : 'no');
+      console.log('Token in localStorage:', localStorage.getItem('access_token') ? 'yes' : 'no');
+      
+      // Small delay to ensure localStorage is written
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Use router for client-side navigation instead of full page reload
       window.location.href = '/dashboard';
     } catch (err: any) {
+      console.error('Login error:', err);
       let errorMessage = 'Login failed';
       if (err.response?.data?.detail) {
         errorMessage = err.response.data.detail;
