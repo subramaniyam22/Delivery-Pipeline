@@ -13,7 +13,7 @@ const getApiUrl = () => {
         const hostname = window.location.hostname;
         if (hostname.includes('onrender.com')) {
             // Production: use the Render backend
-            return 'https://delivery-backend-vx6f.onrender.com';
+            return 'https://delivery-backend-vvbf.onrender.com';
         }
     }
     // Default: localhost for development
