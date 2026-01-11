@@ -8,6 +8,7 @@ from app.auth import hash_password
 from app.rbac import check_full_access
 from typing import List
 from uuid import UUID
+from datetime import datetime
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -92,14 +93,30 @@ def list_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """List all users (Admin/Manager only)"""
+    """List all active (non-archived) users (Admin/Manager only)"""
     if not check_full_access(current_user.role):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only Admin and Manager can list users"
         )
     
-    users = db.query(User).all()
+    users = db.query(User).filter(User.is_archived == False).all()
+    return users
+
+
+@router.get("/archived", response_model=List[UserResponse])
+def list_archived_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """List all archived users (Admin/Manager only)"""
+    if not check_full_access(current_user.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin and Manager can list archived users"
+        )
+    
+    users = db.query(User).filter(User.is_archived == True).all()
     return users
 
 
@@ -159,16 +176,16 @@ def update_user(
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def deactivate_user(
+def archive_user(
     user_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Deactivate user (Admin only)"""
+    """Archive user (Admin only) - moves user to archived section"""
     if current_user.role != Role.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin can deactivate users"
+            detail="Only Admin can archive users"
         )
     
     user = db.query(User).filter(User.id == user_id).first()
@@ -178,7 +195,50 @@ def deactivate_user(
             detail="User not found"
         )
     
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot archive yourself"
+        )
+    
+    user.is_archived = True
     user.is_active = False
+    user.archived_at = datetime.utcnow()
     db.commit()
     
     return None
+
+
+@router.post("/{user_id}/reactivate", response_model=UserResponse)
+def reactivate_user(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Reactivate an archived user (Admin only)"""
+    if current_user.role != Role.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin can reactivate users"
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if not user.is_archived:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not archived"
+        )
+    
+    user.is_archived = False
+    user.is_active = True
+    user.archived_at = None
+    db.commit()
+    db.refresh(user)
+    
+    return user

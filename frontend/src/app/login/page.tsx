@@ -2,12 +2,18 @@
 
 import { useState } from 'react';
 import { login } from '@/lib/auth';
+import { authAPI } from '@/lib/api';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [forgotError, setForgotError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,16 +46,43 @@ export default function LoginPage() {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotLoading(true);
+
+    try {
+      await authAPI.forgotPassword(forgotEmail);
+      setForgotSuccess(true);
+    } catch (err: any) {
+      let errorMessage = 'Failed to send reset email';
+      if (err.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      setForgotError(errorMessage);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const closeForgotPassword = () => {
+    setShowForgotPassword(false);
+    setForgotEmail('');
+    setForgotSuccess(false);
+    setForgotError('');
+  };
+
   return (
     <div className="login-page">
       <div className="login-container">
         <div className="login-card">
           <header className="login-header">
             <div className="logo" aria-hidden="true">
-              <span>🚀</span>
+              <span>📦</span>
             </div>
-            <h1>Delivery Pipeline</h1>
-            <p>Multi-Agent Project Management</p>
+            <h1>Delivery Management</h1>
           </header>
 
           <form onSubmit={handleSubmit} aria-label="Login form">
@@ -100,12 +133,76 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="credentials-hint">
-            <span className="hint-label">Demo Credentials</span>
-            <code>admin@delivery.com / admin123</code>
+          <div className="forgot-password-link">
+            <button 
+              type="button" 
+              className="btn-forgot" 
+              onClick={() => setShowForgotPassword(true)}
+            >
+              Forgot Password?
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div className="modal-overlay" onClick={closeForgotPassword}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={closeForgotPassword} aria-label="Close">
+              ×
+            </button>
+            <h2>Reset Password</h2>
+            
+            {forgotSuccess ? (
+              <div className="success-message">
+                <div className="success-icon">✓</div>
+                <p>Password reset instructions have been sent to your email address.</p>
+                <button className="btn-submit" onClick={closeForgotPassword}>
+                  Back to Login
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="modal-description">
+                  Enter your email address and we'll send you instructions to reset your password.
+                </p>
+                <form onSubmit={handleForgotPassword}>
+                  <div className="form-group">
+                    <label htmlFor="forgot-email">Email Address</label>
+                    <input
+                      id="forgot-email"
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      required
+                      disabled={forgotLoading}
+                      placeholder="Enter your email"
+                    />
+                  </div>
+                  
+                  {forgotError && (
+                    <div className="error-message" role="alert">
+                      {forgotError}
+                    </div>
+                  )}
+                  
+                  <button type="submit" className="btn-submit" disabled={forgotLoading}>
+                    {forgotLoading ? (
+                      <>
+                        <span className="btn-spinner" aria-hidden="true" />
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      'Send Reset Link'
+                    )}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="decorations" aria-hidden="true">
         <div className="decoration decoration-1" />
@@ -258,30 +355,127 @@ export default function LoginPage() {
           animation: spin 0.8s linear infinite;
         }
         
-        .credentials-hint {
-          margin-top: var(--space-xl);
-          padding-top: var(--space-lg);
-          border-top: 1px solid var(--border-light);
+        .forgot-password-link {
+          margin-top: var(--space-lg);
           text-align: center;
         }
         
-        .hint-label {
-          display: block;
-          font-size: 11px;
-          color: var(--text-hint);
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          margin-bottom: var(--space-sm);
+        .btn-forgot {
+          background: none;
+          border: none;
+          color: var(--accent-primary);
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          padding: var(--space-sm);
+          transition: all var(--transition-fast);
         }
         
-        .credentials-hint code {
-          font-family: var(--font-mono);
-          font-size: 13px;
-          color: var(--text-secondary);
-          background: var(--bg-tertiary);
-          padding: var(--space-sm) var(--space-md);
+        .btn-forgot:hover {
+          color: var(--accent-secondary);
+          text-decoration: underline;
+        }
+        
+        .btn-forgot:focus-visible {
+          outline: 2px solid var(--accent-primary);
+          outline-offset: 2px;
           border-radius: var(--radius-sm);
-          border: 1px solid var(--border-light);
+        }
+        
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.2s ease;
+        }
+        
+        .modal-content {
+          background: var(--bg-card);
+          border-radius: var(--radius-xl);
+          padding: var(--space-2xl);
+          width: 100%;
+          max-width: 400px;
+          margin: var(--space-lg);
+          position: relative;
+          box-shadow: var(--shadow-xl);
+          animation: slideUp 0.3s ease;
+        }
+        
+        .modal-close {
+          position: absolute;
+          top: var(--space-md);
+          right: var(--space-md);
+          background: none;
+          border: none;
+          font-size: 24px;
+          color: var(--text-muted);
+          cursor: pointer;
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: var(--radius-sm);
+          transition: all var(--transition-fast);
+        }
+        
+        .modal-close:hover {
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+        }
+        
+        .modal-content h2 {
+          font-size: 20px;
+          color: var(--text-primary);
+          margin-bottom: var(--space-md);
+        }
+        
+        .modal-description {
+          color: var(--text-secondary);
+          font-size: 14px;
+          margin-bottom: var(--space-xl);
+          line-height: 1.5;
+        }
+        
+        .success-message {
+          text-align: center;
+          padding: var(--space-lg) 0;
+        }
+        
+        .success-icon {
+          width: 56px;
+          height: 56px;
+          background: var(--color-success-bg);
+          color: var(--color-success);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 28px;
+          margin: 0 auto var(--space-lg);
+          border: 2px solid var(--color-success);
+        }
+        
+        .success-message p {
+          color: var(--text-secondary);
+          font-size: 14px;
+          margin-bottom: var(--space-xl);
+          line-height: 1.5;
+        }
+        
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
         
         .decorations {

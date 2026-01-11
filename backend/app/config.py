@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Frontend URL for client links
     FRONTEND_URL: str = "http://localhost:3000"
     
+    # Email (Resend)
+    RESEND_API_KEY: Optional[str] = None
+    EMAIL_FROM: str = "Delivery Management <noreply@resend.dev>"
+    APP_NAME: str = "Delivery Management"
+    
     @property
     def database_url_fixed(self) -> str:
         """Fix Render's postgres:// to postgresql:// for SQLAlchemy"""

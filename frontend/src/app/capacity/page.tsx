@@ -19,6 +19,16 @@ const REGIONS = [
     { value: 'PH', label: 'Philippines', code: 'PH', flagUrl: 'https://flagcdn.com/w40/ph.png' },
 ];
 
+// Roles that contribute to delivery capacity (excludes Admin and Manager)
+const CAPACITY_ROLES = ['CONSULTANT', 'PC', 'BUILDER', 'TESTER'];
+
+const ROLE_INFO: Record<string, { label: string; color: string }> = {
+    'CONSULTANT': { label: 'Consultant', color: '#6366f1' },
+    'PC': { label: 'Project Coordinator', color: '#8b5cf6' },
+    'BUILDER': { label: 'Builder', color: '#10b981' },
+    'TESTER': { label: 'Tester', color: '#f59e0b' },
+};
+
 const FlagIcon = ({ region, size = 20 }: { region: string; size?: number }) => {
     const regionData = REGIONS.find(r => r.value === region);
     if (!regionData) return <span>{region}</span>;
@@ -56,8 +66,13 @@ export default function CapacityPage() {
                 projectsAPI.list(),
             ]);
             
+            // Filter only active users with delivery roles (excludes Admin and Manager)
+            const capacityUsers = usersRes.data.filter((user: any) => 
+                user.is_active && CAPACITY_ROLES.includes(user.role)
+            );
+            
             // Use the actual region from the API, with fallback for users without region
-            const enrichedUsers = usersRes.data.map((user: any) => ({
+            const enrichedUsers = capacityUsers.map((user: any) => ({
                 ...user,
                 region: user.region || 'INDIA', // Use actual region from API
                 capacity: 100,
@@ -195,6 +210,13 @@ export default function CapacityPage() {
                     <div className="header-text">
                         <h1>Team Capacity</h1>
                         <p>Resource management across India, US, and Philippines teams</p>
+                        <p className="capacity-note">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 16v-4M12 8h.01"/>
+                            </svg>
+                            Admin and Manager roles are excluded from capacity tracking as they manage delivery teams.
+                        </p>
                     </div>
                     <button 
                         className="btn-reanalyze" 
@@ -309,6 +331,60 @@ export default function CapacityPage() {
                     </div>
                 </div>
 
+                <section className="role-capacity-section">
+                    <h2>📊 Capacity by Role</h2>
+                    <div className="role-capacity-grid">
+                        {CAPACITY_ROLES.map(role => {
+                            const roleUsers = users.filter(u => u.role === role);
+                            const totalCount = roleUsers.length;
+                            const availableCount = roleUsers.filter(u => u.currentLoad < 70).length;
+                            const avgUtilization = totalCount > 0 
+                                ? Math.round(roleUsers.reduce((sum, u) => sum + u.currentLoad, 0) / totalCount)
+                                : 0;
+                            const roleInfo = ROLE_INFO[role];
+                            
+                            return (
+                                <div key={role} className="role-capacity-card">
+                                    <div className="role-header">
+                                        <span 
+                                            className="role-indicator" 
+                                            style={{ background: roleInfo.color }}
+                                        />
+                                        <h3>{roleInfo.label}</h3>
+                                        <span className="role-count">{totalCount} member{totalCount !== 1 ? 's' : ''}</span>
+                                    </div>
+                                    <div className="role-stats">
+                                        <div className="role-stat">
+                                            <span className="role-stat-value" style={{ color: 'var(--color-success)' }}>
+                                                {availableCount}
+                                            </span>
+                                            <span className="role-stat-label">Available</span>
+                                        </div>
+                                        <div className="role-stat">
+                                            <span 
+                                                className="role-stat-value"
+                                                style={{ color: avgUtilization > 80 ? 'var(--color-error)' : avgUtilization > 60 ? 'var(--color-warning)' : 'var(--text-primary)' }}
+                                            >
+                                                {avgUtilization}%
+                                            </span>
+                                            <span className="role-stat-label">Avg. Load</span>
+                                        </div>
+                                    </div>
+                                    <div className="role-utilization-bar">
+                                        <div 
+                                            className="role-utilization-fill"
+                                            style={{ 
+                                                width: `${avgUtilization}%`,
+                                                background: roleInfo.color
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </section>
+
                 <section className="suggestions-section">
                     <h2>🤖 AI Capacity Suggestions</h2>
                     <div className="suggestions-grid">
@@ -409,6 +485,19 @@ export default function CapacityPage() {
                 
                 .header-text p {
                     color: var(--text-muted);
+                }
+                
+                .capacity-note {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-sm);
+                    margin-top: var(--space-sm);
+                    padding: var(--space-sm) var(--space-md);
+                    background: var(--color-info-bg);
+                    border: 1px solid var(--color-info-border);
+                    border-radius: var(--radius-md);
+                    font-size: 12px;
+                    color: var(--accent-primary);
                 }
                 
                 .btn-reanalyze {
@@ -533,6 +622,98 @@ export default function CapacityPage() {
                     font-size: 12px;
                     font-weight: 700;
                     color: var(--text-primary);
+                }
+                
+                .role-capacity-section {
+                    background: var(--bg-card);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-lg);
+                    padding: var(--space-lg);
+                    margin-bottom: var(--space-xl);
+                }
+                
+                .role-capacity-section h2 {
+                    font-size: 16px;
+                    margin-bottom: var(--space-lg);
+                    color: var(--text-secondary);
+                }
+                
+                .role-capacity-grid {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: var(--space-md);
+                }
+                
+                .role-capacity-card {
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-md);
+                    padding: var(--space-md);
+                }
+                
+                .role-header {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-sm);
+                    margin-bottom: var(--space-md);
+                }
+                
+                .role-indicator {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: var(--radius-full);
+                }
+                
+                .role-header h3 {
+                    font-size: 14px;
+                    font-weight: 600;
+                    margin: 0;
+                    flex: 1;
+                }
+                
+                .role-count {
+                    font-size: 11px;
+                    color: var(--text-muted);
+                    padding: 2px 8px;
+                    background: var(--bg-tertiary);
+                    border-radius: var(--radius-full);
+                }
+                
+                .role-stats {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: var(--space-sm);
+                }
+                
+                .role-stat {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                }
+                
+                .role-stat-value {
+                    font-size: 20px;
+                    font-weight: 700;
+                }
+                
+                .role-stat-label {
+                    font-size: 10px;
+                    color: var(--text-muted);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                
+                .role-utilization-bar {
+                    height: 6px;
+                    background: var(--border-light);
+                    border-radius: var(--radius-full);
+                    overflow: hidden;
+                }
+                
+                .role-utilization-fill {
+                    height: 100%;
+                    border-radius: var(--radius-full);
+                    transition: width 0.5s ease;
                 }
                 
                 .suggestions-section {
@@ -739,10 +920,16 @@ export default function CapacityPage() {
                     .regions-grid {
                         grid-template-columns: repeat(2, 1fr);
                     }
+                    .role-capacity-grid {
+                        grid-template-columns: repeat(2, 1fr);
+                    }
                 }
                 
                 @media (max-width: 768px) {
                     .regions-grid {
+                        grid-template-columns: 1fr;
+                    }
+                    .role-capacity-grid {
                         grid-template-columns: 1fr;
                     }
                     .section-header {
@@ -751,6 +938,11 @@ export default function CapacityPage() {
                     }
                     .filter-tabs {
                         flex-wrap: wrap;
+                    }
+                    .page-header {
+                        flex-direction: column;
+                        gap: var(--space-md);
+                        align-items: flex-start;
                     }
                 }
             `}</style>

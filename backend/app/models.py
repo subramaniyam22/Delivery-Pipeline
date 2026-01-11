@@ -76,6 +76,8 @@ class User(Base):
     role = Column(Enum(Role), nullable=False)
     region = Column(Enum(Region), default=Region.INDIA, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    is_archived = Column(Boolean, default=False, nullable=False)
+    archived_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
@@ -83,6 +85,21 @@ class User(Base):
     created_projects = relationship("Project", back_populates="creator", foreign_keys="Project.created_by_user_id")
     assigned_tasks = relationship("Task", back_populates="assignee", foreign_keys="Task.assignee_user_id")
     uploaded_artifacts = relationship("Artifact", back_populates="uploader")
+    password_reset_tokens = relationship("PasswordResetToken", back_populates="user", cascade="all, delete-orphan")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    token = Column(String(255), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    user = relationship("User", back_populates="password_reset_tokens")
 
 
 class Project(Base):

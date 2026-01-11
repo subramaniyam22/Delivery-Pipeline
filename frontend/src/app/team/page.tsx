@@ -36,7 +36,9 @@ export default function TeamPage() {
     const loadUsers = async () => {
         try {
             const response = await usersAPI.list();
-            const enrichedUsers = response.data.map((user: any) => ({
+            // Filter only active users
+            const activeUsers = response.data.filter((user: any) => user.is_active);
+            const enrichedUsers = activeUsers.map((user: any) => ({
                 ...user,
                 department: getDepartment(user.role),
             }));

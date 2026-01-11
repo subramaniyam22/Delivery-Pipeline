@@ -13,6 +13,8 @@ interface User {
     role: string;
     region?: string;
     is_active: boolean;
+    is_archived?: boolean;
+    archived_at?: string;
     created_at: string;
 }
 
@@ -41,6 +43,8 @@ type ModalType = 'create' | 'edit' | 'delete' | 'deactivate' | null;
 export default function UsersPage() {
     const router = useRouter();
     const [users, setUsers] = useState<User[]>([]);
+    const [archivedUsers, setArchivedUsers] = useState<User[]>([]);
+    const [showArchived, setShowArchived] = useState(false);
     const [loading, setLoading] = useState(true);
     const [currentUser, setCurrentUser] = useState<User | null>(null);
     const [modalType, setModalType] = useState<ModalType>(null);
@@ -74,8 +78,15 @@ export default function UsersPage() {
 
     const loadUsers = async () => {
         try {
-            const response = await usersAPI.list();
-            setUsers(response.data);
+            console.log('Loading users...');
+            const [activeResponse, archivedResponse] = await Promise.all([
+                usersAPI.list(),
+                usersAPI.listArchived()
+            ]);
+            console.log('Active users:', activeResponse.data);
+            console.log('Archived users:', archivedResponse.data);
+            setUsers(activeResponse.data);
+            setArchivedUsers(archivedResponse.data);
         } catch (error) {
             console.error('Failed to load users:', error);
         } finally {
@@ -174,11 +185,23 @@ export default function UsersPage() {
         setProcessing(true);
 
         try {
-            await usersAPI.deactivate(selectedUser.id);
+            await usersAPI.archive(selectedUser.id);
             closeModal();
             loadUsers();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to delete user');
+            setError(err.response?.data?.detail || 'Failed to archive user');
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    const handleReactivate = async (user: User) => {
+        setProcessing(true);
+        try {
+            await usersAPI.reactivate(user.id);
+            loadUsers();
+        } catch (err: any) {
+            console.error('Failed to reactivate user:', err);
         } finally {
             setProcessing(false);
         }
@@ -345,12 +368,91 @@ export default function UsersPage() {
                     </table>
                 </div>
 
+                {/* Archived Users Section */}
+                {isAdmin && archivedUsers.length > 0 && (
+                    <section className="archived-section">
+                        <button 
+                            className="archived-header" 
+                            onClick={() => setShowArchived(!showArchived)}
+                            aria-expanded={showArchived}
+                        >
+                            <div className="archived-title">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="21 8 21 21 3 21 3 8" />
+                                    <rect x="1" y="3" width="22" height="5" />
+                                    <line x1="10" y1="12" x2="14" y2="12" />
+                                </svg>
+                                <span>Archived Users ({archivedUsers.length})</span>
+                            </div>
+                            <svg 
+                                className={`chevron ${showArchived ? 'open' : ''}`}
+                                width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                            >
+                                <polyline points="6 9 12 15 18 9" />
+                            </svg>
+                        </button>
+                        
+                        {showArchived && (
+                            <div className="archived-content">
+                                <table className="archived-table">
+                                    <thead>
+                                        <tr>
+                                            <th>User</th>
+                                            <th>Email</th>
+                                            <th>Role</th>
+                                            <th>Archived On</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {archivedUsers.map((user) => (
+                                            <tr key={user.id}>
+                                                <td className="cell-user">
+                                                    <div className="user-avatar archived" style={{ background: 'var(--text-hint)' }}>
+                                                        {user.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <span className="user-name">{user.name}</span>
+                                                </td>
+                                                <td className="cell-email">{user.email}</td>
+                                                <td>
+                                                    <span className="role-badge" style={{ color: 'var(--text-muted)' }}>
+                                                        {user.role}
+                                                    </span>
+                                                </td>
+                                                <td className="cell-date">
+                                                    {user.archived_at ? new Date(user.archived_at).toLocaleDateString() : 'N/A'}
+                                                </td>
+                                                <td>
+                                                    <button
+                                                        onClick={() => handleReactivate(user)}
+                                                        className="btn-reactivate"
+                                                        disabled={processing}
+                                                        title="Reactivate user"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                                                            <path d="M3 3v5h5" />
+                                                            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+                                                            <path d="M16 21h5v-5" />
+                                                        </svg>
+                                                        Reactivate
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </section>
+                )}
+
                 <section className="permissions-info">
                     <h3>Role Permissions</h3>
                     <div className="permissions-grid">
                         {[
-                            { role: 'ADMIN', desc: 'Full access - Create, edit, deactivate, and delete users' },
-                            { role: 'MANAGER', desc: 'Create, edit, and deactivate users (no delete)' },
+                            { role: 'ADMIN', desc: 'Full access - Create, edit, deactivate, and archive users' },
+                            { role: 'MANAGER', desc: 'Create, edit, and deactivate users (no archive)' },
                             { role: 'CONSULTANT', desc: 'Create projects, update onboarding, view status' },
                             { role: 'PC', desc: 'Task assignment access, manage assignment stage' },
                             { role: 'BUILDER', desc: 'Build stage access only' },
@@ -476,16 +578,16 @@ export default function UsersPage() {
             {modalType === 'delete' && selectedUser && (
                 <div className="modal-overlay" onClick={closeModal}>
                     <div className="modal modal-sm" onClick={(e) => e.stopPropagation()}>
-                        <h2>Delete User</h2>
+                        <h2>Archive User</h2>
                         <p className="modal-text">
-                            Are you sure you want to permanently delete <strong>{selectedUser.name}</strong>?
+                            Are you sure you want to archive <strong>{selectedUser.name}</strong>?
                         </p>
-                        <p className="modal-warning">This action cannot be undone.</p>
+                        <p className="modal-info">The user will be moved to the Archived Users section and can be reactivated later.</p>
                         {error && <div className="error-message">{error}</div>}
                         <div className="modal-actions">
                             <button onClick={closeModal} className="btn-cancel">Cancel</button>
                             <button onClick={handleDelete} disabled={processing} className="btn-danger">
-                                {processing ? 'Deleting...' : 'Delete'}
+                                {processing ? 'Archiving...' : 'Archive'}
                             </button>
                         </div>
                     </div>
@@ -835,6 +937,16 @@ export default function UsersPage() {
                     margin-bottom: var(--space-md);
                 }
                 
+                .modal-info {
+                    color: var(--text-muted);
+                    font-size: 13px;
+                    margin-bottom: var(--space-md);
+                    background: var(--bg-tertiary);
+                    padding: var(--space-sm) var(--space-md);
+                    border-radius: var(--radius-md);
+                    border-left: 3px solid var(--color-info);
+                }
+                
                 .form-group {
                     margin-bottom: var(--space-md);
                 }
@@ -960,6 +1072,119 @@ export default function UsersPage() {
                         opacity: 1;
                         transform: translateY(0);
                     }
+                }
+                
+                /* Archived Section Styles */
+                .archived-section {
+                    background: var(--bg-card);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-lg);
+                    margin-bottom: var(--space-xl);
+                    overflow: hidden;
+                }
+                
+                .archived-header {
+                    width: 100%;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: var(--space-md) var(--space-lg);
+                    background: var(--bg-tertiary);
+                    border: none;
+                    cursor: pointer;
+                    transition: background 0.2s ease;
+                }
+                
+                .archived-header:hover {
+                    background: var(--bg-secondary);
+                }
+                
+                .archived-title {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-sm);
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                }
+                
+                .archived-title svg {
+                    color: var(--text-muted);
+                }
+                
+                .chevron {
+                    transition: transform 0.2s ease;
+                    color: var(--text-muted);
+                }
+                
+                .chevron.open {
+                    transform: rotate(180deg);
+                }
+                
+                .archived-content {
+                    border-top: 1px solid var(--border-light);
+                    animation: fadeIn 0.2s ease;
+                }
+                
+                .archived-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    opacity: 0.85;
+                }
+                
+                .archived-table th {
+                    text-align: left;
+                    padding: var(--space-sm) var(--space-lg);
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    color: var(--text-hint);
+                    background: var(--bg-secondary);
+                    border-bottom: 1px solid var(--border-light);
+                }
+                
+                .archived-table td {
+                    padding: var(--space-sm) var(--space-lg);
+                    color: var(--text-muted);
+                    border-bottom: 1px solid var(--border-light);
+                    vertical-align: middle;
+                }
+                
+                .archived-table tbody tr:hover {
+                    background: var(--bg-secondary);
+                }
+                
+                .archived-table .user-avatar.archived {
+                    opacity: 0.6;
+                }
+                
+                .archived-table .user-name {
+                    color: var(--text-muted);
+                }
+                
+                .btn-reactivate {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 8px 14px;
+                    background: var(--color-success-bg);
+                    color: var(--color-success);
+                    border: 1px solid var(--color-success-border);
+                    border-radius: var(--radius-md);
+                    font-size: 13px;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+                
+                .btn-reactivate:hover:not(:disabled) {
+                    background: var(--color-success);
+                    color: white;
+                }
+                
+                .btn-reactivate:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
                 }
             `}</style>
         </div>

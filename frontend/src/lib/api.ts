@@ -64,15 +64,21 @@ export default api;
 export const authAPI = {
     login: (email: string, password: string) =>
         api.post('/auth/login', { email, password }),
+    forgotPassword: (email: string) =>
+        api.post('/auth/forgot-password', { email }),
+    resetPassword: (token: string, newPassword: string) =>
+        api.post('/auth/reset-password', { token, new_password: newPassword }),
 };
 
 export const usersAPI = {
     me: () => api.get('/users/me'),
     list: () => api.get('/users'),
+    listArchived: () => api.get('/users/archived'),
     get: (id: string) => api.get(`/users/${id}`),
     create: (data: any) => api.post('/users', data),
     update: (id: string, data: any) => api.put(`/users/${id}`, data),
-    deactivate: (id: string) => api.delete(`/users/${id}`),
+    archive: (id: string) => api.delete(`/users/${id}`),
+    reactivate: (id: string) => api.post(`/users/${id}/reactivate`),
     seedAdmin: () => api.post('/users/seed'),
 };
 

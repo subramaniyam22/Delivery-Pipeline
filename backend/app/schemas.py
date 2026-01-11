@@ -31,6 +31,8 @@ class UserResponse(BaseModel):
     role: Role
     region: Optional[Region] = None
     is_active: bool
+    is_archived: bool = False
+    archived_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
