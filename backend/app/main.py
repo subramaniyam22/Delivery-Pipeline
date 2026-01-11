@@ -52,15 +52,18 @@ async def startup_event():
 
 
 # Register routers
+# NOTE: onboarding router must come BEFORE projects router
+# because onboarding has /projects/templates and /projects/copy-pricing
+# which would otherwise match projects' /{project_id} route and fail UUID validation
 app.include_router(auth.router)
 app.include_router(users.router)
+app.include_router(onboarding.router)  # Must be before projects router
 app.include_router(projects.router)
 app.include_router(workflow.router)
 app.include_router(artifacts.router)
 app.include_router(tasks.router)
 app.include_router(defects.router)
 app.include_router(config_admin.router)
-app.include_router(onboarding.router)
 
 
 @app.get("/")
