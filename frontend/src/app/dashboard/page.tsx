@@ -37,9 +37,17 @@ export default function DashboardPage() {
             router.push('/login');
             return;
         }
-        setUser(getCurrentUser());
+        const currentUser = getCurrentUser();
+        setUser(currentUser);
+        
+        // Redirect ADMIN to executive dashboard
+        if (currentUser?.role === 'ADMIN') {
+            router.push('/executive-dashboard');
+            return;
+        }
+        
         loadProjects();
-    }, []);
+    }, [router]);
 
     const loadProjects = async () => {
         try {

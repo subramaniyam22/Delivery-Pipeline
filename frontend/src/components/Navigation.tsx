@@ -15,16 +15,35 @@ export default function Navigation() {
     }, []);
 
     const isActive = (path: string) => pathname === path;
-    const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+    const isAdmin = user?.role === 'ADMIN';
+    const isManager = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+    const isConsultantPlus = ['ADMIN', 'MANAGER', 'CONSULTANT', 'PC'].includes(user?.role);
 
+    // Build nav items based on role
     const navItems = [
-        { path: '/dashboard', label: 'Dashboard', icon: '📊' },
-        { path: '/projects', label: 'Active Projects', icon: '📁' },
-        { path: '/forecast', label: 'Forecast', icon: '🔮', badge: 'AI' },
-        { path: '/capacity', label: 'Team Capacity', icon: '👥', badge: 'AI' },
+        // Admin: Executive Dashboard instead of regular Dashboard
+        ...(isAdmin ? [
+            { path: '/executive-dashboard', label: 'Executive', icon: '📈' },
+        ] : [
+            { path: '/dashboard', label: 'Dashboard', icon: '📊' },
+        ]),
+        // All users: Projects (with role-based detail views)
+        { path: '/projects', label: 'Projects', icon: '📁' },
+        // Consultant+: Client Management
+        ...(isConsultantPlus ? [
+            { path: '/client-management', label: 'Clients', icon: '📧' },
+        ] : []),
+        // Non-admin: Forecast and Capacity
+        ...(!isAdmin ? [
+            { path: '/forecast', label: 'Forecast', icon: '🔮', badge: 'AI' },
+            { path: '/capacity', label: 'Capacity', icon: '👥', badge: 'AI' },
+        ] : []),
+        // All users: Leave Management
         { path: '/leave-management', label: 'Leave', icon: '📅' },
-        ...(isAdmin ? [{ path: '/users', label: 'Manage Users', icon: '⚙️' }] : []),
-        { path: '/team', label: 'Users List', icon: '📋' },
+        // Managers+: User Management
+        ...(isManager ? [{ path: '/users', label: 'Manage Users', icon: '⚙️' }] : []),
+        // All users: Team directory
+        { path: '/team', label: 'Team', icon: '📋' },
     ];
 
     if (!user) return null;
