@@ -19,7 +19,7 @@ def seed_admin():
     
     try:
         # Check if admin already exists
-        existing_admin = db.query(User).filter(User.email == "admin@delivery.com").first()
+        existing_admin = db.query(User).filter(User.email == "subramaniyam.webdesigner@gmail.com").first()
         if existing_admin:
             print("Admin user already exists!")
             return
@@ -27,7 +27,7 @@ def seed_admin():
         # Create admin user
         admin = User(
             name="Admin User",
-            email="admin@delivery.com",
+            email="subramaniyam.webdesigner@gmail.com",
             password_hash=hash_password("admin123"),
             role=Role.ADMIN,
             is_active=True
@@ -36,7 +36,7 @@ def seed_admin():
         db.commit()
         
         print("✓ Admin user created successfully!")
-        print("  Email: admin@delivery.com")
+        print("  Email: subramaniyam.webdesigner@gmail.com")
         print("  Password: admin123")
         print("  Role: ADMIN")
         print("\n⚠️  Please change the password after first login!")
