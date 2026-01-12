@@ -8,7 +8,7 @@ from datetime import datetime
 
 from app.db import get_db
 from app.deps import get_current_user
-from app.models import User, Role, Project, ClientReminderLog, OnboardingData
+from app.models import User, Role, Project, ProjectStatus, ClientReminderLog, OnboardingData
 from app.services.email_service import send_client_reminder_email
 
 
@@ -127,12 +127,12 @@ def get_projects_with_client_info(
     # Get projects based on role
     if current_user.role in [Role.ADMIN, Role.MANAGER]:
         projects = db.query(Project).filter(
-            Project.status.in_(["DRAFT", "ACTIVE"])
+            Project.status.in_([ProjectStatus.DRAFT, ProjectStatus.ACTIVE])
         ).all()
     else:
         # Consultant/PC only sees their assigned projects
         projects = db.query(Project).filter(
-            Project.status.in_(["DRAFT", "ACTIVE"]),
+            Project.status.in_([ProjectStatus.DRAFT, ProjectStatus.ACTIVE]),
             (Project.consultant_user_id == current_user.id) | 
             (Project.pc_user_id == current_user.id)
         ).all()
