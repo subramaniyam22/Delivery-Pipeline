@@ -260,3 +260,100 @@ def send_welcome_email(to_email: str, user_name: str, temp_password: Optional[st
     except Exception as e:
         print(f"[EMAIL] Failed to send welcome email to {to_email}: {str(e)}")
         return False
+
+
+def send_client_reminder_email(
+    to_emails: list,
+    subject: str,
+    message: str,
+    project_title: str,
+    sender_name: str
+) -> bool:
+    """
+    Send reminder email to client contacts
+    
+    Args:
+        to_emails: List of recipient email addresses
+        subject: Email subject
+        message: Email message body
+        project_title: Project title for context
+        sender_name: Name of the person sending the reminder
+    
+    Returns:
+        True if email sent successfully, False otherwise
+    """
+    if not settings.RESEND_API_KEY:
+        logger.warning(f"[EMAIL] Resend API key not configured. Reminder not sent to {to_emails}")
+        return False
+    
+    init_resend()
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{subject}</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f7fa;">
+        <table role="presentation" style="width: 100%; border-collapse: collapse;">
+            <tr>
+                <td style="padding: 40px 0;">
+                    <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                        <!-- Header -->
+                        <tr>
+                            <td style="padding: 40px 40px 20px; text-align: center; border-bottom: 1px solid #e5e7eb;">
+                                <h1 style="margin: 0; color: #1f2937; font-size: 24px; font-weight: 600;">{settings.APP_NAME}</h1>
+                                <p style="margin: 10px 0 0; color: #6b7280; font-size: 14px;">Project: {project_title}</p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content -->
+                        <tr>
+                            <td style="padding: 40px;">
+                                <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">
+                                    Hello,
+                                </p>
+                                <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">
+                                    {message}
+                                </p>
+                                <p style="margin: 30px 0 0; color: #6b7280; font-size: 14px;">
+                                    Best regards,<br>
+                                    <strong>{sender_name}</strong><br>
+                                    {settings.APP_NAME} Team
+                                </p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Footer -->
+                        <tr>
+                            <td style="padding: 30px 40px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; border-radius: 0 0 12px 12px;">
+                                <p style="margin: 0; color: #9ca3af; font-size: 13px; text-align: center;">
+                                    This is an automated reminder from {settings.APP_NAME}.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    
+    try:
+        params = {
+            "from": settings.EMAIL_FROM,
+            "to": to_emails,
+            "subject": subject,
+            "html": html_content,
+        }
+        
+        response = resend.Emails.send(params)
+        logger.info(f"[EMAIL] Client reminder sent to {to_emails}. Response: {response}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"[EMAIL] Failed to send client reminder to {to_emails}: {str(e)}")
+        return False

@@ -116,6 +116,17 @@ class Project(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
+    # Client Contact Information
+    client_emails = Column(JSONB, default=list)  # List of client email addresses
+    client_primary_contact = Column(String(255), nullable=True)
+    client_company = Column(String(255), nullable=True)
+    
+    # Phase Tracking & SLA
+    phase_deadlines = Column(JSONB, default=dict)  # {"ONBOARDING": "2026-01-20", "BUILD": "2026-02-01"}
+    phase_start_dates = Column(JSONB, default=dict)  # {"ONBOARDING": "2026-01-12"}
+    is_delayed = Column(Boolean, default=False)
+    delay_reason = Column(Text, nullable=True)
+    
     # Team Assignments
     pc_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     consultant_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -955,3 +966,39 @@ class CapacityAdjustment(Base):
     # Relationships
     user = relationship("User", foreign_keys=[user_id], backref="capacity_adjustments")
     approved_by = relationship("User", foreign_keys=[approved_by_user_id])
+
+
+# ============== SLA Configuration ==============
+
+class SLAConfiguration(Base):
+    """SLA configuration for project phases"""
+    __tablename__ = "sla_configurations"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    stage = Column(String(50), unique=True, nullable=False)
+    default_days = Column(Integer, nullable=False, default=7)
+    warning_threshold_days = Column(Integer, nullable=False, default=2)  # Days before deadline to warn
+    critical_threshold_days = Column(Integer, nullable=False, default=1)  # Days before deadline for critical
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class ClientReminderLog(Base):
+    """Log of reminders sent to clients"""
+    __tablename__ = "client_reminder_logs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+    reminder_type = Column(String(100), nullable=False)  # "requirements_pending", "document_needed", etc.
+    sent_to = Column(JSONB, nullable=False)  # List of email addresses
+    subject = Column(String(500), nullable=False)
+    message = Column(Text, nullable=True)
+    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    status = Column(String(50), default="SENT")  # SENT, FAILED, BOUNCED
+    
+    # Relationships
+    project = relationship("Project", backref="reminder_logs")
+    sent_by = relationship("User", backref="sent_reminders")
