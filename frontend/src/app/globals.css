@@ -10,6 +10,12 @@
   --bg-input: #ffffff;
   --bg-input-focus: #ffffff;
   
+  /* Alias Variables (for component compatibility) */
+  --surface: #ffffff;
+  --background: #f8fafc;
+  --primary: #2563eb;
+  --border-color: #e2e8f0;
+  
   /* Text Colors - WCAG AA Compliant (4.5:1 contrast ratio minimum) */
   --text-primary: #1e293b;        /* Contrast: 12.6:1 on white */
   --text-secondary: #475569;      /* Contrast: 6.0:1 on white */

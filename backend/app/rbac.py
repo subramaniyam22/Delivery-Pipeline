@@ -99,3 +99,34 @@ def require_stage_permission(stage: Stage):
 def check_full_access(user_role: Role) -> bool:
     """Check if user has full access (Admin or Manager)"""
     return user_role in [Role.ADMIN, Role.MANAGER]
+
+
+def check_can_manage_projects(user_role: Role) -> bool:
+    """Check if user can manage projects (Admin, Manager, Consultant, PC, Tester)"""
+    return user_role in [Role.ADMIN, Role.MANAGER, Role.CONSULTANT, Role.PC, Role.TESTER]
+
+
+def check_admin_or_manager(current_user) -> bool:
+    """Check if user is Admin or Manager (not a dependency, use get_admin_or_manager instead)"""
+    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Admin or Manager role required."
+        )
+    return current_user
+
+
+def get_admin_or_manager_dependency():
+    """Create a dependency that requires Admin or Manager role"""
+    from app.deps import get_current_user
+    from fastapi import Depends
+    
+    async def _check(current_user = Depends(get_current_user)):
+        if current_user.role not in [Role.ADMIN, Role.MANAGER]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied. Admin or Manager role required."
+            )
+        return current_user
+    
+    return _check

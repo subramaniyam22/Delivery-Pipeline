@@ -12,6 +12,7 @@ interface User {
     email: string;
     role: string;
     region?: string;
+    date_of_joining?: string;
     is_active: boolean;
     is_archived?: boolean;
     archived_at?: string;
@@ -55,6 +56,7 @@ export default function UsersPage() {
         password: '',
         role: 'CONSULTANT',
         region: 'INDIA',
+        date_of_joining: '',
     });
     const [error, setError] = useState('');
     const [processing, setProcessing] = useState(false);
@@ -95,14 +97,21 @@ export default function UsersPage() {
     };
 
     const openCreateModal = () => {
-        setFormData({ name: '', email: '', password: '', role: 'CONSULTANT', region: 'INDIA' });
+        setFormData({ name: '', email: '', password: '', role: 'CONSULTANT', region: 'INDIA', date_of_joining: '' });
         setError('');
         setModalType('create');
     };
 
     const openEditModal = (user: User) => {
         setSelectedUser(user);
-        setFormData({ name: user.name, email: user.email, password: '', role: user.role, region: user.region || 'INDIA' });
+        setFormData({ 
+            name: user.name, 
+            email: user.email, 
+            password: '', 
+            role: user.role, 
+            region: user.region || 'INDIA',
+            date_of_joining: user.date_of_joining || ''
+        });
         setError('');
         setModalType('edit');
     };
@@ -153,6 +162,7 @@ export default function UsersPage() {
                 email: formData.email,
                 role: formData.role,
                 region: formData.region,
+                date_of_joining: formData.date_of_joining || null,
             });
             closeModal();
             loadUsers();
@@ -273,8 +283,8 @@ export default function UsersPage() {
                                 <th>Email</th>
                                 <th>Role</th>
                                 <th>Region</th>
+                                <th>Joined</th>
                                 <th>Status</th>
-                                <th>Created</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -306,12 +316,17 @@ export default function UsersPage() {
                                             {REGIONS.find(r => r.value === user.region)?.code || user.region || 'N/A'}
                                         </span>
                                     </td>
+                                    <td className="cell-date">
+                                        {user.date_of_joining 
+                                            ? new Date(user.date_of_joining).toLocaleDateString()
+                                            : <span className="not-set">Not set</span>
+                                        }
+                                    </td>
                                     <td>
                                         <span className={`status-badge ${user.is_active ? 'active' : 'inactive'}`}>
                                             {user.is_active ? 'Active' : 'Inactive'}
                                         </span>
                                     </td>
-                                    <td className="cell-date">{new Date(user.created_at).toLocaleDateString()}</td>
                                     <td className="cell-actions">
                                         {canEditUser(user) && (
                                             <button 
@@ -539,6 +554,16 @@ export default function UsersPage() {
                                         ))}
                                     </select>
                                 </div>
+                                <div className="form-group">
+                                    <label>Date of Joining</label>
+                                    <input
+                                        type="date"
+                                        value={formData.date_of_joining}
+                                        onChange={(e) => setFormData({ ...formData, date_of_joining: e.target.value })}
+                                        disabled={processing}
+                                    />
+                                    <span className="form-hint">Used for leave entitlement calculations</span>
+                                </div>
                             </div>
                             {error && <div className="error-message">{error}</div>}
                             <div className="modal-actions">
@@ -726,6 +751,19 @@ export default function UsersPage() {
                 .cell-date {
                     font-size: 13px;
                     color: var(--text-muted);
+                }
+                
+                .not-set {
+                    color: var(--text-muted);
+                    font-style: italic;
+                    font-size: 12px;
+                }
+                
+                .form-hint {
+                    display: block;
+                    font-size: 12px;
+                    color: var(--text-muted);
+                    margin-top: 4px;
                 }
                 
                 .role-badge {

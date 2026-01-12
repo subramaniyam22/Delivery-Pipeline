@@ -7,7 +7,8 @@ from app.schemas import (
     ProjectResponse,
     ProjectUpdate,
     OnboardingUpdateRequest,
-    StageStatusUpdateRequest
+    StageStatusUpdateRequest,
+    TeamAssignmentRequest
 )
 from app.deps import get_current_active_user
 from app.services import project_service
@@ -45,6 +46,30 @@ def list_projects(
     """List all projects (all authenticated users)"""
     projects = db.query(Project).all()
     return projects
+
+
+@router.get("/available-users/{role}")
+def get_available_users_by_role(
+    role: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all available users for a specific role"""
+    try:
+        role_enum = Role(role.upper())
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
+    
+    users = db.query(User).filter(
+        User.role == role_enum,
+        User.is_active == True,
+        User.is_archived == False
+    ).all()
+    
+    return [
+        {"id": str(u.id), "name": u.name, "email": u.email, "region": u.region.value if u.region else None}
+        for u in users
+    ]
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
@@ -239,3 +264,103 @@ def close_project(
     db.commit()
     
     return {"success": True, "message": "Project closed successfully"}
+
+
+@router.post("/{project_id}/team/assign", response_model=ProjectResponse)
+def assign_team(
+    project_id: UUID,
+    data: TeamAssignmentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Assign team members to a project (PC/Admin/Manager)"""
+    allowed_roles = [Role.PC, Role.ADMIN, Role.MANAGER]
+    if current_user.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only PC, Admin, and Manager can assign team members"
+        )
+    
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    # Validate that assigned users exist and have correct roles
+    if data.pc_user_id:
+        pc_user = db.query(User).filter(User.id == data.pc_user_id).first()
+        if not pc_user:
+            raise HTTPException(status_code=404, detail="PC user not found")
+        if pc_user.role != Role.PC:
+            raise HTTPException(status_code=400, detail="Selected user is not a PC")
+        project.pc_user_id = data.pc_user_id
+    
+    if data.consultant_user_id:
+        consultant = db.query(User).filter(User.id == data.consultant_user_id).first()
+        if not consultant:
+            raise HTTPException(status_code=404, detail="Consultant not found")
+        if consultant.role != Role.CONSULTANT:
+            raise HTTPException(status_code=400, detail="Selected user is not a Consultant")
+        project.consultant_user_id = data.consultant_user_id
+    
+    if data.builder_user_id:
+        builder = db.query(User).filter(User.id == data.builder_user_id).first()
+        if not builder:
+            raise HTTPException(status_code=404, detail="Builder not found")
+        if builder.role != Role.BUILDER:
+            raise HTTPException(status_code=400, detail="Selected user is not a Builder")
+        project.builder_user_id = data.builder_user_id
+    
+    if data.tester_user_id:
+        tester = db.query(User).filter(User.id == data.tester_user_id).first()
+        if not tester:
+            raise HTTPException(status_code=404, detail="Tester not found")
+        if tester.role != Role.TESTER:
+            raise HTTPException(status_code=400, detail="Selected user is not a Tester")
+        project.tester_user_id = data.tester_user_id
+    
+    db.commit()
+    db.refresh(project)
+    
+    return project
+
+
+@router.get("/{project_id}/team")
+def get_team_assignments(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get team assignments for a project"""
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    team = {}
+    
+    if project.pc_user_id:
+        pc = db.query(User).filter(User.id == project.pc_user_id).first()
+        if pc:
+            team["pc"] = {"id": str(pc.id), "name": pc.name, "email": pc.email, "role": pc.role.value}
+    
+    if project.consultant_user_id:
+        consultant = db.query(User).filter(User.id == project.consultant_user_id).first()
+        if consultant:
+            team["consultant"] = {"id": str(consultant.id), "name": consultant.name, "email": consultant.email, "role": consultant.role.value}
+    
+    if project.builder_user_id:
+        builder = db.query(User).filter(User.id == project.builder_user_id).first()
+        if builder:
+            team["builder"] = {"id": str(builder.id), "name": builder.name, "email": builder.email, "role": builder.role.value}
+    
+    if project.tester_user_id:
+        tester = db.query(User).filter(User.id == project.tester_user_id).first()
+        if tester:
+            team["tester"] = {"id": str(tester.id), "name": tester.name, "email": tester.email, "role": tester.role.value}
+    
+    return team

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 from app.models import Role, Region, ProjectStatus, Stage, TaskStatus, StageStatus, DefectSeverity, DefectStatus
 
@@ -12,6 +12,7 @@ class UserCreate(BaseModel):
     password: str
     role: Role
     region: Optional[Region] = Region.INDIA
+    date_of_joining: Optional[date] = None
 
 
 class UserUpdate(BaseModel):
@@ -19,6 +20,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     role: Optional[Role] = None
     region: Optional[Region] = None
+    date_of_joining: Optional[date] = None
     is_active: Optional[bool] = None
 
 
@@ -30,6 +32,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     role: Role
     region: Optional[Region] = None
+    date_of_joining: Optional[date] = None
     is_active: bool
     is_archived: bool = False
     archived_at: Optional[datetime] = None
@@ -66,6 +69,13 @@ class ProjectUpdate(BaseModel):
     status: Optional[ProjectStatus] = None
 
 
+class TeamAssignmentRequest(BaseModel):
+    pc_user_id: Optional[UUID] = None
+    consultant_user_id: Optional[UUID] = None
+    builder_user_id: Optional[UUID] = None
+    tester_user_id: Optional[UUID] = None
+
+
 class ProjectResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
@@ -78,6 +88,11 @@ class ProjectResponse(BaseModel):
     created_by_user_id: UUID
     created_at: datetime
     updated_at: datetime
+    # Team Assignments
+    pc_user_id: Optional[UUID] = None
+    consultant_user_id: Optional[UUID] = None
+    builder_user_id: Optional[UUID] = None
+    tester_user_id: Optional[UUID] = None
 
 
 class OnboardingUpdateRequest(BaseModel):

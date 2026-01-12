@@ -79,6 +79,7 @@ def create_user(
         password_hash=hash_password(data.password),
         role=data.role,
         region=data.region or Region.INDIA,
+        date_of_joining=data.date_of_joining,
         is_active=True
     )
     db.add(user)

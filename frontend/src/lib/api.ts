@@ -96,6 +96,10 @@ export const projectsAPI = {
     updateTestStatus: (id: string, data: any) =>
         api.post(`/projects/${id}/test/status`, data),
     closeProject: (id: string) => api.post(`/projects/${id}/complete/close`),
+    // Team Assignment
+    assignTeam: (id: string, data: any) => api.post(`/projects/${id}/team/assign`, data),
+    getTeam: (id: string) => api.get(`/projects/${id}/team`),
+    getAvailableUsersByRole: (role: string) => api.get(`/projects/available-users/${role}`),
 };
 
 export const workflowAPI = {
@@ -196,4 +200,81 @@ export const remindersAPI = {
     list: (projectId: string) => api.get(`/projects/${projectId}/reminders`),
     send: (projectId: string, data: any) =>
         api.post(`/projects/${projectId}/send-reminder`, data),
+};
+
+// Test Phase Sub-Agents APIs
+export const testingAPI = {
+    // Test Scenarios
+    getScenarios: (projectId: string) =>
+        api.get(`/testing/projects/${projectId}/scenarios`),
+    createScenario: (projectId: string, data: any) =>
+        api.post(`/testing/projects/${projectId}/scenarios`, data),
+    generateScenario: (projectId: string, scenarioName: string) =>
+        api.post(`/testing/projects/${projectId}/scenarios/generate?scenario_name=${encodeURIComponent(scenarioName)}`),
+    
+    // Test Cases
+    getTestCases: (scenarioId: string) =>
+        api.get(`/testing/scenarios/${scenarioId}/cases`),
+    createTestCase: (scenarioId: string, data: any) =>
+        api.post(`/testing/scenarios/${scenarioId}/cases`, data),
+    
+    // Test Executions
+    getExecutions: (projectId: string) =>
+        api.get(`/testing/projects/${projectId}/executions`),
+    runExecution: (projectId: string, executionName: string) =>
+        api.post(`/testing/projects/${projectId}/executions?execution_name=${encodeURIComponent(executionName)}`),
+    getResults: (executionId: string, statusFilter?: string) =>
+        api.get(`/testing/executions/${executionId}/results`, { params: statusFilter ? { status_filter: statusFilter } : {} }),
+    
+    // Defect Management
+    getDefects: (projectId: string, statusFilter?: string) =>
+        api.get(`/testing/projects/${projectId}/defects`, { params: statusFilter ? { status_filter: statusFilter } : {} }),
+    getDefectSummary: (projectId: string) =>
+        api.get(`/testing/projects/${projectId}/defects/summary`),
+    reassignDefect: (defectId: string, data: { new_assignee_id: string; reason?: string }) =>
+        api.post(`/testing/defects/${defectId}/reassign`, data),
+    markDefectFixed: (defectId: string, data: { fix_description: string }) =>
+        api.post(`/testing/defects/${defectId}/fix`, data),
+    validateDefect: (defectId: string) =>
+        api.post(`/testing/defects/${defectId}/validate`),
+    validateAllDefects: (projectId: string) =>
+        api.post(`/testing/projects/${projectId}/defects/validate-all`),
+    
+    // Builder Availability
+    getAvailableBuilders: (projectId?: string) =>
+        api.get('/testing/available-builders', { params: projectId ? { project_id: projectId } : {} }),
+    setUserAvailability: (userId: string, data: any) =>
+        api.post(`/testing/users/${userId}/availability`, data),
+    getUserAvailability: (userId: string) =>
+        api.get(`/testing/users/${userId}/availability`),
+};
+
+// Capacity Management API
+export const capacityAPI = {
+    // Configs
+    getConfigs: () => api.get('/capacity/configs'),
+    updateConfig: (configId: string, data: any) => api.put(`/capacity/configs/${configId}`, data),
+    
+    // User Capacity
+    getUserCapacity: (userId: string, weeks?: number) => 
+        api.get(`/capacity/users/${userId}/summary`, { params: weeks ? { weeks } : {} }),
+    getAvailableUsers: (role: string, minHours?: number) =>
+        api.get(`/capacity/available-users/${role}`, { params: minHours ? { min_hours: minHours } : {} }),
+    getTeamOverview: () => api.get('/capacity/team-overview'),
+    
+    // Allocations
+    allocateCapacity: (data: { user_id: string; project_id: string; date: string; hours: number }) =>
+        api.post('/capacity/allocate', data),
+    
+    // AI Suggestions
+    getSuggestions: (projectId: string, role: string) =>
+        api.get(`/capacity/suggestions/${projectId}/${role}`),
+    recordFeedback: (suggestionId: string, data: { was_accepted: boolean; feedback_notes?: string; actual_outcome?: string }) =>
+        api.post(`/capacity/suggestions/${suggestionId}/feedback`, data),
+    
+    // Manual Input
+    recordManualInput: (data: any) => api.post('/capacity/manual-input', data),
+    
+    // Project Workload
+    getProjectWorkload: (projectId: string) => api.get(`/capacity/projects/${projectId}/workload`),
 };

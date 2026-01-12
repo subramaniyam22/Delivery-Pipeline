@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding
+from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday
 from app.services.config_service import seed_default_configs
 from app.db import SessionLocal
 import os
@@ -63,6 +63,9 @@ app.include_router(workflow.router)
 app.include_router(artifacts.router)
 app.include_router(tasks.router)
 app.include_router(defects.router)
+app.include_router(testing.router)
+app.include_router(capacity.router)
+app.include_router(leave_holiday.router)
 app.include_router(config_admin.router)
 
 

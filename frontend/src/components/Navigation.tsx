@@ -22,6 +22,7 @@ export default function Navigation() {
         { path: '/projects', label: 'Active Projects', icon: '📁' },
         { path: '/forecast', label: 'Forecast', icon: '🔮', badge: 'AI' },
         { path: '/capacity', label: 'Team Capacity', icon: '👥', badge: 'AI' },
+        { path: '/leave-management', label: 'Leave', icon: '📅' },
         ...(isAdmin ? [{ path: '/users', label: 'Manage Users', icon: '⚙️' }] : []),
         { path: '/team', label: 'Users List', icon: '📋' },
     ];
