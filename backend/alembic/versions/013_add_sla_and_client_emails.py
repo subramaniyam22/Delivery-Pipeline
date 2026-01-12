@@ -1,7 +1,7 @@
 """Add SLA configuration and client emails
 
-Revision ID: 013
-Revises: 012
+Revision ID: 013_sla_client_emails
+Revises: 012_date_of_joining
 Create Date: 2026-01-12
 """
 from alembic import op
@@ -9,8 +9,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 import uuid
 
-revision = '013'
-down_revision = '012'
+revision = '013_sla_client_emails'
+down_revision = '012_date_of_joining'
 branch_labels = None
 depends_on = None
 
