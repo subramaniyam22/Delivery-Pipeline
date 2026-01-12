@@ -3,12 +3,14 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 import secrets
+import logging
 from app.db import get_db
 from app.models import User, PasswordResetToken
 from app.schemas import LoginRequest, Token
 from app.auth import verify_password, create_access_token, get_password_hash
 from app.services.email_service import send_password_reset_email
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -60,11 +62,16 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
 @router.post("/forgot-password", response_model=MessageResponse)
 def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """Request a password reset email"""
+    logger.info(f"[AUTH] Password reset requested for email: {request.email}")
+    
     user = db.query(User).filter(User.email == request.email).first()
     
     # Always return success message to prevent email enumeration
     if not user:
+        logger.info(f"[AUTH] No user found with email: {request.email}")
         return MessageResponse(message="If the email exists, a password reset link has been sent")
+    
+    logger.info(f"[AUTH] User found: {user.name} ({user.email})")
     
     # Generate a secure reset token
     reset_token = secrets.token_urlsafe(32)
@@ -84,12 +91,16 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
     db.add(token_record)
     db.commit()
     
+    logger.info(f"[AUTH] Reset token created, sending email...")
+    
     # Send password reset email
-    send_password_reset_email(
+    email_sent = send_password_reset_email(
         to_email=user.email,
         reset_token=reset_token,
         user_name=user.name
     )
+    
+    logger.info(f"[AUTH] Email send result: {email_sent}")
     
     return MessageResponse(message="If the email exists, a password reset link has been sent")
 

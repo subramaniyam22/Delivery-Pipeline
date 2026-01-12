@@ -1,7 +1,10 @@
 """Email service using Resend"""
 import resend
+import logging
 from typing import Optional
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def init_resend():
@@ -24,8 +27,11 @@ def send_password_reset_email(to_email: str, reset_token: str, user_name: Option
     Returns:
         True if email sent successfully, False otherwise
     """
+    logger.info(f"[EMAIL] Attempting to send password reset email to {to_email}")
+    
     if not settings.RESEND_API_KEY:
-        print(f"[EMAIL] Resend API key not configured. Token for {to_email}: {reset_token}")
+        logger.warning(f"[EMAIL] Resend API key not configured!")
+        logger.info(f"[EMAIL] Reset link: {settings.FRONTEND_URL}/reset-password?token={reset_token}")
         return False
     
     init_resend()
@@ -133,12 +139,14 @@ Please do not reply to this email.
             "text": text_content,
         }
         
+        logger.info(f"[EMAIL] Sending email via Resend to {to_email}...")
         response = resend.Emails.send(params)
-        print(f"[EMAIL] Password reset email sent to {to_email}. ID: {response.get('id', 'unknown')}")
+        logger.info(f"[EMAIL] Password reset email sent to {to_email}. Response: {response}")
         return True
         
     except Exception as e:
-        print(f"[EMAIL] Failed to send email to {to_email}: {str(e)}")
+        logger.error(f"[EMAIL] Failed to send email to {to_email}: {str(e)}")
+        logger.info(f"[EMAIL] Fallback reset link: {settings.FRONTEND_URL}/reset-password?token={reset_token}")
         return False
 
 
