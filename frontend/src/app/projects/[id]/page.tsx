@@ -1091,18 +1091,173 @@ export default function ProjectDetailPage() {
                 </div>
                 )}
 
-                {/* Onboarding Section */}
+                {/* Onboarding Section - Role-based views */}
                 {project.current_stage === 'ONBOARDING' && onboardingData && (
                     <div className="onboarding-section">
                         <div className="section-header">
                             <h2>📋 Onboarding Details</h2>
-                            {completionStatus?.can_auto_advance && (
+                            {user?.role === 'CONSULTANT' && completionStatus?.can_auto_advance && (
                                 <button className="btn-auto-advance" onClick={handleAutoAdvance} disabled={advancing}>
                                     🚀 Auto-Advance (90%+ Complete)
                                 </button>
                             )}
                         </div>
 
+                        {/* ADMIN VIEW - Summary Only */}
+                        {user?.role === 'ADMIN' && (
+                            <div className="onboarding-summary-view">
+                                <div className="summary-card">
+                                    <div className="summary-progress">
+                                        <div className="progress-ring" style={{ '--progress': completionStatus?.completion_percentage || 0 } as React.CSSProperties}>
+                                            <span className="progress-value">{completionStatus?.completion_percentage || 0}%</span>
+                                        </div>
+                                        <div className="progress-label">
+                                            <h4>Onboarding Progress</h4>
+                                            <p>{completionStatus?.completed_tasks || 0} of {completionStatus?.total_required_tasks || 0} items complete</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="checklist-summary">
+                                        <h4>📋 Requirements Checklist</h4>
+                                        <div className="checklist-grid">
+                                            <div className={`checklist-item ${(onboardingData.contacts_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{(onboardingData.contacts_json?.length || 0) > 0 ? '✅' : '⏳'}</span>
+                                                <span>Client Contacts</span>
+                                            </div>
+                                            <div className={`checklist-item ${onboardingData.logo_url ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{onboardingData.logo_url ? '✅' : '⏳'}</span>
+                                                <span>Company Logo</span>
+                                            </div>
+                                            <div className={`checklist-item ${(onboardingData.images_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{(onboardingData.images_json?.length || 0) > 0 ? '✅' : '⏳'}</span>
+                                                <span>Website Images</span>
+                                            </div>
+                                            <div className={`checklist-item ${onboardingData.copy_text || onboardingData.use_custom_copy ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? '✅' : '⏳'}</span>
+                                                <span>Copy Text</span>
+                                            </div>
+                                            <div className={`checklist-item ${onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? '✅' : '⏳'}</span>
+                                                <span>Privacy Policy</span>
+                                            </div>
+                                            <div className={`checklist-item ${onboardingData.theme_preference ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{onboardingData.theme_preference ? '✅' : '⏳'}</span>
+                                                <span>Theme Preferences</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {completionStatus && completionStatus.missing_fields.length > 0 && (
+                                        <div className="pending-items-summary">
+                                            <h4>⏳ Pending Items ({completionStatus.missing_fields.length})</h4>
+                                            <ul>
+                                                {completionStatus.missing_fields.slice(0, 5).map((field, index) => (
+                                                    <li key={index}>{field}</li>
+                                                ))}
+                                                {completionStatus.missing_fields.length > 5 && (
+                                                    <li className="more-items">+{completionStatus.missing_fields.length - 5} more items</li>
+                                                )}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* MANAGER VIEW - Read-Only Details */}
+                        {user?.role === 'MANAGER' && (
+                            <div className="onboarding-readonly-view">
+                                {/* Client Contacts - Read Only */}
+                                <div className="form-card readonly">
+                                    <h3>👥 Client Contacts</h3>
+                                    <div className="contacts-list">
+                                        {onboardingData.contacts_json?.length === 0 ? (
+                                            <p className="empty-message">No contacts added yet</p>
+                                        ) : (
+                                            onboardingData.contacts_json?.map((contact, index) => (
+                                                <div key={index} className="contact-item">
+                                                    <div className="contact-info">
+                                                        <span className="contact-name">{contact.name}</span>
+                                                        <span className="contact-email">{contact.email}</span>
+                                                        {contact.role && <span className="contact-role">{contact.role}</span>}
+                                                        {contact.is_primary && <span className="badge-primary">Primary</span>}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* Assets - Read Only */}
+                                <div className="form-card readonly">
+                                    <h3>🖼️ Website Assets</h3>
+                                    <div className="readonly-grid">
+                                        <div className="readonly-item">
+                                            <label>Company Logo</label>
+                                            <span>{onboardingData.logo_url || 'Not provided'}</span>
+                                        </div>
+                                        <div className="readonly-item">
+                                            <label>Website Images</label>
+                                            <span>{onboardingData.images_json?.length || 0} images provided</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Copy Text - Read Only */}
+                                <div className="form-card readonly">
+                                    <h3>📝 Copy Text</h3>
+                                    <div className="readonly-item">
+                                        {onboardingData.use_custom_copy ? (
+                                            <span className="badge-info">Custom copy requested from team</span>
+                                        ) : onboardingData.copy_text ? (
+                                            <p className="copy-preview">{onboardingData.copy_text.substring(0, 200)}...</p>
+                                        ) : (
+                                            <span className="empty-message">Not provided</span>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* WCAG - Read Only */}
+                                <div className="form-card readonly">
+                                    <h3>♿ Accessibility</h3>
+                                    <div className="readonly-item">
+                                        <span>{onboardingData.wcag_compliance_required ? `WCAG ${onboardingData.wcag_level} Required` : 'Not required'}</span>
+                                    </div>
+                                </div>
+                                
+                                {/* Privacy Policy - Read Only */}
+                                <div className="form-card readonly">
+                                    <h3>🔒 Privacy Policy</h3>
+                                    <div className="readonly-item">
+                                        <span>{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'Provided' : 'Not provided'}</span>
+                                    </div>
+                                </div>
+                                
+                                {/* Theme - Read Only */}
+                                <div className="form-card readonly">
+                                    <h3>🎨 Theme Preferences</h3>
+                                    <div className="readonly-item">
+                                        <span>{onboardingData.theme_preference || 'Not selected'}</span>
+                                    </div>
+                                </div>
+                                
+                                {/* Missing Fields */}
+                                {completionStatus && completionStatus.missing_fields.length > 0 && (
+                                    <div className="missing-fields-alert">
+                                        <h4>⚠️ Missing Information</h4>
+                                        <ul>
+                                            {completionStatus.missing_fields.map((field, index) => (
+                                                <li key={index}>{field}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* CONSULTANT VIEW - Full Edit Mode */}
+                        {user?.role === 'CONSULTANT' && (
+                            <>
                         {/* Client Contacts */}
                         <div className="form-card">
                             <div className="card-header">
@@ -1312,16 +1467,18 @@ export default function ProjectDetailPage() {
                             </div>
                         </div>
 
-                        {/* Missing Fields Alert */}
+                        {/* Missing Fields Alert - Consultant View */}
                         {completionStatus && completionStatus.missing_fields.length > 0 && (
                             <div className="missing-fields-alert">
                                 <h4>⚠️ Missing Information</h4>
                                 <ul>
                                     {completionStatus.missing_fields.map((field, index) => (
                                         <li key={index}>{field}</li>
-                    ))}
-                </ul>
-            </div>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                            </>
                         )}
                     </div>
                 )}
@@ -2689,6 +2846,169 @@ export default function ProjectDetailPage() {
 
                 .onboarding-section, .tasks-section, .artifacts-section, .admin-actions {
                     margin-bottom: var(--space-xl);
+                }
+                
+                /* Admin Summary View */
+                .onboarding-summary-view .summary-card {
+                    background: white;
+                    border-radius: 16px;
+                    padding: 2rem;
+                    border: 1px solid #e2e8f0;
+                }
+                
+                .summary-progress {
+                    display: flex;
+                    align-items: center;
+                    gap: 1.5rem;
+                    margin-bottom: 2rem;
+                    padding-bottom: 1.5rem;
+                    border-bottom: 1px solid #e2e8f0;
+                }
+                
+                .progress-ring {
+                    width: 100px;
+                    height: 100px;
+                    border-radius: 50%;
+                    background: conic-gradient(#22c55e calc(var(--progress) * 1%), #e2e8f0 0);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    position: relative;
+                }
+                
+                .progress-ring::before {
+                    content: '';
+                    position: absolute;
+                    width: 80px;
+                    height: 80px;
+                    background: white;
+                    border-radius: 50%;
+                }
+                
+                .progress-ring .progress-value {
+                    position: relative;
+                    font-size: 1.5rem;
+                    font-weight: 700;
+                    color: #1e293b;
+                }
+                
+                .progress-label h4 {
+                    margin: 0 0 0.25rem;
+                    color: #1e293b;
+                }
+                
+                .progress-label p {
+                    margin: 0;
+                    color: #64748b;
+                    font-size: 0.9rem;
+                }
+                
+                .checklist-summary {
+                    margin-bottom: 1.5rem;
+                }
+                
+                .checklist-summary h4 {
+                    margin: 0 0 1rem;
+                    color: #1e293b;
+                }
+                
+                .checklist-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                    gap: 0.75rem;
+                }
+                
+                .checklist-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.5rem;
+                    padding: 0.75rem 1rem;
+                    border-radius: 8px;
+                    font-size: 0.9rem;
+                }
+                
+                .checklist-item.provided {
+                    background: #dcfce7;
+                    color: #166534;
+                }
+                
+                .checklist-item.pending {
+                    background: #fef3c7;
+                    color: #92400e;
+                }
+                
+                .checklist-icon {
+                    font-size: 1rem;
+                }
+                
+                .pending-items-summary {
+                    background: #fef3c7;
+                    border-radius: 12px;
+                    padding: 1rem 1.5rem;
+                }
+                
+                .pending-items-summary h4 {
+                    margin: 0 0 0.75rem;
+                    color: #92400e;
+                }
+                
+                .pending-items-summary ul {
+                    margin: 0;
+                    padding-left: 1.25rem;
+                    color: #92400e;
+                }
+                
+                .pending-items-summary li {
+                    margin-bottom: 0.25rem;
+                }
+                
+                .pending-items-summary .more-items {
+                    font-style: italic;
+                    opacity: 0.8;
+                }
+                
+                /* Manager Read-Only View */
+                .onboarding-readonly-view .form-card.readonly {
+                    background: #f8fafc;
+                }
+                
+                .readonly-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 1rem;
+                }
+                
+                .readonly-item {
+                    padding: 0.75rem 0;
+                }
+                
+                .readonly-item label {
+                    display: block;
+                    font-size: 0.8rem;
+                    color: #64748b;
+                    margin-bottom: 0.25rem;
+                }
+                
+                .readonly-item span, .readonly-item p {
+                    color: #1e293b;
+                }
+                
+                .copy-preview {
+                    background: white;
+                    padding: 0.75rem;
+                    border-radius: 8px;
+                    border: 1px solid #e2e8f0;
+                    font-size: 0.9rem;
+                    color: #64748b;
+                }
+                
+                .badge-info {
+                    display: inline-block;
+                    background: #dbeafe;
+                    color: #1e40af;
+                    padding: 0.25rem 0.75rem;
+                    border-radius: 20px;
+                    font-size: 0.85rem;
                 }
 
                 .form-card {
