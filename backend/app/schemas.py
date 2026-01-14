@@ -77,6 +77,16 @@ class TeamAssignmentRequest(BaseModel):
     tester_user_id: Optional[UUID] = None
 
 
+class UserBrief(BaseModel):
+    """Brief user info for display in lists"""
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: UUID
+    name: str
+    email: str
+    role: str
+
+
 class ProjectResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
@@ -94,6 +104,12 @@ class ProjectResponse(BaseModel):
     consultant_user_id: Optional[UUID] = None
     builder_user_id: Optional[UUID] = None
     tester_user_id: Optional[UUID] = None
+    # Nested user info for display
+    creator: Optional[UserBrief] = None
+    consultant: Optional[UserBrief] = None
+    pc: Optional[UserBrief] = None
+    builder: Optional[UserBrief] = None
+    tester: Optional[UserBrief] = None
 
 
 class OnboardingUpdateRequest(BaseModel):

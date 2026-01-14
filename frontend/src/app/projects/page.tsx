@@ -300,10 +300,12 @@ export default function ProjectsPage() {
                             <tr>
                                 <th>Project</th>
                                 <th>Client</th>
+                                <th>Created By</th>
+                                <th>Assigned To</th>
                                 <th>Priority</th>
                                 <th>Stage</th>
                                 <th>Status</th>
-                                {user?.role !== 'ADMIN' && <th>Assigned</th>}
+                                {user?.role !== 'ADMIN' && <th>My Role</th>}
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -319,6 +321,31 @@ export default function ProjectsPage() {
                                         {isMyProject(project) && <span className="owned-badge">★</span>}
                                     </td>
                                     <td>{project.client_name}</td>
+                                    <td className="cell-user">
+                                        {project.creator ? (
+                                            <div className="user-info-cell">
+                                                <span className="user-name">{project.creator.name}</span>
+                                                <span className="user-role">{project.creator.role}</span>
+                                            </div>
+                                        ) : (
+                                            <span className="not-assigned">—</span>
+                                        )}
+                                    </td>
+                                    <td className="cell-user">
+                                        {project.consultant ? (
+                                            <div className="user-info-cell">
+                                                <span className="user-name">{project.consultant.name}</span>
+                                                <span className="user-role">Consultant</span>
+                                            </div>
+                                        ) : project.pc ? (
+                                            <div className="user-info-cell">
+                                                <span className="user-name">{project.pc.name}</span>
+                                                <span className="user-role">PC</span>
+                                            </div>
+                                        ) : (
+                                            <span className="not-assigned">Not assigned</span>
+                                        )}
+                                    </td>
                                     <td>
                                         <span className={`badge badge-priority badge-${project.priority?.toLowerCase()}`}>
                                             {project.priority}
@@ -341,11 +368,11 @@ export default function ProjectsPage() {
                                     </td>
                                     {user?.role !== 'ADMIN' && (
                                         <td>
-                                            {isAssignedToProject(project) ? (
-                                                <span className="assigned-to-me">✓ Assigned</span>
-                                            ) : (
-                                                <span className="not-assigned">—</span>
-                                            )}
+                                            {project.consultant_user_id === user?.id && <span className="my-role-tag consultant">💼 Consultant</span>}
+                                            {project.pc_user_id === user?.id && <span className="my-role-tag pc">🎯 PC</span>}
+                                            {project.builder_user_id === user?.id && <span className="my-role-tag builder">🔨 Builder</span>}
+                                            {project.tester_user_id === user?.id && <span className="my-role-tag tester">🧪 Tester</span>}
+                                            {!isAssignedToProject(project) && <span className="not-assigned">—</span>}
                                         </td>
                                     )}
                                     <td>
@@ -939,6 +966,61 @@ export default function ProjectsPage() {
 
                 .not-assigned {
                     color: #94a3b8;
+                }
+
+                /* User info cells */
+                .cell-user {
+                    min-width: 120px;
+                }
+
+                .user-info-cell {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                }
+
+                .user-info-cell .user-name {
+                    font-weight: 500;
+                    color: #1e293b;
+                    font-size: 0.9rem;
+                }
+
+                .user-info-cell .user-role {
+                    font-size: 0.75rem;
+                    color: #64748b;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                /* My role tags */
+                .my-role-tag {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 0.25rem 0.5rem;
+                    border-radius: 6px;
+                    font-size: 0.75rem;
+                    font-weight: 500;
+                }
+
+                .my-role-tag.consultant {
+                    background: #dbeafe;
+                    color: #1e40af;
+                }
+
+                .my-role-tag.pc {
+                    background: #fef3c7;
+                    color: #92400e;
+                }
+
+                .my-role-tag.builder {
+                    background: #dcfce7;
+                    color: #166534;
+                }
+
+                .my-role-tag.tester {
+                    background: #f3e8ff;
+                    color: #7c3aed;
                 }
                 
                 @media (max-width: 768px) {

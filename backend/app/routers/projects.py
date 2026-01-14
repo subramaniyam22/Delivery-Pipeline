@@ -44,7 +44,14 @@ def list_projects(
     current_user: User = Depends(get_current_active_user)
 ):
     """List all projects (all authenticated users)"""
-    projects = db.query(Project).all()
+    from sqlalchemy.orm import joinedload
+    projects = db.query(Project).options(
+        joinedload(Project.creator),
+        joinedload(Project.consultant),
+        joinedload(Project.pc),
+        joinedload(Project.builder),
+        joinedload(Project.tester)
+    ).all()
     return projects
 
 
