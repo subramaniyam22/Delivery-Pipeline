@@ -28,6 +28,7 @@ interface OnboardingData {
     custom_copy_final_price: number | null;
     wcag_compliance_required: boolean;
     wcag_level: string;
+    wcag_confirmed: boolean;
     privacy_policy_url: string | null;
     privacy_policy_text: string | null;
     theme_preference: string | null;
