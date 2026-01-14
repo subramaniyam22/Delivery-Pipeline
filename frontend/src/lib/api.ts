@@ -161,6 +161,8 @@ export const onboardingAPI = {
     getCopyPricing: () => api.get('/projects/copy-pricing'),
     toggleAutoReminder: (projectId: string, enabled: boolean) =>
         api.post(`/projects/${projectId}/toggle-auto-reminder`, null, { params: { enabled } }),
+    sendReminder: (projectId: string, data: { recipient_email: string; recipient_name: string; message: string }) =>
+        api.post(`/projects/${projectId}/send-reminder`, data),
 };
 
 // Client API (no auth required)
