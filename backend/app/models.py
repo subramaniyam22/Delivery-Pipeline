@@ -332,6 +332,7 @@ class OnboardingData(Base):
     next_reminder_at = Column(DateTime, nullable=True)  # For auto-scheduling
     reminder_count = Column(Integer, default=0)
     auto_reminder_enabled = Column(Boolean, default=True)
+    reminder_interval_hours = Column(Integer, default=24)  # 6, 12, or 24 hours
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

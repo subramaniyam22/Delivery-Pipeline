@@ -159,8 +159,10 @@ export const onboardingAPI = {
         api.post(`/projects/${projectId}/check-auto-advance`),
     getTemplates: () => api.get('/projects/templates'),
     getCopyPricing: () => api.get('/projects/copy-pricing'),
-    toggleAutoReminder: (projectId: string, enabled: boolean) =>
-        api.post(`/projects/${projectId}/toggle-auto-reminder`, null, { params: { enabled } }),
+    toggleAutoReminder: (projectId: string, enabled: boolean, intervalHours?: number) =>
+        api.post(`/projects/${projectId}/toggle-auto-reminder`, null, { 
+            params: { enabled, ...(intervalHours && { interval_hours: intervalHours }) } 
+        }),
     sendReminder: (projectId: string, data: { recipient_email: string; recipient_name: string; message: string }) =>
         api.post(`/projects/${projectId}/send-reminder`, data),
 };

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Query
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus
@@ -794,10 +794,11 @@ def list_reminders(
 def toggle_auto_reminder(
     project_id: UUID,
     enabled: bool,
+    interval_hours: Optional[int] = Query(None, description="Reminder interval in hours (6, 12, or 24)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Enable/disable auto 24-hour reminders"""
+    """Enable/disable auto reminders with configurable interval"""
     if not check_full_access(current_user.role):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     
@@ -806,8 +807,16 @@ def toggle_auto_reminder(
         raise HTTPException(status_code=404, detail="Onboarding data not found")
     
     onboarding.auto_reminder_enabled = enabled
+    
+    # Update interval if provided and valid
+    if interval_hours and interval_hours in [6, 12, 24]:
+        onboarding.reminder_interval_hours = interval_hours
+    
     if enabled:
-        schedule_next_reminder(db, onboarding)
+        # Schedule next reminder based on interval
+        hours = onboarding.reminder_interval_hours or 24
+        if onboarding.completion_percentage < 100:
+            onboarding.next_reminder_at = datetime.utcnow() + timedelta(hours=hours)
     else:
         onboarding.next_reminder_at = None
     

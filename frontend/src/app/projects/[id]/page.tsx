@@ -1472,10 +1472,10 @@ export default function ProjectDetailPage() {
                                         <label className="reminder-toggle">
                                             <input
                                                 type="checkbox"
-                                                checked={onboardingData?.auto_reminder_enabled ?? true}
+                                                checked={onboardingData?.auto_reminder_enabled ?? false}
                                                 onChange={async (e) => {
                                                     try {
-                                                        await onboardingAPI.toggleAutoReminder(projectId, e.target.checked);
+                                                        await onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval);
                                                         await loadOnboardingData();
                                                         setSuccess(`Auto-reminders ${e.target.checked ? 'enabled' : 'disabled'}`);
                                                     } catch (err) {
@@ -1486,31 +1486,74 @@ export default function ProjectDetailPage() {
                                             Enable auto-reminders for missing information
                                         </label>
                                         
-                                        {onboardingData?.auto_reminder_enabled && (
-                                            <div className="interval-selector">
-                                                <label>Reminder interval:</label>
-                                                <div className="interval-buttons">
-                                                    {[
-                                                        { value: 6, label: '6 hours' },
-                                                        { value: 12, label: '12 hours' },
-                                                        { value: 24, label: '24 hours' }
-                                                    ].map(opt => (
-                                                        <button
-                                                            key={opt.value}
-                                                            className={`interval-btn ${reminderInterval === opt.value ? 'active' : ''}`}
-                                                            onClick={() => setReminderInterval(opt.value)}
-                                                        >
-                                                            {opt.label}
-                                                        </button>
-                                                    ))}
+                                        {onboardingData?.auto_reminder_enabled ? (
+                                            <>
+                                                <div className="interval-selector">
+                                                    <label>Reminder interval:</label>
+                                                    <div className="interval-buttons">
+                                                        {[
+                                                            { value: 6, label: '6 hours' },
+                                                            { value: 12, label: '12 hours' },
+                                                            { value: 24, label: '24 hours' }
+                                                        ].map(opt => (
+                                                            <button
+                                                                key={opt.value}
+                                                                className={`interval-btn ${reminderInterval === opt.value ? 'active' : ''}`}
+                                                                onClick={async () => {
+                                                                    setReminderInterval(opt.value);
+                                                                    try {
+                                                                        await onboardingAPI.toggleAutoReminder(projectId, true, opt.value);
+                                                                        await loadOnboardingData();
+                                                                        setSuccess(`Reminder interval set to ${opt.value} hours`);
+                                                                    } catch (err) {
+                                                                        setError('Failed to update interval');
+                                                                    }
+                                                                }}
+                                                            >
+                                                                {opt.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
                                                 </div>
+                                                
+                                                <div className="next-reminder-display">
+                                                    <p className="next-reminder">
+                                                        📅 Next reminder: {onboardingData?.next_reminder_at 
+                                                            ? new Date(onboardingData.next_reminder_at).toLocaleString()
+                                                            : `In ${reminderInterval} hours from now`}
+                                                    </p>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="manual-reminder-section">
+                                                <p className="reminder-disabled-note">Auto-reminders are disabled. You can send a reminder manually.</p>
+                                                <button 
+                                                    className="btn-send-now"
+                                                    disabled={sendingEmail || !onboardingData?.contacts_json?.length}
+                                                    onClick={async () => {
+                                                        if (!onboardingData?.contacts_json?.length) {
+                                                            setError('No contacts to send reminder to');
+                                                            return;
+                                                        }
+                                                        setSendingEmail(true);
+                                                        try {
+                                                            const primaryContact = onboardingData.contacts_json.find(c => c.is_primary) || onboardingData.contacts_json[0];
+                                                            await onboardingAPI.sendReminder(projectId, {
+                                                                recipient_email: primaryContact.email,
+                                                                recipient_name: primaryContact.name,
+                                                                message: `Please complete the onboarding form for ${project.title}`
+                                                            });
+                                                            setSuccess('Reminder sent successfully!');
+                                                        } catch (err) {
+                                                            setError('Failed to send reminder');
+                                                        } finally {
+                                                            setSendingEmail(false);
+                                                        }
+                                                    }}
+                                                >
+                                                    {sendingEmail ? 'Sending...' : '📧 Send Reminder Now'}
+                                                </button>
                                             </div>
-                                        )}
-                                        
-                                        {onboardingData?.next_reminder_at && onboardingData.auto_reminder_enabled && (
-                                            <p className="next-reminder">
-                                                📅 Next reminder: {new Date(onboardingData.next_reminder_at).toLocaleString()}
-                                            </p>
                                         )}
                                     </div>
                                 </div>
@@ -3858,9 +3901,48 @@ export default function ProjectDetailPage() {
                 .next-reminder {
                     font-size: 0.85rem;
                     color: #059669;
-                    padding: 0.5rem;
+                    padding: 0.5rem 0.75rem;
                     background: #ecfdf5;
                     border-radius: 6px;
+                    margin: 0;
+                }
+
+                .next-reminder-display {
+                    margin-top: 0.5rem;
+                }
+
+                .manual-reminder-section {
+                    padding: 1rem;
+                    background: #fef3c7;
+                    border-radius: 8px;
+                    border: 1px solid #fcd34d;
+                }
+
+                .reminder-disabled-note {
+                    font-size: 0.9rem;
+                    color: #92400e;
+                    margin: 0 0 0.75rem 0;
+                }
+
+                .btn-send-now {
+                    padding: 0.75rem 1.5rem;
+                    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+
+                .btn-send-now:hover:not(:disabled) {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+                }
+
+                .btn-send-now:disabled {
+                    background: #94a3b8;
+                    cursor: not-allowed;
                 }
 
                 .btn-copy:hover {
