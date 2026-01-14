@@ -281,10 +281,10 @@ export default function ExecutiveDashboardPage() {
           {expandedHealthStatus && (
             <div className="expanded-projects">
               <h3>
-                {expandedHealthStatus === 'ON_TRACK' && '✅ On Track Projects'}
-                {expandedHealthStatus === 'WARNING' && '⚠️ Warning Projects'}
-                {expandedHealthStatus === 'CRITICAL' && '🚨 Critical Projects'}
-                {expandedHealthStatus === 'DELAYED' && '❌ Delayed Projects'}
+                {expandedHealthStatus === 'ON_TRACK' && `✅ On Track Projects (${getProjectsByHealthStatus('ON_TRACK').length})`}
+                {expandedHealthStatus === 'WARNING' && `⚠️ Warning Projects (${getProjectsByHealthStatus('WARNING').length})`}
+                {expandedHealthStatus === 'CRITICAL' && `🚨 Critical Projects (${getProjectsByHealthStatus('CRITICAL').length})`}
+                {expandedHealthStatus === 'DELAYED' && `❌ Delayed Projects (${getProjectsByHealthStatus('DELAYED').length})`}
               </h3>
               <div className="project-list">
                 {getProjectsByHealthStatus(expandedHealthStatus).map(project => (
@@ -349,7 +349,7 @@ export default function ExecutiveDashboardPage() {
           {/* Expanded Stage Projects */}
           {expandedStage && (
             <div className="expanded-projects">
-              <h3>{STAGE_ICONS[expandedStage]} {STAGE_LABELS[expandedStage]} Projects</h3>
+              <h3>{STAGE_ICONS[expandedStage]} {STAGE_LABELS[expandedStage]} Projects ({getProjectsByStage(expandedStage).length})</h3>
               <div className="project-list">
                 {getProjectsByStage(expandedStage).map(project => (
                   <div 
@@ -374,30 +374,6 @@ export default function ExecutiveDashboardPage() {
               </div>
             </div>
           )}
-        </section>
-
-        {/* Projects by Stage - Bar View */}
-        <section className="stage-section">
-          <h2>Projects by Stage</h2>
-          <div className="stage-bars">
-            {STAGE_ORDER.map((stage) => {
-              const count = dashboard?.projects_by_stage[stage] || 0;
-              return (
-                <div key={stage} className="stage-bar-item">
-                  <div className="stage-bar-label">
-                    <span>{STAGE_LABELS[stage]}</span>
-                    <span className="stage-count">{count}</span>
-                  </div>
-                  <div className="stage-bar-track">
-                    <div 
-                      className="stage-bar-fill" 
-                      style={{ width: `${(count / (dashboard?.total_projects || 1)) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </section>
 
         {/* At-Risk Projects */}
@@ -579,13 +555,6 @@ export default function ExecutiveDashboardPage() {
         .pipeline-bar { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-bottom: 0.5rem; }
         .pipeline-bar-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); border-radius: 2px; }
         .pipeline-projects-preview { font-size: 0.75rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        
-        .stage-bars { display: flex; flex-direction: column; gap: 1rem; }
-        .stage-bar-item { }
-        .stage-bar-label { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem; }
-        .stage-count { font-weight: 600; color: #2563eb; }
-        .stage-bar-track { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
-        .stage-bar-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); border-radius: 4px; transition: width 0.5s; }
         
         .risk-table { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
