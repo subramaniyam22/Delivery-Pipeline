@@ -335,8 +335,28 @@ export default function ProjectDetailPage() {
 
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [myCapacity, setMyCapacity] = useState<any>(null);
 
+    // Role and assignment checks
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+    const isExecutiveAdmin = user?.role === 'ADMIN';
+    
+    // Check if current user is assigned to this project
+    const isAssignedToProject = user && project && (
+        teamAssignments?.consultant?.id === user.id ||
+        teamAssignments?.pc?.id === user.id ||
+        teamAssignments?.builder?.id === user.id ||
+        teamAssignments?.tester?.id === user.id
+    );
+    
+    // Check if user owns/manages this project
+    const isProjectOwner = user?.role === 'CONSULTANT' && isAssignedToProject;
+    const isProjectManager = user?.role === 'MANAGER';
+    
+    // View mode: Full edit, read-only details, or executive summary
+    const hasFullEditAccess = isProjectOwner || (user?.role === 'PC' && isAssignedToProject);
+    const hasDetailedViewAccess = isProjectManager || hasFullEditAccess || (user?.role === 'BUILDER' && isAssignedToProject) || (user?.role === 'TESTER' && isAssignedToProject);
+    const isExecutiveView = isExecutiveAdmin;
 
     useEffect(() => {
         const currentUser = getCurrentUser();
@@ -1020,6 +1040,80 @@ export default function ProjectDetailPage() {
                 {error && <div className="alert alert-error">{error}</div>}
                 {success && <div className="alert alert-success">{success}</div>}
 
+                {/* My Capacity on this Project - Visible to all assigned team members */}
+                {isAssignedToProject && (
+                    <div className="my-capacity-section">
+                        <h2>📊 My Capacity on this Project</h2>
+                        <div className="capacity-cards">
+                            <div className="capacity-card">
+                                <div className="capacity-icon">🎯</div>
+                                <div className="capacity-info">
+                                    <span className="capacity-label">This Project</span>
+                                    <span className="capacity-value">{projectWorkload?.by_role?.[user?.role] || 0}h estimated</span>
+                                </div>
+                            </div>
+                            <div className="capacity-card">
+                                <div className="capacity-icon">📋</div>
+                                <div className="capacity-info">
+                                    <span className="capacity-label">Other Projects</span>
+                                    <span className="capacity-value">
+                                        {capacityByRole[user?.role || '']?.find((c: any) => c.user_id === user?.id)?.allocated_hours || 0}h allocated
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="capacity-card available">
+                                <div className="capacity-icon">✅</div>
+                                <div className="capacity-info">
+                                    <span className="capacity-label">Available</span>
+                                    <span className="capacity-value">
+                                        {capacityByRole[user?.role || '']?.find((c: any) => c.user_id === user?.id)?.remaining_hours?.toFixed(1) || 0}h remaining
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Executive Summary for Admin */}
+                {isExecutiveView && (
+                    <div className="executive-summary">
+                        <h2>📈 Executive Summary</h2>
+                        <div className="summary-grid">
+                            <div className="summary-card">
+                                <span className="summary-icon">📊</span>
+                                <div className="summary-content">
+                                    <span className="summary-label">Progress</span>
+                                    <span className="summary-value">{completionStatus?.completion_percentage || 0}%</span>
+                                </div>
+                            </div>
+                            <div className="summary-card">
+                                <span className="summary-icon">📋</span>
+                                <div className="summary-content">
+                                    <span className="summary-label">Tasks</span>
+                                    <span className="summary-value">{completionStatus?.completed_tasks || 0}/{completionStatus?.total_required_tasks || 0}</span>
+                                </div>
+                            </div>
+                            <div className="summary-card">
+                                <span className="summary-icon">🎯</span>
+                                <div className="summary-content">
+                                    <span className="summary-label">Stage</span>
+                                    <span className="summary-value">{project.current_stage?.replace('_', ' ')}</span>
+                                </div>
+                            </div>
+                            <div className="summary-card">
+                                <span className="summary-icon">⚡</span>
+                                <div className="summary-content">
+                                    <span className="summary-label">Status</span>
+                                    <span className="summary-value">{project.status}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="executive-note">
+                            <p>💡 As an executive, you see the high-level overview. Detailed operational data is managed by Consultants and Managers.</p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Team Assignment Section - Only visible to Admin, Manager, and PC */}
                 {canViewTeam && (
                 <div className="team-section">
@@ -1098,15 +1192,15 @@ export default function ProjectDetailPage() {
                     <div className="onboarding-section">
                         <div className="section-header">
                             <h2>📋 Onboarding Details</h2>
-                            {user?.role === 'CONSULTANT' && completionStatus?.can_auto_advance && (
+                            {hasFullEditAccess && completionStatus?.can_auto_advance && (
                                 <button className="btn-auto-advance" onClick={handleAutoAdvance} disabled={advancing}>
                                     🚀 Auto-Advance (90%+ Complete)
                                 </button>
                             )}
                         </div>
 
-                        {/* ADMIN VIEW - Summary Only */}
-                        {user?.role === 'ADMIN' && (
+                        {/* ADMIN or Non-Assigned Consultant VIEW - Summary Only */}
+                        {(user?.role === 'ADMIN' || (user?.role === 'CONSULTANT' && !isAssignedToProject)) && (
                             <div className="onboarding-summary-view">
                                 <div className="summary-card">
                                     <div className="summary-progress">
@@ -1257,8 +1351,8 @@ export default function ProjectDetailPage() {
                             </div>
                         )}
 
-                        {/* CONSULTANT VIEW - Full Edit Mode */}
-                        {user?.role === 'CONSULTANT' && (
+                        {/* CONSULTANT VIEW - Full Edit Mode (Only for Assigned Consultant) */}
+                        {user?.role === 'CONSULTANT' && isAssignedToProject && (
                             <>
                         {/* Client Contacts */}
                         <div className="form-card">
@@ -1485,7 +1579,8 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
-                {/* Tasks Section - Auto-updated based on client inputs */}
+                {/* Tasks Section - Auto-updated based on client inputs - Hidden from Executive Admin */}
+                {!isExecutiveView && (
                 <div className="tasks-section">
                     <div className="section-header">
                         <h2>✅ Tasks ({tasks.length})</h2>
@@ -1493,7 +1588,7 @@ export default function ProjectDetailPage() {
                             {project.current_stage === 'ONBOARDING' && (
                                 <span className="auto-update-badge">🔄 Auto-updates from client inputs</span>
                             )}
-                            {isAdmin && !project.current_stage.includes('ONBOARDING') && (
+                            {hasFullEditAccess && !project.current_stage.includes('ONBOARDING') && (
                                 <button className="btn-add" onClick={() => setShowTaskModal(true)}>+ Add Task</button>
                             )}
                         </div>
@@ -1541,8 +1636,10 @@ export default function ProjectDetailPage() {
                         </div>
                     )}
                 </div>
+                )}
 
-                {/* Artifacts Section */}
+                {/* Artifacts Section - Hidden from Executive Admin */}
+                {!isExecutiveView && (
                 <div className="artifacts-section">
                     <h2>📎 Artifacts ({artifacts.length})</h2>
                     {artifacts.length === 0 ? (
@@ -1559,8 +1656,10 @@ export default function ProjectDetailPage() {
                     </ul>
                     )}
                 </div>
+                )}
 
-                {/* Test Phase Section - Visible in TEST and DEFECT_VALIDATION stages */}
+                {/* Test Phase Section - Visible in TEST and DEFECT_VALIDATION stages - Hidden from Executive */}
+                {!isExecutiveView && (project.current_stage === 'TEST' || project.current_stage === 'DEFECT_VALIDATION') && (
                 {(project.current_stage === 'TEST' || project.current_stage === 'DEFECT_VALIDATION') && (
                     <div className="test-phase-section">
                         <div className="section-header">
@@ -1959,10 +2058,10 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
-                {/* Admin Actions */}
-                {isAdmin && (
+                {/* Admin Actions - Only for Consultant on their assigned projects */}
+                {hasFullEditAccess && !isExecutiveAdmin && (
                     <div className="admin-actions">
-                        <h3>Admin Actions</h3>
+                        <h3>Project Actions</h3>
                         
                         {/* Client Form Link */}
                         {project.current_stage === 'ONBOARDING' && completionStatus?.client_form_url && (
@@ -4901,6 +5000,150 @@ export default function ProjectDetailPage() {
                     font-size: 14px;
                 }
 
+                /* My Capacity Section */
+                .my-capacity-section {
+                    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+                    border-radius: var(--radius-lg);
+                    padding: var(--space-lg);
+                    margin-bottom: var(--space-xl);
+                    border: 1px solid #bae6fd;
+                }
+
+                .my-capacity-section h2 {
+                    margin: 0 0 var(--space-md) 0;
+                    color: #0369a1;
+                    font-size: 18px;
+                }
+
+                .capacity-cards {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: var(--space-md);
+                }
+
+                .capacity-card {
+                    background: white;
+                    border-radius: var(--radius-md);
+                    padding: var(--space-md);
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-md);
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                }
+
+                .capacity-card.available {
+                    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+                    border: 1px solid #86efac;
+                }
+
+                .capacity-icon {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 50%;
+                    background: #e0f2fe;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 20px;
+                }
+
+                .capacity-card.available .capacity-icon {
+                    background: #bbf7d0;
+                }
+
+                .capacity-info {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+
+                .capacity-label {
+                    font-size: 12px;
+                    color: var(--text-muted);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                .capacity-value {
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+
+                /* Executive Summary Section */
+                .executive-summary {
+                    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+                    border-radius: var(--radius-lg);
+                    padding: var(--space-lg);
+                    margin-bottom: var(--space-xl);
+                    border: 1px solid #fbbf24;
+                }
+
+                .executive-summary h2 {
+                    margin: 0 0 var(--space-md) 0;
+                    color: #92400e;
+                    font-size: 18px;
+                }
+
+                .summary-grid {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: var(--space-md);
+                }
+
+                .summary-card {
+                    background: white;
+                    border-radius: var(--radius-md);
+                    padding: var(--space-md);
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-md);
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                }
+
+                .summary-icon {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 50%;
+                    background: #fef3c7;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 20px;
+                }
+
+                .summary-content {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+
+                .summary-label {
+                    font-size: 12px;
+                    color: var(--text-muted);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                .summary-value {
+                    font-size: 18px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+
+                .executive-note {
+                    margin-top: var(--space-md);
+                    padding: var(--space-sm) var(--space-md);
+                    background: rgba(255, 255, 255, 0.7);
+                    border-radius: var(--radius-md);
+                    font-size: 14px;
+                    color: #78350f;
+                }
+
+                .executive-note p {
+                    margin: 0;
+                }
+
                 @media (max-width: 768px) {
                     .project-header {
                         flex-direction: column;
@@ -4965,6 +5208,14 @@ export default function ProjectDetailPage() {
 
                     .user-capacity {
                         width: 100%;
+                    }
+
+                    .capacity-cards {
+                        grid-template-columns: 1fr;
+                    }
+
+                    .summary-grid {
+                        grid-template-columns: repeat(2, 1fr);
                     }
         }
       `}</style>

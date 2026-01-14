@@ -70,6 +70,24 @@ export default function ProjectsPage() {
         return false;
     };
 
+    const isAssignedToProject = (project: any) => {
+        if (!user) return false;
+        return (
+            project.consultant_user_id === user.id ||
+            project.pc_user_id === user.id ||
+            project.builder_user_id === user.id ||
+            project.tester_user_id === user.id
+        );
+    };
+
+    const isMyProject = (project: any) => {
+        if (!user) return false;
+        if (user.role === 'CONSULTANT') {
+            return project.consultant_user_id === user.id;
+        }
+        return isAssignedToProject(project);
+    };
+
     const handlePause = (project: any) => {
         setSelectedProject(project);
         setActionType('pause');
@@ -231,6 +249,51 @@ export default function ProjectsPage() {
                     </div>
                 </div>
 
+                {/* My Projects Section - For Consultants/Managers */}
+                {user?.role && ['CONSULTANT', 'MANAGER', 'PC', 'BUILDER', 'TESTER'].includes(user.role) && (
+                    <div className="my-projects-section">
+                        <h2>📌 My Assigned Projects ({filteredProjects.filter(p => isAssignedToProject(p)).length})</h2>
+                        <div className="my-projects-grid">
+                            {filteredProjects.filter(p => isAssignedToProject(p)).map((project) => (
+                                <div key={project.id} className="my-project-card" onClick={() => router.push(`/projects/${project.id}`)}>
+                                    <div className="project-card-header">
+                                        <h3>{project.title}</h3>
+                                        <span className={`badge badge-priority badge-${project.priority?.toLowerCase()}`}>
+                                            {project.priority}
+                                        </span>
+                                    </div>
+                                    <p className="client-name">{project.client_name}</p>
+                                    <div className="project-card-footer">
+                                        <span 
+                                            className="badge badge-stage"
+                                            style={{ '--stage-color': getStageColor(project.current_stage) } as React.CSSProperties}
+                                        >
+                                            {project.current_stage?.replace('_', ' ')}
+                                        </span>
+                                        <span className="my-role-badge">
+                                            {project.consultant_user_id === user.id && '🎯 Consultant'}
+                                            {project.pc_user_id === user.id && '📋 PC'}
+                                            {project.builder_user_id === user.id && '🔧 Builder'}
+                                            {project.tester_user_id === user.id && '🧪 Tester'}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                            {filteredProjects.filter(p => isAssignedToProject(p)).length === 0 && (
+                                <p className="no-projects">No projects assigned to you in this filter.</p>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* All Projects Table */}
+                <div className="all-projects-header">
+                    <h2>{user?.role === 'ADMIN' ? '📊 All Projects Overview' : '📋 All Projects (Backlog)'}</h2>
+                    {user?.role !== 'ADMIN' && (
+                        <p className="backlog-note">View all projects in the pipeline. Click to see high-level details.</p>
+                    )}
+                </div>
+
                 <div className="projects-table-container">
                     <table>
                         <thead>
@@ -240,13 +303,21 @@ export default function ProjectsPage() {
                                 <th>Priority</th>
                                 <th>Stage</th>
                                 <th>Status</th>
+                                {user?.role !== 'ADMIN' && <th>Assigned</th>}
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredProjects.map((project, index) => (
-                                <tr key={project.id} style={{ animationDelay: `${index * 30}ms` }}>
-                                    <td className="cell-title">{project.title}</td>
+                                <tr 
+                                    key={project.id} 
+                                    style={{ animationDelay: `${index * 30}ms` }}
+                                    className={isAssignedToProject(project) ? 'my-project-row' : ''}
+                                >
+                                    <td className="cell-title">
+                                        {project.title}
+                                        {isMyProject(project) && <span className="owned-badge">★</span>}
+                                    </td>
                                     <td>{project.client_name}</td>
                                     <td>
                                         <span className={`badge badge-priority badge-${project.priority?.toLowerCase()}`}>
@@ -268,13 +339,22 @@ export default function ProjectsPage() {
                                             {project.status}
                                         </span>
                                     </td>
+                                    {user?.role !== 'ADMIN' && (
+                                        <td>
+                                            {isAssignedToProject(project) ? (
+                                                <span className="assigned-to-me">✓ Assigned</span>
+                                            ) : (
+                                                <span className="not-assigned">—</span>
+                                            )}
+                                        </td>
+                                    )}
                                     <td>
                                         <div className="action-buttons">
                                             <button
                                                 className="btn-view"
                                                 onClick={() => router.push(`/projects/${project.id}`)}
                                             >
-                                                View
+                                                {isAssignedToProject(project) || user?.role === 'ADMIN' || user?.role === 'MANAGER' ? 'View' : 'Overview'}
                                             </button>
                                             {canManageProject(project) && project.status === 'ACTIVE' && (
                                                 <>
@@ -744,12 +824,132 @@ export default function ProjectsPage() {
                 .empty-state p {
                     color: var(--text-muted);
                 }
+
+                /* My Projects Section */
+                .my-projects-section {
+                    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+                    border-radius: 16px;
+                    padding: 1.5rem;
+                    margin-bottom: 2rem;
+                    border: 1px solid #bae6fd;
+                }
+
+                .my-projects-section h2 {
+                    margin: 0 0 1rem 0;
+                    color: #0369a1;
+                    font-size: 1.25rem;
+                }
+
+                .my-projects-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                    gap: 1rem;
+                }
+
+                .my-project-card {
+                    background: white;
+                    border-radius: 12px;
+                    padding: 1rem;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                    border: 1px solid #e2e8f0;
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+                }
+
+                .my-project-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+                    border-color: #3b82f6;
+                }
+
+                .project-card-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    margin-bottom: 0.5rem;
+                }
+
+                .project-card-header h3 {
+                    margin: 0;
+                    font-size: 1rem;
+                    color: #1e293b;
+                }
+
+                .client-name {
+                    color: #64748b;
+                    font-size: 0.9rem;
+                    margin: 0 0 0.75rem 0;
+                }
+
+                .project-card-footer {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+
+                .my-role-badge {
+                    font-size: 0.75rem;
+                    color: #0369a1;
+                    background: #e0f2fe;
+                    padding: 0.25rem 0.5rem;
+                    border-radius: 6px;
+                }
+
+                .no-projects {
+                    color: #64748b;
+                    font-style: italic;
+                    grid-column: 1 / -1;
+                    text-align: center;
+                    padding: 1rem;
+                }
+
+                /* All Projects Header */
+                .all-projects-header {
+                    margin-bottom: 1rem;
+                }
+
+                .all-projects-header h2 {
+                    margin: 0 0 0.25rem 0;
+                    font-size: 1.25rem;
+                    color: #1e293b;
+                }
+
+                .backlog-note {
+                    color: #64748b;
+                    font-size: 0.9rem;
+                    margin: 0;
+                }
+
+                /* Table enhancements */
+                .my-project-row {
+                    background: #f0fdf4 !important;
+                }
+
+                .owned-badge {
+                    color: #f59e0b;
+                    margin-left: 0.5rem;
+                    font-size: 0.9rem;
+                }
+
+                .assigned-to-me {
+                    color: #22c55e;
+                    font-weight: 500;
+                    font-size: 0.85rem;
+                }
+
+                .not-assigned {
+                    color: #94a3b8;
+                }
                 
                 @media (max-width: 768px) {
                     .page-header {
                         flex-direction: column;
                         gap: var(--space-lg);
                         text-align: center;
+                    }
+
+                    .my-projects-grid {
+                        grid-template-columns: 1fr;
                     }
                 }
             `}</style>
