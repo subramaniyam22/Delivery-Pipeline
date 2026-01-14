@@ -1258,12 +1258,9 @@ export default function ProjectDetailPage() {
                                         <div className="pending-items-summary">
                                             <h4>⏳ Pending Items ({completionStatus.missing_fields.length})</h4>
                                             <ul>
-                                                {completionStatus.missing_fields.slice(0, 5).map((field, index) => (
+                                                {completionStatus.missing_fields.map((field, index) => (
                                                     <li key={index}>{field}</li>
                                                 ))}
-                                                {completionStatus.missing_fields.length > 5 && (
-                                                    <li className="more-items">+{completionStatus.missing_fields.length - 5} more items</li>
-                                                )}
                                             </ul>
                                         </div>
                                     )}
