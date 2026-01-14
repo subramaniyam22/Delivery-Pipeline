@@ -427,14 +427,16 @@ export default function ProjectDetailPage() {
             // Load team assignments (only for Admin, Manager, PC)
             const storedUser = getCurrentUser();
             const allowedToViewTeam = storedUser?.role && ['ADMIN', 'MANAGER', 'PC'].includes(storedUser.role);
+            let teamData: any = { team: {}, permissions: {}, assignment_sequence: {} };
             if (allowedToViewTeam) {
                 const teamRes = await projectsAPI.getTeam(projectId).catch(e => {
                     console.error('Error loading team:', e);
                     return { data: { team: {}, permissions: {}, assignment_sequence: {} } };
                 });
-                setTeamAssignments(teamRes.data?.team || teamRes.data || {});
-                setTeamPermissions(teamRes.data?.permissions || {});
-                setAssignmentSequence(teamRes.data?.assignment_sequence || {});
+                teamData = teamRes.data || { team: {}, permissions: {}, assignment_sequence: {} };
+                setTeamAssignments(teamData?.team || teamData || {});
+                setTeamPermissions(teamData?.permissions || {});
+                setAssignmentSequence(teamData?.assignment_sequence || {});
             }
             
             // Load available users by role with capacity info
@@ -473,10 +475,10 @@ export default function ProjectDetailPage() {
             
             // Pre-fill form with current assignments
             setTeamFormData({
-                pc_user_id: teamRes.data?.pc?.id || '',
-                consultant_user_id: teamRes.data?.consultant?.id || '',
-                builder_user_id: teamRes.data?.builder?.id || '',
-                tester_user_id: teamRes.data?.tester?.id || ''
+                pc_user_id: teamData?.team?.pc?.id || teamData?.pc?.id || '',
+                consultant_user_id: teamData?.team?.consultant?.id || teamData?.consultant?.id || '',
+                builder_user_id: teamData?.team?.builder?.id || teamData?.builder?.id || '',
+                tester_user_id: teamData?.team?.tester?.id || teamData?.tester?.id || ''
             });
             
             // Load project workload estimate
