@@ -1,7 +1,7 @@
 """Add reminder interval hours to onboarding data
 
 Revision ID: 015_reminder_interval
-Revises: 014_add_manager_and_archive
+Revises: 014_manager_archive
 Create Date: 2026-01-14
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '015_reminder_interval'
-down_revision = '014_add_manager_and_archive'
+down_revision = '014_manager_archive'
 branch_labels = None
 depends_on = None
 

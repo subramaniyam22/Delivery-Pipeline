@@ -1,7 +1,7 @@
 """Add wcag_confirmed field to onboarding_data
 
 Revision ID: 016_add_wcag_confirmed
-Revises: 015_add_reminder_interval
+Revises: 015_reminder_interval
 Create Date: 2026-01-14
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '016_add_wcag_confirmed'
-down_revision = '015_add_reminder_interval'
+down_revision = '015_reminder_interval'
 branch_labels = None
 depends_on = None
 
