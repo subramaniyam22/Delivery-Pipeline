@@ -23,7 +23,7 @@ export default function Navigation() {
     const navItems = [
         // Admin: Executive Dashboard instead of regular Dashboard
         ...(isAdmin ? [
-            { path: '/executive-dashboard', label: 'Executive', icon: '📈' },
+            { path: '/executive-dashboard', label: 'Dashboard', icon: '📊' },
         ] : [
             { path: '/dashboard', label: 'Dashboard', icon: '📊' },
         ]),

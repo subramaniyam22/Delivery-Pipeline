@@ -341,12 +341,17 @@ export default function ProjectDetailPage() {
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const isExecutiveAdmin = user?.role === 'ADMIN';
     
-    // Check if current user is assigned to this project
+    // Check if current user is assigned to this project (check both teamAssignments and project direct fields)
     const isAssignedToProject = user && project && (
         teamAssignments?.consultant?.id === user.id ||
         teamAssignments?.pc?.id === user.id ||
         teamAssignments?.builder?.id === user.id ||
-        teamAssignments?.tester?.id === user.id
+        teamAssignments?.tester?.id === user.id ||
+        // Also check project's direct assignment fields (before team data loads)
+        (project as any).consultant_user_id === user.id ||
+        (project as any).pc_user_id === user.id ||
+        (project as any).builder_user_id === user.id ||
+        (project as any).tester_user_id === user.id
     );
     
     // Check if user owns/manages this project
@@ -1129,18 +1134,6 @@ export default function ProjectDetailPage() {
                         )}
                     </div>
                     <div className="team-grid">
-                        <div className={`team-card ${teamAssignments.pc ? 'assigned' : 'unassigned'}`}>
-                            <div className="team-role-icon">🎯</div>
-                            <div className="team-role-label">Project Coordinator (PC)</div>
-                            {teamAssignments.pc ? (
-                                <div className="team-member-info">
-                                    <span className="member-name">{teamAssignments.pc.name}</span>
-                                    <span className="member-email">{teamAssignments.pc.email}</span>
-                                </div>
-                            ) : (
-                                <div className="unassigned-label">Not assigned</div>
-                            )}
-                        </div>
                         <div className={`team-card ${teamAssignments.consultant ? 'assigned' : 'unassigned'}`}>
                             <div className="team-role-icon">💼</div>
                             <div className="team-role-label">Consultant</div>
@@ -1148,6 +1141,18 @@ export default function ProjectDetailPage() {
                                 <div className="team-member-info">
                                     <span className="member-name">{teamAssignments.consultant.name}</span>
                                     <span className="member-email">{teamAssignments.consultant.email}</span>
+                                </div>
+                            ) : (
+                                <div className="unassigned-label">Not assigned</div>
+                            )}
+                        </div>
+                        <div className={`team-card ${teamAssignments.pc ? 'assigned' : 'unassigned'}`}>
+                            <div className="team-role-icon">🎯</div>
+                            <div className="team-role-label">Project Coordinator (PC)</div>
+                            {teamAssignments.pc ? (
+                                <div className="team-member-info">
+                                    <span className="member-name">{teamAssignments.pc.name}</span>
+                                    <span className="member-email">{teamAssignments.pc.email}</span>
                                 </div>
                             ) : (
                                 <div className="unassigned-label">Not assigned</div>
