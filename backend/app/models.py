@@ -313,6 +313,7 @@ class OnboardingData(Base):
     # WCAG
     wcag_compliance_required = Column(Boolean, default=True)
     wcag_level = Column(String(10), default="AA")  # A, AA, AAA
+    wcag_confirmed = Column(Boolean, default=False)  # User explicitly confirmed WCAG settings
     
     # Privacy
     privacy_policy_url = Column(String(1000), nullable=True)

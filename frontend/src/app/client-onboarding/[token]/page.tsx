@@ -434,7 +434,10 @@ export default function ClientOnboardingPage() {
                             <input
                                 type="checkbox"
                                 checked={formData.data.wcag_compliance_required}
-                                onChange={(e) => saveFormData({ wcag_compliance_required: e.target.checked })}
+                                onChange={(e) => saveFormData({ 
+                                    wcag_compliance_required: e.target.checked,
+                                    wcag_confirmed: true  // Mark as explicitly confirmed by client
+                                })}
                             />
                             WCAG Compliance Required
                         </label>
@@ -444,7 +447,10 @@ export default function ClientOnboardingPage() {
                             <label>Compliance Level</label>
                             <select
                                 value={formData.data.wcag_level}
-                                onChange={(e) => saveFormData({ wcag_level: e.target.value })}
+                                onChange={(e) => saveFormData({ 
+                                    wcag_level: e.target.value,
+                                    wcag_confirmed: true  // Mark as explicitly confirmed by client
+                                })}
                             >
                                 <option value="A">Level A (Minimum)</option>
                                 <option value="AA">Level AA (Standard)</option>

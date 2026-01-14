@@ -131,7 +131,8 @@ def check_field_completion(onboarding_data: OnboardingData, field: str) -> bool:
     elif field == "copy_text":
         return bool(onboarding_data.copy_text or onboarding_data.use_custom_copy)
     elif field == "wcag":
-        return onboarding_data.wcag_compliance_required is not None
+        # User must explicitly confirm WCAG settings (not just default value)
+        return bool(onboarding_data.wcag_confirmed)
     elif field == "privacy_policy":
         return bool(onboarding_data.privacy_policy_url or onboarding_data.privacy_policy_text)
     elif field == "theme":
@@ -393,7 +394,7 @@ def update_onboarding_data(
     # Update simple fields
     simple_fields = ['logo_url', 'logo_file_path', 'copy_text', 'use_custom_copy', 
                      'custom_copy_base_price', 'custom_copy_word_count', 'custom_copy_final_price',
-                     'custom_copy_notes', 'wcag_compliance_required', 'wcag_level', 
+                     'custom_copy_notes', 'wcag_compliance_required', 'wcag_level', 'wcag_confirmed',
                      'privacy_policy_url', 'privacy_policy_text', 'theme_preference',
                      'selected_template_id', 'auto_reminder_enabled']
     for field in simple_fields:
@@ -527,7 +528,7 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
     client_updatable_fields = [
         'logo_url', 'images', 'copy_text', 'use_custom_copy',
         'custom_copy_word_count', 'custom_copy_final_price', 'custom_copy_notes',
-        'wcag_compliance_required', 'wcag_level', 'privacy_policy_url', 
+        'wcag_compliance_required', 'wcag_level', 'wcag_confirmed', 'privacy_policy_url', 
         'privacy_policy_text', 'selected_template_id', 'theme_colors', 'contacts'
     ]
     

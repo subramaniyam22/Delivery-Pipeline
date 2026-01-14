@@ -1227,12 +1227,12 @@ export default function ProjectDetailPage() {
                                     <div className="checklist-summary">
                                         <h4>📋 Requirements Checklist</h4>
                                         <div className="checklist-grid">
-                                            <div className={`checklist-item ${(onboardingData.contacts_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{(onboardingData.contacts_json?.length || 0) > 0 ? '✅' : '⏳'}</span>
-                                                <span>Client Contacts</span>
+                                            <div className={`checklist-item ${onboardingData.contacts_json?.some((c: any) => c.is_primary) ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{onboardingData.contacts_json?.some((c: any) => c.is_primary) ? '✅' : '⏳'}</span>
+                                                <span>Primary Contact</span>
                                             </div>
-                                            <div className={`checklist-item ${onboardingData.logo_url ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{onboardingData.logo_url ? '✅' : '⏳'}</span>
+                                            <div className={`checklist-item ${onboardingData.logo_url || onboardingData.logo_file_path ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{onboardingData.logo_url || onboardingData.logo_file_path ? '✅' : '⏳'}</span>
                                                 <span>Company Logo</span>
                                             </div>
                                             <div className={`checklist-item ${(onboardingData.images_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
@@ -1243,12 +1243,16 @@ export default function ProjectDetailPage() {
                                                 <span className="checklist-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? '✅' : '⏳'}</span>
                                                 <span>Copy Text</span>
                                             </div>
+                                            <div className={`checklist-item ${onboardingData.wcag_confirmed ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{onboardingData.wcag_confirmed ? '✅' : '⏳'}</span>
+                                                <span>WCAG Compliance</span>
+                                            </div>
                                             <div className={`checklist-item ${onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'provided' : 'pending'}`}>
                                                 <span className="checklist-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? '✅' : '⏳'}</span>
                                                 <span>Privacy Policy</span>
                                             </div>
-                                            <div className={`checklist-item ${onboardingData.theme_preference ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{onboardingData.theme_preference ? '✅' : '⏳'}</span>
+                                            <div className={`checklist-item ${onboardingData.theme_preference || onboardingData.selected_template_id ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{onboardingData.theme_preference || onboardingData.selected_template_id ? '✅' : '⏳'}</span>
                                                 <span>Theme Preferences</span>
                                             </div>
                                         </div>
