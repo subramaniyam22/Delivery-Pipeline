@@ -1660,7 +1660,6 @@ export default function ProjectDetailPage() {
 
                 {/* Test Phase Section - Visible in TEST and DEFECT_VALIDATION stages - Hidden from Executive */}
                 {!isExecutiveView && (project.current_stage === 'TEST' || project.current_stage === 'DEFECT_VALIDATION') && (
-                {(project.current_stage === 'TEST' || project.current_stage === 'DEFECT_VALIDATION') && (
                     <div className="test-phase-section">
                         <div className="section-header">
                             <h2>🧪 Test & Quality Assurance</h2>
