@@ -278,6 +278,12 @@ export default function ProjectDetailPage() {
     const [newTask, setNewTask] = useState({ title: '', description: '', stage: 'ONBOARDING', is_required: true });
     const [reminderData, setReminderData] = useState({ recipient_email: '', recipient_name: '', message: '' });
     const [newCustomField, setNewCustomField] = useState({ field_name: '', field_value: '', field_type: 'text' });
+    
+    // Email trigger and reminder state
+    const [selectedEmailContacts, setSelectedEmailContacts] = useState<number[]>([]);
+    const [reminderInterval, setReminderInterval] = useState<number>(24);
+    const [showEmailModal, setShowEmailModal] = useState(false);
+    const [sendingEmail, setSendingEmail] = useState(false);
 
     // Test Phase State
     const [testScenarios, setTestScenarios] = useState<TestScenario[]>([]);
@@ -1356,18 +1362,18 @@ export default function ProjectDetailPage() {
                             </div>
                         )}
 
-                        {/* CONSULTANT VIEW - Full Edit Mode (Only for Assigned Consultant) */}
+                        {/* CONSULTANT VIEW - Editable Contacts + Read-only Details (Only for Assigned Consultant) */}
                         {user?.role === 'CONSULTANT' && isAssignedToProject && (
                             <>
-                        {/* Client Contacts */}
-                        <div className="form-card">
+                        {/* Client Contacts - EDITABLE */}
+                        <div className="form-card editable-section">
                             <div className="card-header">
                                 <h3>👥 Client Contacts</h3>
                                 <button className="btn-add" onClick={() => setShowContactModal(true)}>+ Add Contact</button>
                             </div>
                             <div className="contacts-list">
                                 {onboardingData.contacts_json?.length === 0 ? (
-                                    <p className="empty-message">No contacts added yet</p>
+                                    <p className="empty-message">No contacts added yet. Add contacts to send onboarding form.</p>
                                 ) : (
                                     onboardingData.contacts_json?.map((contact, index) => (
                                         <div key={index} className="contact-item">
@@ -1384,194 +1390,214 @@ export default function ProjectDetailPage() {
                             </div>
                         </div>
 
-                        {/* Assets Section */}
-                        <div className="form-card">
-                            <h3>🖼️ Website Assets</h3>
-                            <div className="form-grid">
-                                <div className="form-group">
-                                    <label>Company Logo URL</label>
-                                    <input
-                                        type="url"
-                                        value={onboardingData.logo_url || ''}
-                                        onChange={(e) => saveOnboardingData({ logo_url: e.target.value })}
-                                        placeholder="https://example.com/logo.png"
+                        {/* Client Onboarding Form Section */}
+                        {completionStatus?.client_form_url && (
+                            <div className="form-card highlight-section">
+                                <h3>📤 Client Onboarding Form</h3>
+                                <p className="section-desc">Share this link with clients to collect required information</p>
+                                
+                                <div className="form-link-box">
+                                    <input 
+                                        type="text" 
+                                        readOnly 
+                                        value={`${typeof window !== 'undefined' ? window.location.origin : ''}${completionStatus.client_form_url}`}
+                                        onClick={(e) => (e.target as HTMLInputElement).select()}
                                     />
+                                    <button 
+                                        className="btn-copy"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
+                                            setSuccess('Link copied to clipboard!');
+                                            setTimeout(() => setSuccess(''), 3000);
+                                        }}
+                                    >
+                                        📋 Copy
+                                    </button>
                                 </div>
-                                <div className="form-group">
-                                    <label>Website Images (comma-separated URLs)</label>
-                                    <input
-                                        type="text"
-                                        value={onboardingData.images_json?.join(', ') || ''}
-                                        onChange={(e) => saveOnboardingData({
-                                            images_json: e.target.value.split(',').map(s => s.trim()).filter(Boolean)
-                                        })}
-                                        placeholder="https://example.com/hero.jpg, https://example.com/about.jpg"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Copy Text Section */}
-                        <div className="form-card">
-                            <h3>📝 Copy Text</h3>
-                            <div className="form-group">
-                                <label className="checkbox-label">
-                                    <input
-                                        type="checkbox"
-                                        checked={onboardingData.use_custom_copy}
-                                        onChange={(e) => saveOnboardingData({ use_custom_copy: e.target.checked })}
-                                    />
-                                    Request custom copy from our team
-                                </label>
-                            </div>
-                            {!onboardingData.use_custom_copy && (
-                                <div className="form-group">
-                                    <label>Client-provided Copy Text</label>
-                                    <textarea
-                                        value={onboardingData.copy_text || ''}
-                                        onChange={(e) => saveOnboardingData({ copy_text: e.target.value })}
-                                        placeholder="Enter website copy text here..."
-                                        rows={4}
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* WCAG Compliance */}
-                        <div className="form-card">
-                            <h3>♿ Accessibility (WCAG)</h3>
-                            <div className="form-grid">
-                                <div className="form-group">
-                                    <label className="checkbox-label">
-                                        <input
-                                            type="checkbox"
-                                            checked={onboardingData.wcag_compliance_required}
-                                            onChange={(e) => saveOnboardingData({ wcag_compliance_required: e.target.checked })}
-                                        />
-                                        WCAG Compliance Required
-                                    </label>
-                                </div>
-                                {onboardingData.wcag_compliance_required && (
-                                    <div className="form-group">
-                                        <label>Compliance Level</label>
-                                        <select
-                                            value={onboardingData.wcag_level}
-                                            onChange={(e) => saveOnboardingData({ wcag_level: e.target.value })}
-                                        >
-                                            {WCAG_LEVELS.map(level => (
-                                                <option key={level.value} value={level.value}>{level.label}</option>
+                                
+                                {/* Send Email to Contacts */}
+                                {onboardingData.contacts_json && onboardingData.contacts_json.length > 0 && (
+                                    <div className="email-trigger-section">
+                                        <h4>📧 Send Form to Contacts</h4>
+                                        <p>Select contacts to receive the onboarding form link:</p>
+                                        <div className="contact-checkboxes">
+                                            {onboardingData.contacts_json.map((contact, index) => (
+                                                <label key={index} className="contact-checkbox">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedEmailContacts.includes(index)}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSelectedEmailContacts([...selectedEmailContacts, index]);
+                                                            } else {
+                                                                setSelectedEmailContacts(selectedEmailContacts.filter(i => i !== index));
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span className="contact-label">
+                                                        {contact.name} ({contact.email})
+                                                    </span>
+                                                </label>
                                             ))}
-                                        </select>
+                                        </div>
+                                        <button 
+                                            className="btn-send-email"
+                                            disabled={selectedEmailContacts.length === 0 || sendingEmail}
+                                            onClick={async () => {
+                                                setSendingEmail(true);
+                                                try {
+                                                    const selectedContacts = selectedEmailContacts.map(i => onboardingData.contacts_json![i]);
+                                                    for (const contact of selectedContacts) {
+                                                        await onboardingAPI.sendReminder(projectId, {
+                                                            recipient_email: contact.email,
+                                                            recipient_name: contact.name,
+                                                            message: `Please complete the onboarding form for ${project.title}`
+                                                        });
+                                                    }
+                                                    setSuccess(`Onboarding form sent to ${selectedContacts.length} contact(s)!`);
+                                                    setSelectedEmailContacts([]);
+                                                } catch (err) {
+                                                    setError('Failed to send email');
+                                                } finally {
+                                                    setSendingEmail(false);
+                                                }
+                                            }}
+                                        >
+                                            {sendingEmail ? 'Sending...' : `📧 Send to ${selectedEmailContacts.length} Contact(s)`}
+                                        </button>
                                     </div>
                                 )}
-                            </div>
-                        </div>
-
-                        {/* Privacy Policy */}
-                        <div className="form-card">
-                            <h3>🔒 Privacy Policy</h3>
-                            <div className="form-grid">
-                                <div className="form-group">
-                                    <label>Privacy Policy URL</label>
-                                    <input
-                                        type="url"
-                                        value={onboardingData.privacy_policy_url || ''}
-                                        onChange={(e) => saveOnboardingData({ privacy_policy_url: e.target.value })}
-                                        placeholder="https://example.com/privacy"
-                                    />
-                                </div>
-                                <div className="form-group full-width">
-                                    <label>Or paste Privacy Policy Text</label>
-                                    <textarea
-                                        value={onboardingData.privacy_policy_text || ''}
-                                        onChange={(e) => saveOnboardingData({ privacy_policy_text: e.target.value })}
-                                        placeholder="Paste privacy policy content here..."
-                                        rows={3}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Theme Preferences */}
-                        <div className="form-card">
-                            <h3>🎨 Theme Preferences</h3>
-                            <div className="form-grid">
-                                <div className="form-group">
-                                    <label>Theme Style</label>
-                                    <select
-                                        value={onboardingData.theme_preference || ''}
-                                        onChange={(e) => saveOnboardingData({ theme_preference: e.target.value })}
-                                    >
-                                        <option value="">Select theme...</option>
-                                        {THEME_OPTIONS.map(opt => (
-                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                {onboardingData.theme_preference === 'custom' && (
-                                    <>
-                                        <div className="form-group">
-                                            <label>Primary Color</label>
+                                
+                                {/* Auto Reminder Settings */}
+                                <div className="auto-reminder-section">
+                                    <h4>🔔 Auto Reminder Settings</h4>
+                                    <div className="reminder-options">
+                                        <label className="reminder-toggle">
                                             <input
-                                                type="color"
-                                                value={onboardingData.theme_colors_json?.primary || '#2563eb'}
-                                                onChange={(e) => saveOnboardingData({
-                                                    theme_colors_json: { ...onboardingData.theme_colors_json, primary: e.target.value }
-                                                })}
+                                                type="checkbox"
+                                                checked={onboardingData?.auto_reminder_enabled ?? true}
+                                                onChange={async (e) => {
+                                                    try {
+                                                        await onboardingAPI.toggleAutoReminder(projectId, e.target.checked);
+                                                        await loadOnboardingData();
+                                                        setSuccess(`Auto-reminders ${e.target.checked ? 'enabled' : 'disabled'}`);
+                                                    } catch (err) {
+                                                        setError('Failed to update reminder settings');
+                                                    }
+                                                }}
                                             />
-                                        </div>
-                                        <div className="form-group">
-                                            <label>Secondary Color</label>
-                                            <input
-                                                type="color"
-                                                value={onboardingData.theme_colors_json?.secondary || '#7c3aed'}
-                                                onChange={(e) => saveOnboardingData({
-                                                    theme_colors_json: { ...onboardingData.theme_colors_json, secondary: e.target.value }
-                                                })}
-                                            />
-                                        </div>
-                                    </>
-                                )}
+                                            Enable auto-reminders for missing information
+                                        </label>
+                                        
+                                        {onboardingData?.auto_reminder_enabled && (
+                                            <div className="interval-selector">
+                                                <label>Reminder interval:</label>
+                                                <div className="interval-buttons">
+                                                    {[
+                                                        { value: 6, label: '6 hours' },
+                                                        { value: 12, label: '12 hours' },
+                                                        { value: 24, label: '24 hours' }
+                                                    ].map(opt => (
+                                                        <button
+                                                            key={opt.value}
+                                                            className={`interval-btn ${reminderInterval === opt.value ? 'active' : ''}`}
+                                                            onClick={() => setReminderInterval(opt.value)}
+                                                        >
+                                                            {opt.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {onboardingData?.next_reminder_at && onboardingData.auto_reminder_enabled && (
+                                            <p className="next-reminder">
+                                                📅 Next reminder: {new Date(onboardingData.next_reminder_at).toLocaleString()}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
-                        {/* Custom Fields */}
-                        <div className="form-card">
-                            <div className="card-header">
-                                <h3>📋 Additional Fields</h3>
-                                <button className="btn-add" onClick={() => setShowCustomFieldModal(true)}>+ Add Field</button>
+                        {/* READ-ONLY Onboarding Details */}
+                        <div className="form-card readonly-section">
+                            <div className="section-badge">
+                                <span className="badge-readonly">👁️ Read-only (Client fills via form)</span>
                             </div>
-                            <div className="custom-fields-list">
-                                {onboardingData.custom_fields_json?.length === 0 ? (
-                                    <p className="empty-message">No custom fields added</p>
-                                ) : (
-                                    onboardingData.custom_fields_json?.map((field, index) => (
-                                        <div key={index} className="custom-field-item">
-                                            <label>{field.field_name}</label>
-                                            {field.field_type === 'textarea' ? (
-                                                <textarea
-                                                    value={field.field_value}
-                                                    onChange={(e) => updateCustomField(index, e.target.value)}
-                                                    rows={2}
-                                                />
-                                            ) : (
-                                                <input
-                                                    type={field.field_type}
-                                                    value={field.field_value}
-                                                    onChange={(e) => updateCustomField(index, e.target.value)}
-                                                />
-                                            )}
-                                            <button className="btn-remove" onClick={() => removeCustomField(index)}>×</button>
-                                        </div>
-                                    ))
-                                )}
+                            
+                            {/* Assets - Read Only */}
+                            <div className="readonly-group">
+                                <h4>🖼️ Website Assets</h4>
+                                <div className="readonly-grid">
+                                    <div className="readonly-field">
+                                        <label>Company Logo</label>
+                                        <span className={onboardingData.logo_url ? 'filled' : 'empty'}>
+                                            {onboardingData.logo_url || 'Not provided'}
+                                        </span>
+                                    </div>
+                                    <div className="readonly-field">
+                                        <label>Website Images</label>
+                                        <span className={onboardingData.images_json?.length ? 'filled' : 'empty'}>
+                                            {onboardingData.images_json?.length ? `${onboardingData.images_json.length} image(s)` : 'Not provided'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            {/* Copy Text - Read Only */}
+                            <div className="readonly-group">
+                                <h4>📝 Copy Text</h4>
+                                <div className="readonly-field full-width">
+                                    <span className={onboardingData.copy_text || onboardingData.use_custom_copy ? 'filled' : 'empty'}>
+                                        {onboardingData.use_custom_copy 
+                                            ? '✅ Custom copy requested from team' 
+                                            : (onboardingData.copy_text || 'Not provided')}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            {/* WCAG - Read Only */}
+                            <div className="readonly-group">
+                                <h4>♿ Accessibility (WCAG)</h4>
+                                <div className="readonly-field">
+                                    <span className={onboardingData.wcag_compliance_required ? 'filled' : 'empty'}>
+                                        {onboardingData.wcag_compliance_required 
+                                            ? `Required - Level ${onboardingData.wcag_level || 'AA'}` 
+                                            : 'Not required'}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            {/* Privacy Policy - Read Only */}
+                            <div className="readonly-group">
+                                <h4>🔒 Privacy Policy</h4>
+                                <div className="readonly-field full-width">
+                                    <span className={onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'filled' : 'empty'}>
+                                        {onboardingData.privacy_policy_url 
+                                            ? `URL: ${onboardingData.privacy_policy_url}` 
+                                            : (onboardingData.privacy_policy_text ? 'Text provided' : 'Not provided')}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            {/* Theme - Read Only */}
+                            <div className="readonly-group">
+                                <h4>🎨 Theme Preferences</h4>
+                                <div className="readonly-field">
+                                    <span className={onboardingData.theme_preference ? 'filled' : 'empty'}>
+                                        {onboardingData.theme_preference 
+                                            ? onboardingData.theme_preference.charAt(0).toUpperCase() + onboardingData.theme_preference.slice(1)
+                                            : 'Not selected'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
                         {/* Missing Fields Alert - Consultant View */}
                         {completionStatus && completionStatus.missing_fields.length > 0 && (
                             <div className="missing-fields-alert">
-                                <h4>⚠️ Missing Information</h4>
+                                <h4>⚠️ Pending from Client ({completionStatus.missing_fields.length} items)</h4>
                                 <ul>
                                     {completionStatus.missing_fields.map((field, index) => (
                                         <li key={index}>{field}</li>
@@ -3598,6 +3624,246 @@ export default function ProjectDetailPage() {
                     font-weight: 500;
                     cursor: pointer;
                     white-space: nowrap;
+                }
+
+                /* Consultant View - Editable and Readonly Sections */
+                .editable-section {
+                    border: 2px solid #22c55e;
+                    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+                }
+
+                .highlight-section {
+                    border: 2px solid #3b82f6;
+                    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+                }
+
+                .highlight-section h3 {
+                    color: #1d4ed8;
+                }
+
+                .section-desc {
+                    color: #64748b;
+                    font-size: 0.9rem;
+                    margin-bottom: 1rem;
+                }
+
+                .readonly-section {
+                    border: 1px solid #e2e8f0;
+                    background: #f8fafc;
+                    position: relative;
+                }
+
+                .section-badge {
+                    position: absolute;
+                    top: -10px;
+                    right: 16px;
+                }
+
+                .badge-readonly {
+                    background: #f1f5f9;
+                    color: #64748b;
+                    padding: 0.25rem 0.75rem;
+                    border-radius: 12px;
+                    font-size: 0.75rem;
+                    border: 1px solid #e2e8f0;
+                }
+
+                .readonly-group {
+                    margin-bottom: 1.5rem;
+                    padding-bottom: 1rem;
+                    border-bottom: 1px solid #e2e8f0;
+                }
+
+                .readonly-group:last-child {
+                    border-bottom: none;
+                    margin-bottom: 0;
+                }
+
+                .readonly-group h4 {
+                    font-size: 0.9rem;
+                    color: #475569;
+                    margin-bottom: 0.75rem;
+                }
+
+                .readonly-grid {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 1rem;
+                }
+
+                .readonly-field {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.25rem;
+                }
+
+                .readonly-field.full-width {
+                    grid-column: span 2;
+                }
+
+                .readonly-field label {
+                    font-size: 0.8rem;
+                    color: #94a3b8;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                .readonly-field span.filled {
+                    color: #1e293b;
+                    font-weight: 500;
+                }
+
+                .readonly-field span.empty {
+                    color: #94a3b8;
+                    font-style: italic;
+                }
+
+                /* Email Trigger Section */
+                .email-trigger-section {
+                    margin-top: 1.5rem;
+                    padding-top: 1.5rem;
+                    border-top: 1px solid #bfdbfe;
+                }
+
+                .email-trigger-section h4 {
+                    font-size: 1rem;
+                    color: #1e40af;
+                    margin-bottom: 0.5rem;
+                }
+
+                .email-trigger-section p {
+                    font-size: 0.9rem;
+                    color: #64748b;
+                    margin-bottom: 0.75rem;
+                }
+
+                .contact-checkboxes {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.5rem;
+                    margin-bottom: 1rem;
+                }
+
+                .contact-checkbox {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.75rem;
+                    padding: 0.75rem;
+                    background: white;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                }
+
+                .contact-checkbox:hover {
+                    background: #f8fafc;
+                }
+
+                .contact-checkbox input[type="checkbox"] {
+                    width: 18px;
+                    height: 18px;
+                    accent-color: #3b82f6;
+                }
+
+                .contact-label {
+                    font-size: 0.9rem;
+                    color: #1e293b;
+                }
+
+                .btn-send-email {
+                    padding: 0.75rem 1.5rem;
+                    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+
+                .btn-send-email:hover:not(:disabled) {
+                    transform: translateY(-1px);
+                    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+                }
+
+                .btn-send-email:disabled {
+                    background: #94a3b8;
+                    cursor: not-allowed;
+                }
+
+                /* Auto Reminder Section */
+                .auto-reminder-section {
+                    margin-top: 1.5rem;
+                    padding-top: 1.5rem;
+                    border-top: 1px solid #bfdbfe;
+                }
+
+                .auto-reminder-section h4 {
+                    font-size: 1rem;
+                    color: #1e40af;
+                    margin-bottom: 0.75rem;
+                }
+
+                .reminder-options {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 1rem;
+                }
+
+                .reminder-toggle {
+                    display: flex;
+                    align-items: center;
+                    gap: 0.75rem;
+                    font-size: 0.9rem;
+                    color: #1e293b;
+                }
+
+                .interval-selector {
+                    display: flex;
+                    align-items: center;
+                    gap: 1rem;
+                    padding: 0.75rem;
+                    background: white;
+                    border-radius: 8px;
+                }
+
+                .interval-selector label {
+                    font-size: 0.9rem;
+                    color: #64748b;
+                }
+
+                .interval-buttons {
+                    display: flex;
+                    gap: 0.5rem;
+                }
+
+                .interval-btn {
+                    padding: 0.5rem 1rem;
+                    border: 1px solid #e2e8f0;
+                    background: white;
+                    border-radius: 6px;
+                    font-size: 0.85rem;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+
+                .interval-btn:hover {
+                    border-color: #3b82f6;
+                    color: #3b82f6;
+                }
+
+                .interval-btn.active {
+                    background: #3b82f6;
+                    color: white;
+                    border-color: #3b82f6;
+                }
+
+                .next-reminder {
+                    font-size: 0.85rem;
+                    color: #059669;
+                    padding: 0.5rem;
+                    background: #ecfdf5;
+                    border-radius: 6px;
                 }
 
                 .btn-copy:hover {
