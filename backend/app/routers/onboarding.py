@@ -800,7 +800,8 @@ def toggle_auto_reminder(
     current_user: User = Depends(get_current_active_user)
 ):
     """Enable/disable auto reminders with configurable interval"""
-    if not check_full_access(current_user.role):
+    # Allow Admin, Manager, and Consultant (who manages onboarding)
+    if not check_full_access(current_user.role) and current_user.role != Role.CONSULTANT:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     
     onboarding = db.query(OnboardingData).filter(OnboardingData.project_id == project_id).first()
