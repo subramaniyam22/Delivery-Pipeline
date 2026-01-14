@@ -425,7 +425,8 @@ export default function ProjectDetailPage() {
     const loadTeamData = async () => {
         try {
             // Load team assignments (only for Admin, Manager, PC)
-            const allowedToViewTeam = ['ADMIN', 'MANAGER', 'PC'].includes(currentUser?.role);
+            const storedUser = getCurrentUser();
+            const allowedToViewTeam = ['ADMIN', 'MANAGER', 'PC'].includes(storedUser?.role);
             if (allowedToViewTeam) {
                 const teamRes = await projectsAPI.getTeam(projectId).catch(e => {
                     console.error('Error loading team:', e);
