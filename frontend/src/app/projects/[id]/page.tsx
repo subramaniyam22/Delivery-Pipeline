@@ -311,6 +311,8 @@ export default function ProjectDetailPage() {
 
     // Team Assignment State
     const [teamAssignments, setTeamAssignments] = useState<TeamAssignments>({});
+    const [teamPermissions, setTeamPermissions] = useState<any>({});
+    const [assignmentSequence, setAssignmentSequence] = useState<any>({});
     const [availablePCs, setAvailablePCs] = useState<AvailableUser[]>([]);
     const [availableConsultants, setAvailableConsultants] = useState<AvailableUser[]>([]);
     const [availableBuilders2, setAvailableBuilders2] = useState<AvailableUser[]>([]);
@@ -422,12 +424,17 @@ export default function ProjectDetailPage() {
 
     const loadTeamData = async () => {
         try {
-            // Load team assignments
-            const teamRes = await projectsAPI.getTeam(projectId).catch(e => {
-                console.error('Error loading team:', e);
-                return { data: {} };
-            });
-            setTeamAssignments(teamRes.data || {});
+            // Load team assignments (only for Admin, Manager, PC)
+            const allowedToViewTeam = ['ADMIN', 'MANAGER', 'PC'].includes(currentUser?.role);
+            if (allowedToViewTeam) {
+                const teamRes = await projectsAPI.getTeam(projectId).catch(e => {
+                    console.error('Error loading team:', e);
+                    return { data: { team: {}, permissions: {}, assignment_sequence: {} } };
+                });
+                setTeamAssignments(teamRes.data?.team || teamRes.data || {});
+                setTeamPermissions(teamRes.data?.permissions || {});
+                setAssignmentSequence(teamRes.data?.assignment_sequence || {});
+            }
             
             // Load available users by role with capacity info
             const [pcsRes, consultantsRes, buildersRes, testersRes] = await Promise.all([
@@ -912,7 +919,15 @@ export default function ProjectDetailPage() {
         }
     };
 
-    const canAssignTeam = user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'PC';
+    // Team visibility: Only Admin, Manager, and PC can see team assignments
+    const canViewTeam = user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'PC';
+    
+    // Assignment permissions based on role
+    const canAssignConsultant = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+    const canAssignPC = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+    const canAssignBuilder = user?.role === 'ADMIN' || user?.role === 'MANAGER' || (user?.role === 'PC' && user?.region === 'INDIA');
+    const canAssignTester = user?.role === 'ADMIN' || user?.role === 'MANAGER' || (user?.role === 'PC' && user?.region === 'INDIA');
+    const canAssignTeam = canAssignConsultant || canAssignPC || canAssignBuilder || canAssignTester;
 
     if (loading) {
         return (
@@ -1002,7 +1017,8 @@ export default function ProjectDetailPage() {
                 {error && <div className="alert alert-error">{error}</div>}
                 {success && <div className="alert alert-success">{success}</div>}
 
-                {/* Team Assignment Section */}
+                {/* Team Assignment Section - Only visible to Admin, Manager, and PC */}
+                {canViewTeam && (
                 <div className="team-section">
                     <div className="section-header">
                         <h2>👥 Team Assignment</h2>
@@ -1010,6 +1026,9 @@ export default function ProjectDetailPage() {
                             <button className="btn-add" onClick={() => setShowTeamModal(true)}>
                                 ✏️ Manage Team
                             </button>
+                        )}
+                        {user?.role === 'MANAGER' && user?.region && (
+                            <span className="region-badge">Region: {user.region}</span>
                         )}
                     </div>
                     <div className="team-grid">
@@ -1069,6 +1088,7 @@ export default function ProjectDetailPage() {
                         </div>
                     )}
                 </div>
+                )}
 
                 {/* Onboarding Section */}
                 {project.current_stage === 'ONBOARDING' && onboardingData && (
@@ -2236,8 +2256,33 @@ export default function ProjectDetailPage() {
                         <div className="modal modal-xl" onClick={(e) => e.stopPropagation()}>
                             <h2>👥 Assign Team Members</h2>
                             <p className="modal-description">
-                                Assign team members to this project. Capacity shows available vs allocated hours for the next 2 weeks.
+                                Assign team members in sequence: Consultant → PC → Builder → Tester
+                                {user?.role === 'MANAGER' && <><br/><span className="region-note">📍 As a Manager, you can only assign from your region: <strong>{user?.region}</strong></span></>}
+                                {user?.role === 'PC' && user?.region === 'INDIA' && <><br/><span className="region-note">📍 As a PC, you can assign Builder and Tester from India region</span></>}
                             </p>
+                            
+                            {/* Assignment Progress */}
+                            <div className="assignment-progress">
+                                <div className={`progress-step ${assignmentSequence.consultant_assigned ? 'completed' : assignmentSequence.next_to_assign === 'consultant' ? 'current' : ''}`}>
+                                    <span className="step-number">1</span>
+                                    <span className="step-label">Consultant</span>
+                                </div>
+                                <div className="progress-line" />
+                                <div className={`progress-step ${assignmentSequence.pc_assigned ? 'completed' : assignmentSequence.next_to_assign === 'pc' ? 'current' : ''}`}>
+                                    <span className="step-number">2</span>
+                                    <span className="step-label">PC</span>
+                                </div>
+                                <div className="progress-line" />
+                                <div className={`progress-step ${assignmentSequence.builder_assigned ? 'completed' : assignmentSequence.next_to_assign === 'builder' ? 'current' : ''}`}>
+                                    <span className="step-number">3</span>
+                                    <span className="step-label">Builder</span>
+                                </div>
+                                <div className="progress-line" />
+                                <div className={`progress-step ${assignmentSequence.tester_assigned ? 'completed' : assignmentSequence.next_to_assign === 'tester' ? 'current' : ''}`}>
+                                    <span className="step-number">4</span>
+                                    <span className="step-label">Tester</span>
+                                </div>
+                            </div>
                             
                             {/* Project Workload Estimate */}
                             {projectWorkload && (
@@ -2252,27 +2297,59 @@ export default function ProjectDetailPage() {
                                 </div>
                             )}
                             
-                            {/* Role Selection Cards */}
-                            {['PC', 'CONSULTANT', 'BUILDER', 'TESTER'].map((role) => {
+                            {/* Role Selection Cards - Order: CONSULTANT, PC, BUILDER, TESTER */}
+                            {['CONSULTANT', 'PC', 'BUILDER', 'TESTER'].map((role) => {
+                                // Permission check
+                                const canAssignThisRole = 
+                                    (role === 'CONSULTANT' && canAssignConsultant) ||
+                                    (role === 'PC' && canAssignPC) ||
+                                    (role === 'BUILDER' && canAssignBuilder) ||
+                                    (role === 'TESTER' && canAssignTester);
+                                
+                                // Sequential check
+                                const isSequenceAllowed = 
+                                    (role === 'CONSULTANT') ||
+                                    (role === 'PC' && (assignmentSequence.consultant_assigned || teamFormData.consultant_user_id)) ||
+                                    (role === 'BUILDER' && (assignmentSequence.pc_assigned || teamFormData.pc_user_id)) ||
+                                    (role === 'TESTER' && (assignmentSequence.builder_assigned || teamFormData.builder_user_id));
+                                
+                                const isDisabled = !canAssignThisRole || !isSequenceAllowed;
+                                const isAlreadyAssigned = 
+                                    (role === 'CONSULTANT' && assignmentSequence.consultant_assigned) ||
+                                    (role === 'PC' && assignmentSequence.pc_assigned) ||
+                                    (role === 'BUILDER' && assignmentSequence.builder_assigned) ||
+                                    (role === 'TESTER' && assignmentSequence.tester_assigned);
                                 const capacityList = capacityByRole[role] || [];
                                 const suggestions = aiSuggestions[role];
                                 const roleIcon = role === 'PC' ? '🎯' : role === 'CONSULTANT' ? '💼' : role === 'BUILDER' ? '🔨' : '🧪';
                                 const roleKey = role.toLowerCase() + '_user_id';
                                 const selectedValue = teamFormData[roleKey as keyof typeof teamFormData];
                                 const requiredHours = projectWorkload?.by_role?.[role] || 0;
+                                const stepNumber = role === 'CONSULTANT' ? 1 : role === 'PC' ? 2 : role === 'BUILDER' ? 3 : 4;
                                 
                                 return (
-                                    <div key={role} className="role-assignment-card">
+                                    <div key={role} className={`role-assignment-card ${isDisabled ? 'disabled' : ''} ${isAlreadyAssigned ? 'assigned' : ''}`}>
                                         <div className="role-header">
-                                            <h4>{roleIcon} {role}</h4>
+                                            <h4>
+                                                <span className="role-step">Step {stepNumber}</span>
+                                                {roleIcon} {role}
+                                                {isAlreadyAssigned && <span className="assigned-badge">✓ Assigned</span>}
+                                                {isDisabled && !isAlreadyAssigned && (
+                                                    <span className="locked-badge">
+                                                        {!canAssignThisRole ? '🔒 No Permission' : '⏳ Complete previous step'}
+                                                    </span>
+                                                )}
+                                            </h4>
                                             <div className="role-header-actions">
-                                                <button 
-                                                    className="btn-ai-suggest"
-                                                    onClick={() => loadAiSuggestions(role)}
-                                                    disabled={loadingSuggestions && selectedRoleForSuggestion === role}
-                                                >
-                                                    {loadingSuggestions && selectedRoleForSuggestion === role ? '⏳' : '🤖'} AI Suggest
-                                                </button>
+                                                {!isDisabled && (
+                                                    <button 
+                                                        className="btn-ai-suggest"
+                                                        onClick={() => loadAiSuggestions(role)}
+                                                        disabled={loadingSuggestions && selectedRoleForSuggestion === role}
+                                                    >
+                                                        {loadingSuggestions && selectedRoleForSuggestion === role ? '⏳' : '🤖'} AI Suggest
+                                                    </button>
+                                                )}
                                                 {requiredHours > 0 && (
                                                     <span className="required-hours">Required: {requiredHours}h</span>
                                                 )}
@@ -4030,6 +4107,99 @@ export default function ProjectDetailPage() {
                 .team-empty-message p {
                     margin: 0 0 var(--space-xs) 0;
                 }
+                
+                .region-badge {
+                    background: #dbeafe;
+                    color: #1e40af;
+                    padding: 0.25rem 0.75rem;
+                    border-radius: 12px;
+                    font-size: 0.8rem;
+                    font-weight: 500;
+                }
+                
+                .region-note {
+                    color: #64748b;
+                    font-size: 0.85rem;
+                }
+                
+                .assignment-progress {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 0.5rem;
+                    margin: 1rem 0 1.5rem;
+                    padding: 1rem;
+                    background: #f8fafc;
+                    border-radius: 12px;
+                }
+                
+                .progress-step {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 0.25rem;
+                }
+                
+                .progress-step .step-number {
+                    width: 32px;
+                    height: 32px;
+                    border-radius: 50%;
+                    background: #e2e8f0;
+                    color: #64748b;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: 600;
+                }
+                
+                .progress-step .step-label {
+                    font-size: 0.75rem;
+                    color: #64748b;
+                }
+                
+                .progress-step.completed .step-number {
+                    background: #22c55e;
+                    color: white;
+                }
+                
+                .progress-step.current .step-number {
+                    background: #3b82f6;
+                    color: white;
+                    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+                }
+                
+                .progress-line {
+                    width: 40px;
+                    height: 2px;
+                    background: #e2e8f0;
+                }
+                
+                .role-step {
+                    font-size: 0.7rem;
+                    background: #e2e8f0;
+                    color: #64748b;
+                    padding: 0.125rem 0.5rem;
+                    border-radius: 4px;
+                    margin-right: 0.5rem;
+                }
+                
+                .assigned-badge {
+                    background: #dcfce7;
+                    color: #166534;
+                    padding: 0.125rem 0.5rem;
+                    border-radius: 4px;
+                    font-size: 0.75rem;
+                    margin-left: 0.5rem;
+                }
+                
+                .locked-badge {
+                    background: #fef3c7;
+                    color: #92400e;
+                    padding: 0.125rem 0.5rem;
+                    border-radius: 4px;
+                    font-size: 0.75rem;
+                    margin-left: 0.5rem;
+                }
 
                 .modal-lg {
                     max-width: 600px;
@@ -4093,6 +4263,17 @@ export default function ProjectDetailPage() {
                     border-radius: var(--radius-lg);
                     padding: var(--space-md);
                     margin-bottom: var(--space-md);
+                    transition: opacity 0.2s, background 0.2s;
+                }
+                
+                .role-assignment-card.disabled {
+                    opacity: 0.6;
+                    background: #f8f9fa;
+                }
+                
+                .role-assignment-card.assigned {
+                    border-color: #22c55e;
+                    background: #f0fdf4;
                 }
 
                 .role-header {

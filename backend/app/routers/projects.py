@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.models import User, Role, Project
+from app.models import User, Role, Project, Region
 from app.schemas import (
     ProjectCreate,
     ProjectResponse,
@@ -14,7 +14,7 @@ from app.deps import get_current_active_user
 from app.services import project_service
 from app.rbac import check_full_access, can_access_stage
 from app.models import Stage
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -51,20 +51,41 @@ def list_projects(
 @router.get("/available-users/{role}")
 def get_available_users_by_role(
     role: str,
+    region: Optional[str] = Query(None, description="Filter by region (INDIA, US, PH)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get all available users for a specific role"""
+    """Get all available users for a specific role, filtered by region for managers"""
     try:
         role_enum = Role(role.upper())
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
     
-    users = db.query(User).filter(
+    query = db.query(User).filter(
         User.role == role_enum,
         User.is_active == True,
         User.is_archived == False
-    ).all()
+    )
+    
+    # Manager can only see users from their own region
+    if current_user.role == Role.MANAGER and current_user.region:
+        query = query.filter(User.region == current_user.region)
+    # PC can only see users from India region (for Builder/Tester assignment)
+    elif current_user.role == Role.PC:
+        if role_enum in [Role.BUILDER, Role.TESTER]:
+            query = query.filter(User.region == Region.INDIA)
+        else:
+            # PC cannot assign Consultant or PC
+            return []
+    # Optional region filter
+    elif region:
+        try:
+            region_enum = Region(region.upper())
+            query = query.filter(User.region == region_enum)
+        except ValueError:
+            pass
+    
+    users = query.all()
     
     return [
         {"id": str(u.id), "name": u.name, "email": u.email, "region": u.region.value if u.region else None}
@@ -273,12 +294,20 @@ def assign_team(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Assign team members to a project (PC/Admin/Manager)"""
+    """
+    Assign team members to a project with role-based restrictions:
+    - Admin: Can assign anyone
+    - Manager: Can only assign users from their own region
+    - PC: Can only assign Builder and Tester for India region
+    
+    Assignment sequence: Consultant → PC → Builder → Tester
+    """
+    # Check basic role permission
     allowed_roles = [Role.PC, Role.ADMIN, Role.MANAGER]
     if current_user.role not in allowed_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only PC, Admin, and Manager can assign team members"
+            detail="Only Admin, Manager, and PC can assign team members"
         )
     
     project = project_service.get_project(db, project_id)
@@ -288,37 +317,99 @@ def assign_team(
             detail="Project not found"
         )
     
-    # Validate that assigned users exist and have correct roles
-    if data.pc_user_id:
-        pc_user = db.query(User).filter(User.id == data.pc_user_id).first()
-        if not pc_user:
-            raise HTTPException(status_code=404, detail="PC user not found")
-        if pc_user.role != Role.PC:
-            raise HTTPException(status_code=400, detail="Selected user is not a PC")
-        project.pc_user_id = data.pc_user_id
+    # PC can only assign Builder and Tester, and only for India region
+    if current_user.role == Role.PC:
+        if data.consultant_user_id or data.pc_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="PC can only assign Builder and Tester"
+            )
+        # PC must be from India region to assign
+        if current_user.region != Region.INDIA:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only India region PC can assign Builder and Tester"
+            )
     
+    # Helper function to check region restriction for managers
+    def check_manager_region(user: User, role_name: str):
+        if current_user.role == Role.MANAGER and current_user.region:
+            if user.region != current_user.region:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Manager can only assign {role_name} from their own region ({current_user.region.value})"
+                )
+    
+    # Helper function to check PC region restriction (India only for Builder/Tester)
+    def check_pc_region(user: User, role_name: str):
+        if current_user.role == Role.PC:
+            if user.region != Region.INDIA:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"PC can only assign {role_name} from India region"
+                )
+    
+    # ============ Sequential Assignment Validation ============
+    # Consultant must be assigned first (if trying to assign Consultant, no checks needed)
+    # PC can only be assigned after Consultant
+    # Builder can only be assigned after PC
+    # Tester can only be assigned after Builder
+    
+    # Validate Consultant assignment
     if data.consultant_user_id:
         consultant = db.query(User).filter(User.id == data.consultant_user_id).first()
         if not consultant:
             raise HTTPException(status_code=404, detail="Consultant not found")
         if consultant.role != Role.CONSULTANT:
             raise HTTPException(status_code=400, detail="Selected user is not a Consultant")
+        check_manager_region(consultant, "Consultant")
         project.consultant_user_id = data.consultant_user_id
     
+    # Validate PC assignment - requires Consultant to be assigned first
+    if data.pc_user_id:
+        if not project.consultant_user_id and not data.consultant_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Consultant must be assigned before PC"
+            )
+        pc_user = db.query(User).filter(User.id == data.pc_user_id).first()
+        if not pc_user:
+            raise HTTPException(status_code=404, detail="PC user not found")
+        if pc_user.role != Role.PC:
+            raise HTTPException(status_code=400, detail="Selected user is not a PC")
+        check_manager_region(pc_user, "PC")
+        project.pc_user_id = data.pc_user_id
+    
+    # Validate Builder assignment - requires PC to be assigned first
     if data.builder_user_id:
+        if not project.pc_user_id and not data.pc_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="PC must be assigned before Builder"
+            )
         builder = db.query(User).filter(User.id == data.builder_user_id).first()
         if not builder:
             raise HTTPException(status_code=404, detail="Builder not found")
         if builder.role != Role.BUILDER:
             raise HTTPException(status_code=400, detail="Selected user is not a Builder")
+        check_manager_region(builder, "Builder")
+        check_pc_region(builder, "Builder")
         project.builder_user_id = data.builder_user_id
     
+    # Validate Tester assignment - requires Builder to be assigned first
     if data.tester_user_id:
+        if not project.builder_user_id and not data.builder_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Builder must be assigned before Tester"
+            )
         tester = db.query(User).filter(User.id == data.tester_user_id).first()
         if not tester:
             raise HTTPException(status_code=404, detail="Tester not found")
         if tester.role != Role.TESTER:
             raise HTTPException(status_code=400, detail="Selected user is not a Tester")
+        check_manager_region(tester, "Tester")
+        check_pc_region(tester, "Tester")
         project.tester_user_id = data.tester_user_id
     
     db.commit()
@@ -333,7 +424,18 @@ def get_team_assignments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get team assignments for a project"""
+    """
+    Get team assignments for a project
+    Only Admin, Manager, and PC can view team assignments
+    """
+    # Check if user can view team assignments
+    allowed_roles = [Role.ADMIN, Role.MANAGER, Role.PC]
+    if current_user.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin, Manager, and PC can view team assignments"
+        )
+    
     project = project_service.get_project(db, project_id)
     if not project:
         raise HTTPException(
@@ -343,24 +445,75 @@ def get_team_assignments(
     
     team = {}
     
-    if project.pc_user_id:
-        pc = db.query(User).filter(User.id == project.pc_user_id).first()
-        if pc:
-            team["pc"] = {"id": str(pc.id), "name": pc.name, "email": pc.email, "role": pc.role.value}
+    # Include can_assign flag to help frontend determine assignment permissions
+    can_assign_all = current_user.role == Role.ADMIN
+    can_assign_region = current_user.role == Role.MANAGER
+    can_assign_builder_tester = current_user.role == Role.PC and current_user.region == Region.INDIA
     
     if project.consultant_user_id:
         consultant = db.query(User).filter(User.id == project.consultant_user_id).first()
         if consultant:
-            team["consultant"] = {"id": str(consultant.id), "name": consultant.name, "email": consultant.email, "role": consultant.role.value}
+            team["consultant"] = {
+                "id": str(consultant.id), 
+                "name": consultant.name, 
+                "email": consultant.email, 
+                "role": consultant.role.value,
+                "region": consultant.region.value if consultant.region else None
+            }
+    
+    if project.pc_user_id:
+        pc = db.query(User).filter(User.id == project.pc_user_id).first()
+        if pc:
+            team["pc"] = {
+                "id": str(pc.id), 
+                "name": pc.name, 
+                "email": pc.email, 
+                "role": pc.role.value,
+                "region": pc.region.value if pc.region else None
+            }
     
     if project.builder_user_id:
         builder = db.query(User).filter(User.id == project.builder_user_id).first()
         if builder:
-            team["builder"] = {"id": str(builder.id), "name": builder.name, "email": builder.email, "role": builder.role.value}
+            team["builder"] = {
+                "id": str(builder.id), 
+                "name": builder.name, 
+                "email": builder.email, 
+                "role": builder.role.value,
+                "region": builder.region.value if builder.region else None
+            }
     
     if project.tester_user_id:
         tester = db.query(User).filter(User.id == project.tester_user_id).first()
         if tester:
-            team["tester"] = {"id": str(tester.id), "name": tester.name, "email": tester.email, "role": tester.role.value}
+            team["tester"] = {
+                "id": str(tester.id), 
+                "name": tester.name, 
+                "email": tester.email, 
+                "role": tester.role.value,
+                "region": tester.region.value if tester.region else None
+            }
     
-    return team
+    return {
+        "team": team,
+        "permissions": {
+            "can_assign_consultant": can_assign_all or can_assign_region,
+            "can_assign_pc": can_assign_all or can_assign_region,
+            "can_assign_builder": can_assign_all or can_assign_region or can_assign_builder_tester,
+            "can_assign_tester": can_assign_all or can_assign_region or can_assign_builder_tester,
+            "user_region": current_user.region.value if current_user.region else None
+        },
+        "assignment_sequence": {
+            "consultant_assigned": project.consultant_user_id is not None,
+            "pc_assigned": project.pc_user_id is not None,
+            "builder_assigned": project.builder_user_id is not None,
+            "tester_assigned": project.tester_user_id is not None,
+            "next_to_assign": (
+                "consultant" if not project.consultant_user_id else
+                "pc" if not project.pc_user_id else
+                "builder" if not project.builder_user_id else
+                "tester" if not project.tester_user_id else
+                "complete"
+            )
+        }
+    }
