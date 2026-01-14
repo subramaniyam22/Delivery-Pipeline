@@ -25,6 +25,8 @@ class Region(str, enum.Enum):
 class ProjectStatus(str, enum.Enum):
     DRAFT = "DRAFT"
     ACTIVE = "ACTIVE"
+    PAUSED = "PAUSED"
+    ARCHIVED = "ARCHIVED"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
 
@@ -82,7 +84,11 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
+    # Manager Assignment - For team hierarchy
+    manager_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    
     # Relationships
+    manager = relationship("User", remote_side=[id], backref="team_members", foreign_keys=[manager_id])
     created_projects = relationship("Project", back_populates="creator", foreign_keys="Project.created_by_user_id")
     assigned_tasks = relationship("Task", back_populates="assignee", foreign_keys="Task.assignee_user_id")
     uploaded_artifacts = relationship("Artifact", back_populates="uploader")
@@ -126,6 +132,14 @@ class Project(Base):
     phase_start_dates = Column(JSONB, default=dict)  # {"ONBOARDING": "2026-01-12"}
     is_delayed = Column(Boolean, default=False)
     delay_reason = Column(Text, nullable=True)
+    
+    # Archive/Pause Tracking
+    paused_at = Column(DateTime, nullable=True)
+    paused_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    pause_reason = Column(Text, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    archived_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    archive_reason = Column(Text, nullable=True)
     
     # Team Assignments
     pc_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

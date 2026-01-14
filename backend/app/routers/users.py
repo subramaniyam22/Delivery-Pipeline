@@ -243,3 +243,166 @@ def reactivate_user(
     db.refresh(user)
     
     return user
+
+
+# ============== Manager Assignment Endpoints ==============
+
+@router.get("/managers/list")
+def list_managers(
+    region: Region = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """List all managers, optionally filtered by region"""
+    query = db.query(User).filter(
+        User.role == Role.MANAGER,
+        User.is_active == True,
+        User.is_archived == False
+    )
+    
+    if region:
+        query = query.filter(User.region == region)
+    
+    managers = query.all()
+    
+    return [
+        {
+            "id": str(m.id),
+            "name": m.name,
+            "email": m.email,
+            "region": m.region.value if m.region else None,
+            "team_count": len([u for u in m.team_members if u.is_active])
+        }
+        for m in managers
+    ]
+
+
+@router.post("/{user_id}/assign-manager")
+def assign_manager(
+    user_id: UUID,
+    manager_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Assign a manager to a user (Admin/Manager only)"""
+    if not check_full_access(current_user.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin and Manager can assign managers"
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Only certain roles can have managers
+    if user.role not in [Role.CONSULTANT, Role.PC, Role.BUILDER, Role.TESTER]:
+        raise HTTPException(
+            status_code=400, 
+            detail="Only Consultant, PC, Builder, and Tester can be assigned to a manager"
+        )
+    
+    manager = db.query(User).filter(User.id == manager_id).first()
+    if not manager:
+        raise HTTPException(status_code=404, detail="Manager not found")
+    
+    if manager.role != Role.MANAGER:
+        raise HTTPException(status_code=400, detail="Selected user is not a manager")
+    
+    user.manager_id = manager_id
+    db.commit()
+    db.refresh(user)
+    
+    return {
+        "message": f"{user.name} assigned to manager {manager.name}",
+        "user_id": str(user.id),
+        "manager_id": str(manager.id)
+    }
+
+
+@router.delete("/{user_id}/remove-manager")
+def remove_manager(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Remove manager assignment from a user (Admin/Manager only)"""
+    if not check_full_access(current_user.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin and Manager can remove manager assignments"
+        )
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user.manager_id = None
+    db.commit()
+    
+    return {"message": f"Manager removed from {user.name}"}
+
+
+@router.get("/managers/{manager_id}/team")
+def get_manager_team(
+    manager_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get team members for a manager (Admin/Manager only, or the manager themselves)"""
+    manager = db.query(User).filter(User.id == manager_id).first()
+    if not manager:
+        raise HTTPException(status_code=404, detail="Manager not found")
+    
+    # Check access
+    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
+        if current_user.id != manager_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+    
+    team_members = db.query(User).filter(
+        User.manager_id == manager_id,
+        User.is_active == True,
+        User.is_archived == False
+    ).all()
+    
+    return [
+        {
+            "id": str(u.id),
+            "name": u.name,
+            "email": u.email,
+            "role": u.role.value,
+            "region": u.region.value if u.region else None
+        }
+        for u in team_members
+    ]
+
+
+@router.get("/my-team")
+def get_my_team(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get my team members (for managers)"""
+    if current_user.role != Role.MANAGER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only managers can view their team"
+        )
+    
+    team_members = db.query(User).filter(
+        User.manager_id == current_user.id,
+        User.is_active == True,
+        User.is_archived == False
+    ).all()
+    
+    return [
+        {
+            "id": str(u.id),
+            "name": u.name,
+            "email": u.email,
+            "role": u.role.value,
+            "region": u.region.value if u.region else None,
+            "date_of_joining": u.date_of_joining.isoformat() if u.date_of_joining else None
+        }
+        for u in team_members
+    ]

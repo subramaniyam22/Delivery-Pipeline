@@ -15,6 +15,30 @@ export default function ProjectsPage() {
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState<any>(null);
     const [filter, setFilter] = useState('active');
+    const [showActionModal, setShowActionModal] = useState(false);
+    const [actionType, setActionType] = useState<'pause' | 'archive' | null>(null);
+    const [selectedProject, setSelectedProject] = useState<any>(null);
+    const [actionReason, setActionReason] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const getApiUrl = () => {
+        if (typeof window !== 'undefined') {
+            const hostname = window.location.hostname;
+            if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                return 'http://localhost:8000';
+            }
+            return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        }
+        return 'http://localhost:8000';
+    };
+
+    const getAuthHeaders = () => {
+        const token = localStorage.getItem('access_token');
+        return {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        };
+    };
 
     useEffect(() => {
         if (!isAuthenticated()) {
@@ -37,9 +61,93 @@ export default function ProjectsPage() {
         }
     };
 
+    const canManageProject = (project: any) => {
+        if (!user) return false;
+        if (['ADMIN', 'MANAGER'].includes(user.role)) return true;
+        if (user.role === 'CONSULTANT') {
+            return project.consultant_user_id === user.id || project.pc_user_id === user.id;
+        }
+        return false;
+    };
+
+    const handlePause = (project: any) => {
+        setSelectedProject(project);
+        setActionType('pause');
+        setActionReason('');
+        setShowActionModal(true);
+    };
+
+    const handleArchive = (project: any) => {
+        setSelectedProject(project);
+        setActionType('archive');
+        setActionReason('');
+        setShowActionModal(true);
+    };
+
+    const handleResume = async (project: any) => {
+        try {
+            const response = await fetch(`${getApiUrl()}/project-management/resume/${project.id}`, {
+                method: 'POST',
+                headers: getAuthHeaders()
+            });
+            if (response.ok) {
+                loadProjects();
+            } else {
+                const error = await response.json();
+                alert(error.detail || 'Failed to resume project');
+            }
+        } catch (error) {
+            console.error('Error resuming project:', error);
+        }
+    };
+
+    const handleUnarchive = async (project: any) => {
+        try {
+            const response = await fetch(`${getApiUrl()}/project-management/unarchive/${project.id}`, {
+                method: 'POST',
+                headers: getAuthHeaders()
+            });
+            if (response.ok) {
+                loadProjects();
+            } else {
+                const error = await response.json();
+                alert(error.detail || 'Failed to unarchive project');
+            }
+        } catch (error) {
+            console.error('Error unarchiving project:', error);
+        }
+    };
+
+    const submitAction = async () => {
+        if (!selectedProject || !actionType) return;
+        setSubmitting(true);
+        
+        try {
+            const response = await fetch(`${getApiUrl()}/project-management/${actionType}/${selectedProject.id}`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ reason: actionReason || null })
+            });
+            
+            if (response.ok) {
+                setShowActionModal(false);
+                loadProjects();
+            } else {
+                const error = await response.json();
+                alert(error.detail || `Failed to ${actionType} project`);
+            }
+        } catch (error) {
+            console.error(`Error ${actionType}ing project:`, error);
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
     const filteredProjects = projects.filter((p) => {
-        if (filter === 'active') return p.current_stage !== 'COMPLETE';
-        if (filter === 'complete') return p.current_stage === 'COMPLETE';
+        if (filter === 'active') return p.status === 'ACTIVE' || p.status === 'DRAFT';
+        if (filter === 'paused') return p.status === 'PAUSED';
+        if (filter === 'archived') return p.status === 'ARCHIVED';
+        if (filter === 'complete') return p.status === 'COMPLETED';
         return true;
     });
 
@@ -106,8 +214,10 @@ export default function ProjectsPage() {
                     <div className="filter-tabs">
                         {[
                             { key: 'all', label: 'All', count: projects.length },
-                            { key: 'active', label: 'Active', count: projects.filter(p => p.current_stage !== 'COMPLETE').length },
-                            { key: 'complete', label: 'Complete', count: projects.filter(p => p.current_stage === 'COMPLETE').length },
+                            { key: 'active', label: 'Active', count: projects.filter(p => p.status === 'ACTIVE' || p.status === 'DRAFT').length },
+                            { key: 'paused', label: '⏸️ Paused', count: projects.filter(p => p.status === 'PAUSED').length },
+                            { key: 'archived', label: '📦 Archived', count: projects.filter(p => p.status === 'ARCHIVED').length },
+                            { key: 'complete', label: '✅ Complete', count: projects.filter(p => p.status === 'COMPLETED').length },
                         ].map((tab) => (
                             <button
                                 key={tab.key}
@@ -159,12 +269,59 @@ export default function ProjectsPage() {
                                         </span>
                                     </td>
                                     <td>
-                                        <button
-                                            className="btn-view"
-                                            onClick={() => router.push(`/projects/${project.id}`)}
-                                        >
-                                            View
-                                        </button>
+                                        <div className="action-buttons">
+                                            <button
+                                                className="btn-view"
+                                                onClick={() => router.push(`/projects/${project.id}`)}
+                                            >
+                                                View
+                                            </button>
+                                            {canManageProject(project) && project.status === 'ACTIVE' && (
+                                                <>
+                                                    <button
+                                                        className="btn-pause"
+                                                        onClick={() => handlePause(project)}
+                                                        title="Pause Project"
+                                                    >
+                                                        ⏸️
+                                                    </button>
+                                                    <button
+                                                        className="btn-archive"
+                                                        onClick={() => handleArchive(project)}
+                                                        title="Archive Project"
+                                                    >
+                                                        📦
+                                                    </button>
+                                                </>
+                                            )}
+                                            {canManageProject(project) && project.status === 'PAUSED' && (
+                                                <>
+                                                    <button
+                                                        className="btn-resume"
+                                                        onClick={() => handleResume(project)}
+                                                        title="Resume Project"
+                                                    >
+                                                        ▶️
+                                                    </button>
+                                                    <button
+                                                        className="btn-archive"
+                                                        onClick={() => handleArchive(project)}
+                                                        title="Archive Project"
+                                                    >
+                                                        📦
+                                                    </button>
+                                                </>
+                                            )}
+                                            {canManageProject(project) && project.status === 'ARCHIVED' && ['ADMIN', 'MANAGER'].includes(user?.role) && (
+                                                <button
+                                                    className="btn-unarchive"
+                                                    onClick={() => handleUnarchive(project)}
+                                                    title="Unarchive Project"
+                                                >
+                                                    📤
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -180,6 +337,45 @@ export default function ProjectsPage() {
                     )}
                 </div>
             </main>
+
+            {/* Pause/Archive Modal */}
+            {showActionModal && selectedProject && (
+                <div className="modal-overlay" onClick={() => setShowActionModal(false)}>
+                    <div className="modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>{actionType === 'pause' ? '⏸️ Pause Project' : '📦 Archive Project'}</h2>
+                            <button className="close-btn" onClick={() => setShowActionModal(false)}>×</button>
+                        </div>
+                        <div className="modal-body">
+                            <p className="project-name">{selectedProject.title}</p>
+                            <p className="action-description">
+                                {actionType === 'pause' 
+                                    ? 'Pausing will temporarily halt all work on this project. It can be resumed later.'
+                                    : 'Archiving will move this project to the archive. Only Admin/Manager can unarchive.'}
+                            </p>
+                            <div className="form-group">
+                                <label>Reason (optional)</label>
+                                <textarea 
+                                    value={actionReason}
+                                    onChange={(e) => setActionReason(e.target.value)}
+                                    placeholder={`Enter reason for ${actionType}ing...`}
+                                    rows={3}
+                                />
+                            </div>
+                        </div>
+                        <div className="modal-actions">
+                            <button className="btn-secondary" onClick={() => setShowActionModal(false)}>Cancel</button>
+                            <button 
+                                className={actionType === 'pause' ? 'btn-warning' : 'btn-danger'}
+                                onClick={submitAction}
+                                disabled={submitting}
+                            >
+                                {submitting ? 'Processing...' : actionType === 'pause' ? '⏸️ Pause Project' : '📦 Archive Project'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <style jsx>{`
                 .projects-page {
@@ -359,6 +555,22 @@ export default function ProjectsPage() {
                     color: var(--color-info);
                 }
                 
+                .badge-status.badge-paused {
+                    background: #fef3c7;
+                    color: #92400e;
+                }
+                
+                .badge-status.badge-archived {
+                    background: #f3f4f6;
+                    color: #6b7280;
+                }
+                
+                .action-buttons {
+                    display: flex;
+                    gap: 0.5rem;
+                    align-items: center;
+                }
+                
                 .btn-view {
                     padding: 6px 14px;
                     background: var(--bg-input);
@@ -380,6 +592,140 @@ export default function ProjectsPage() {
                     outline: 2px solid var(--accent-primary);
                     outline-offset: 2px;
                 }
+                
+                .btn-pause, .btn-archive, .btn-resume, .btn-unarchive {
+                    padding: 6px 10px;
+                    border-radius: var(--radius-sm);
+                    font-size: 14px;
+                    cursor: pointer;
+                    transition: all var(--transition-fast);
+                    border: 1px solid transparent;
+                    background: var(--bg-input);
+                }
+                
+                .btn-pause:hover { background: #fef3c7; border-color: #f59e0b; }
+                .btn-archive:hover { background: #f3f4f6; border-color: #6b7280; }
+                .btn-resume:hover { background: #dcfce7; border-color: #22c55e; }
+                .btn-unarchive:hover { background: #dbeafe; border-color: #3b82f6; }
+                
+                /* Modal Styles */
+                .modal-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                }
+                
+                .modal {
+                    background: white;
+                    border-radius: 16px;
+                    width: 90%;
+                    max-width: 450px;
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+                }
+                
+                .modal-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 1.25rem 1.5rem;
+                    border-bottom: 1px solid #e2e8f0;
+                }
+                
+                .modal-header h2 {
+                    font-size: 1.25rem;
+                    color: #1e293b;
+                    margin: 0;
+                }
+                
+                .close-btn {
+                    background: none;
+                    border: none;
+                    font-size: 1.5rem;
+                    color: #64748b;
+                    cursor: pointer;
+                }
+                
+                .modal-body {
+                    padding: 1.5rem;
+                }
+                
+                .project-name {
+                    font-weight: 600;
+                    color: #1e293b;
+                    margin-bottom: 0.5rem;
+                }
+                
+                .action-description {
+                    color: #64748b;
+                    font-size: 0.9rem;
+                    margin-bottom: 1rem;
+                }
+                
+                .form-group {
+                    margin-bottom: 1rem;
+                }
+                
+                .form-group label {
+                    display: block;
+                    margin-bottom: 0.5rem;
+                    font-weight: 500;
+                    color: #1e293b;
+                }
+                
+                .form-group textarea {
+                    width: 100%;
+                    padding: 0.75rem;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    font-size: 1rem;
+                    resize: vertical;
+                    font-family: inherit;
+                    box-sizing: border-box;
+                }
+                
+                .modal-actions {
+                    display: flex;
+                    gap: 1rem;
+                    padding: 1rem 1.5rem;
+                    border-top: 1px solid #e2e8f0;
+                }
+                
+                .modal-actions button {
+                    flex: 1;
+                    padding: 0.75rem;
+                    border-radius: 8px;
+                    font-weight: 500;
+                    cursor: pointer;
+                }
+                
+                .btn-secondary {
+                    background: #f1f5f9;
+                    color: #1e293b;
+                    border: 1px solid #e2e8f0;
+                }
+                
+                .btn-warning {
+                    background: #f59e0b;
+                    color: white;
+                    border: none;
+                }
+                
+                .btn-danger {
+                    background: #ef4444;
+                    color: white;
+                    border: none;
+                }
+                
+                .btn-secondary:hover { background: #e2e8f0; }
+                .btn-warning:hover { background: #d97706; }
+                .btn-danger:hover { background: #dc2626; }
                 
                 .empty-state {
                     padding: var(--space-2xl);

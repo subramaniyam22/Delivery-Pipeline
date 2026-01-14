@@ -33,6 +33,7 @@ class UserResponse(BaseModel):
     role: Role
     region: Optional[Region] = None
     date_of_joining: Optional[date] = None
+    manager_id: Optional[UUID] = None
     is_active: bool
     is_archived: bool = False
     archived_at: Optional[datetime] = None
