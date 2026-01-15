@@ -154,6 +154,23 @@ interface DefectSummary {
     by_severity: Record<string, number>;
 }
 
+interface PhaseSummary {
+    stage: string;
+    total_tasks: number;
+    completed_tasks: number;
+    pending_tasks: number;
+    completion_percentage: number;
+}
+
+interface ProjectHealthSummary {
+    status: string;
+    days_in_stage: number;
+    sla_days: number;
+    warning_threshold_days: number;
+    critical_threshold_days: number;
+    remaining_days: number;
+}
+
 interface AvailableBuilder {
     id: string;
     name: string;
@@ -296,6 +313,8 @@ export default function ProjectDetailPage() {
     const [defects, setDefects] = useState<Defect[]>([]);
     const [defectSummary, setDefectSummary] = useState<DefectSummary | null>(null);
     const [availableBuilders, setAvailableBuilders] = useState<AvailableBuilder[]>([]);
+    const [phaseSummaries, setPhaseSummaries] = useState<PhaseSummary[]>([]);
+    const [healthSummary, setHealthSummary] = useState<ProjectHealthSummary | null>(null);
     
     // Test Phase UI State
     const [activeTestTab, setActiveTestTab] = useState<'scenarios' | 'executions' | 'defects'>('scenarios');
@@ -392,6 +411,13 @@ export default function ProjectDetailPage() {
 
             setProject(projectRes.data);
             setArtifacts(artifactsRes.data);
+
+            const currentUser = getCurrentUser();
+            if (currentUser?.role && ['ADMIN', 'MANAGER'].includes(currentUser.role)) {
+                const phaseRes = await projectsAPI.getPhaseSummary(projectId);
+                setPhaseSummaries(phaseRes.data?.phase_summaries || []);
+                setHealthSummary(phaseRes.data?.health || null);
+            }
 
             // Load onboarding data if in onboarding stage
             if (projectRes.data.current_stage === 'ONBOARDING') {
@@ -1085,6 +1111,51 @@ export default function ProjectDetailPage() {
                                     </span>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Phase Summary - Admin/Manager */}
+                {user?.role && ['ADMIN', 'MANAGER'].includes(user.role) && phaseSummaries.length > 0 && (
+                    <div className="phase-summary-section">
+                        <div className="section-header">
+                            <h2>📌 Phase Task Summary</h2>
+                            {healthSummary && (
+                                <span className={`health-pill health-${healthSummary.status?.toLowerCase()}`}>
+                                    {healthSummary.status.replace('_', ' ')}
+                                </span>
+                            )}
+                        </div>
+                        {healthSummary && (
+                            <div className="health-details">
+                                <div>Days in stage: {healthSummary.days_in_stage}</div>
+                                <div>SLA days: {healthSummary.sla_days}</div>
+                                <div>Remaining: {healthSummary.remaining_days} days</div>
+                            </div>
+                        )}
+                        <div className="phase-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Phase</th>
+                                        <th>Completed</th>
+                                        <th>Pending</th>
+                                        <th>Total</th>
+                                        <th>Completion</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {phaseSummaries.map((phase) => (
+                                        <tr key={phase.stage}>
+                                            <td className="cell-title">{phase.stage.replace('_', ' ')}</td>
+                                            <td>{phase.completed_tasks}</td>
+                                            <td>{phase.pending_tasks}</td>
+                                            <td>{phase.total_tasks}</td>
+                                            <td>{phase.completion_percentage}%</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}
@@ -5452,6 +5523,78 @@ export default function ProjectDetailPage() {
                     font-size: 16px;
                     font-weight: 600;
                     color: var(--text-primary);
+                }
+
+                /* Phase Summary Section */
+                .phase-summary-section {
+                    background: #ffffff;
+                    border-radius: var(--radius-lg);
+                    padding: var(--space-lg);
+                    margin-bottom: var(--space-xl);
+                    border: 1px solid var(--border-light);
+                }
+                .phase-summary-section .section-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: var(--space-sm);
+                }
+                .phase-summary-section h2 {
+                    margin: 0;
+                    font-size: 18px;
+                    color: var(--text-primary);
+                }
+                .health-pill {
+                    padding: 4px 10px;
+                    border-radius: var(--radius-full);
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                }
+                .health-on_track {
+                    background: #dcfce7;
+                    color: #166534;
+                }
+                .health-warning {
+                    background: #fef3c7;
+                    color: #92400e;
+                }
+                .health-critical {
+                    background: #fee2e2;
+                    color: #991b1b;
+                }
+                .health-delayed {
+                    background: #fecaca;
+                    color: #7f1d1d;
+                }
+                .health-details {
+                    display: flex;
+                    gap: 16px;
+                    color: var(--text-muted);
+                    font-size: 13px;
+                    margin-bottom: var(--space-md);
+                }
+                .phase-table {
+                    overflow-x: auto;
+                }
+                .phase-table table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .phase-table th {
+                    text-align: left;
+                    padding: var(--space-sm) var(--space-md);
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    color: var(--text-hint);
+                    border-bottom: 1px solid var(--border-light);
+                }
+                .phase-table td {
+                    padding: var(--space-md);
+                    color: var(--text-secondary);
+                    border-bottom: 1px solid var(--border-light);
                 }
 
                 /* Executive Summary Section */

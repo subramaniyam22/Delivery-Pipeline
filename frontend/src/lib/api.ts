@@ -91,6 +91,7 @@ export const projectsAPI = {
     get: (id: string) => api.get(`/projects/${id}`),
     create: (data: any) => api.post('/projects', data),
     update: (id: string, data: any) => api.put(`/projects/${id}`, data),
+    getPhaseSummary: (id: string) => api.get(`/projects/${id}/phase-summary`),
     updateOnboarding: (id: string, data: any) =>
         api.post(`/projects/${id}/onboarding/update`, data),
     publishAssignment: (id: string) =>

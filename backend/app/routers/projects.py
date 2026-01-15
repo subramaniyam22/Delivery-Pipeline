@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.models import User, Role, Project, Region
+from app.models import User, Role, Project, Region, ProjectTask, SLAConfiguration
 from app.schemas import (
     ProjectCreate,
     ProjectResponse,
@@ -13,11 +13,47 @@ from app.schemas import (
 from app.deps import get_current_active_user
 from app.services import project_service
 from app.rbac import check_full_access, can_access_stage
-from app.models import Stage
-from typing import List, Optional
+from app.models import Stage, TaskStatus
+from typing import List, Optional, Dict, Any
 from uuid import UUID
+from datetime import datetime
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def calculate_project_health(project: Project, sla_configs: Dict[str, SLAConfiguration]) -> Dict[str, Any]:
+    stage = project.current_stage.value
+    sla_config = sla_configs.get(stage)
+
+    phase_start = project.phase_start_dates.get(stage) if project.phase_start_dates else None
+    if phase_start:
+        start_date = datetime.fromisoformat(phase_start) if isinstance(phase_start, str) else phase_start
+        days_in_stage = (datetime.utcnow() - start_date).days
+    else:
+        days_in_stage = 0
+
+    sla_days = sla_config.default_days if sla_config else 7
+    warning_days = sla_config.warning_threshold_days if sla_config else 2
+    critical_days = sla_config.critical_threshold_days if sla_config else 1
+    remaining_days = sla_days - days_in_stage
+
+    if project.is_delayed or remaining_days < 0:
+        status = "DELAYED"
+    elif remaining_days <= critical_days:
+        status = "CRITICAL"
+    elif remaining_days <= warning_days:
+        status = "WARNING"
+    else:
+        status = "ON_TRACK"
+
+    return {
+        "status": status,
+        "days_in_stage": days_in_stage,
+        "sla_days": sla_days,
+        "warning_threshold_days": warning_days,
+        "critical_threshold_days": critical_days,
+        "remaining_days": remaining_days
+    }
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -228,6 +264,62 @@ def update_build_status(
         "success": True,
         "message": f"Build status updated to {data.status.value}",
         "notes": data.notes
+    }
+
+
+@router.get("/{project_id}/phase-summary")
+def get_phase_summary(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get task completion summary for each phase (Admin/Manager only)"""
+    if not check_full_access(current_user.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin and Manager can access phase summaries"
+        )
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    tasks = db.query(ProjectTask).filter(ProjectTask.project_id == project_id).all()
+    stage_map: Dict[str, Dict[str, Any]] = {}
+
+    for stage in Stage:
+        stage_map[stage.value] = {
+            "stage": stage.value,
+            "total_tasks": 0,
+            "completed_tasks": 0,
+            "pending_tasks": 0,
+            "completion_percentage": 0
+        }
+
+    for task in tasks:
+        stage_key = task.stage.value
+        stage_entry = stage_map.get(stage_key)
+        if not stage_entry:
+            continue
+        stage_entry["total_tasks"] += 1
+        if task.status == TaskStatus.DONE:
+            stage_entry["completed_tasks"] += 1
+        else:
+            stage_entry["pending_tasks"] += 1
+
+    for stage_entry in stage_map.values():
+        total = stage_entry["total_tasks"]
+        stage_entry["completion_percentage"] = int((stage_entry["completed_tasks"] / total) * 100) if total else 0
+
+    sla_configs_list = db.query(SLAConfiguration).filter(SLAConfiguration.is_active == True).all()
+    sla_configs = {c.stage: c for c in sla_configs_list}
+    health_summary = calculate_project_health(project, sla_configs)
+
+    return {
+        "project_id": str(project.id),
+        "current_stage": project.current_stage.value,
+        "phase_summaries": list(stage_map.values()),
+        "health": health_summary
     }
 
 
