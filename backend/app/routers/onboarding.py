@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from app.db import get_db
 from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus
 from app.schemas import (
@@ -702,9 +703,10 @@ async def upload_client_image(
         f.write(content)
     
     # Add to images list
-    images = onboarding.images_json or []
+    images = list(onboarding.images_json or [])
     images.append({"file_path": file_path, "filename": file.filename, "type": "uploaded"})
     onboarding.images_json = images
+    flag_modified(onboarding, "images_json")
     project = db.query(Project).filter(Project.id == onboarding.project_id).first()
     required_fields = resolve_required_fields(db, project)
     onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)

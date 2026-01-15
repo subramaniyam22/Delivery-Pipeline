@@ -575,6 +575,29 @@ export default function ProjectDetailPage() {
             default: return 'var(--text-muted)';
         }
     };
+
+    const getTemplateLabel = () => {
+        if (onboardingData?.selected_template_id) {
+            const selected = templates.find(t => t.id === onboardingData.selected_template_id);
+            return selected?.name || onboardingData.selected_template_id;
+        }
+        if (onboardingData?.theme_preference) {
+            return onboardingData.theme_preference.charAt(0).toUpperCase() + onboardingData.theme_preference.slice(1);
+        }
+        return 'Not selected';
+    };
+
+    const getCopySummary = () => {
+        if (!onboardingData) return 'Not provided';
+        if (onboardingData.use_custom_copy) {
+            const price = onboardingData.custom_copy_final_price;
+            const words = onboardingData.custom_copy_word_count;
+            const priceLabel = price ? ` - $${price}` : '';
+            const wordLabel = words ? ` (${words} words)` : '';
+            return `Custom copy requested${priceLabel}${wordLabel}`;
+        }
+        return onboardingData.copy_text || 'Not provided';
+    };
     
     const handleAcceptSuggestion = async (suggestion: AISuggestion, role: string) => {
         // Update the form with the suggested user
@@ -740,12 +763,14 @@ export default function ProjectDetailPage() {
         await saveOnboardingData({ contacts_json: updatedContacts });
         setNewContact({ name: '', email: '', role: '', is_primary: false });
         setShowContactModal(false);
+        setSelectedEmailContacts([]);
     };
 
     const removeContact = async (index: number) => {
         if (!onboardingData) return;
         const updatedContacts = onboardingData.contacts_json.filter((_, i) => i !== index);
         await saveOnboardingData({ contacts_json: updatedContacts });
+        setSelectedEmailContacts([]);
     };
 
     const addCustomField = async () => {
@@ -1390,13 +1415,7 @@ export default function ProjectDetailPage() {
                                 <div className="form-card readonly">
                                     <h3>📝 Copy Text</h3>
                                     <div className="readonly-item">
-                                        {onboardingData.use_custom_copy ? (
-                                            <span className="badge-info">Custom copy requested from team</span>
-                                        ) : onboardingData.copy_text ? (
-                                            <p className="copy-preview">{onboardingData.copy_text.substring(0, 200)}...</p>
-                                        ) : (
-                                            <span className="empty-message">Not provided</span>
-                                        )}
+                                        <span>{getCopySummary()}</span>
                                     </div>
                                 </div>
                                 
@@ -1420,7 +1439,7 @@ export default function ProjectDetailPage() {
                                 <div className="form-card readonly">
                                     <h3>🎨 Theme Preferences</h3>
                                     <div className="readonly-item">
-                                        <span>{onboardingData.selected_template_id || onboardingData.theme_preference || 'Not selected'}</span>
+                                        <span>{getTemplateLabel()}</span>
                                     </div>
                                 </div>
                                 
@@ -1675,8 +1694,8 @@ export default function ProjectDetailPage() {
                                 <div className="readonly-grid">
                                     <div className="readonly-field">
                                         <label>Company Logo</label>
-                                        <span className={onboardingData.logo_url ? 'filled' : 'empty'}>
-                                            {onboardingData.logo_url || 'Not provided'}
+                                        <span className={onboardingData.logo_url || onboardingData.logo_file_path ? 'filled' : 'empty'}>
+                                            {onboardingData.logo_url || onboardingData.logo_file_path || 'Not provided'}
                                         </span>
                                     </div>
                                     <div className="readonly-field">
@@ -1693,9 +1712,7 @@ export default function ProjectDetailPage() {
                                 <h4>📝 Copy Text</h4>
                                 <div className="readonly-field full-width">
                                     <span className={onboardingData.copy_text || onboardingData.use_custom_copy ? 'filled' : 'empty'}>
-                                        {onboardingData.use_custom_copy 
-                                            ? '✅ Custom copy requested from team' 
-                                            : (onboardingData.copy_text || 'Not provided')}
+                                        {getCopySummary()}
                                     </span>
                                 </div>
                             </div>
@@ -1728,10 +1745,8 @@ export default function ProjectDetailPage() {
                             <div className="readonly-group">
                                 <h4>🎨 Theme Preferences</h4>
                                 <div className="readonly-field">
-                                    <span className={onboardingData.theme_preference ? 'filled' : 'empty'}>
-                                        {onboardingData.theme_preference 
-                                            ? onboardingData.theme_preference.charAt(0).toUpperCase() + onboardingData.theme_preference.slice(1)
-                                            : 'Not selected'}
+                                    <span className={(onboardingData.theme_preference || onboardingData.selected_template_id) ? 'filled' : 'empty'}>
+                                        {getTemplateLabel()}
                                     </span>
                                 </div>
                             </div>
