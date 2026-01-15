@@ -315,7 +315,7 @@ export default function ExecutiveDashboardPage() {
 
         {/* Pipeline Stages - Card View */}
         <section className="pipeline-section">
-          <h2>Pipeline Stages</h2>
+          <h2>Project Stages</h2>
           <div className="pipeline-cards">
             {STAGE_ORDER.map((stage) => {
               const count = dashboard?.projects_by_stage[stage] || 0;
@@ -351,6 +351,12 @@ export default function ExecutiveDashboardPage() {
             <div className="expanded-projects">
               <h3>{STAGE_ICONS[expandedStage]} {STAGE_LABELS[expandedStage]} Projects ({getProjectsByStage(expandedStage).length})</h3>
               <div className="project-list">
+                <div className="project-list-header">
+                  <span>Project</span>
+                  <span>Client</span>
+                  <span>Priority</span>
+                  <span>Status</span>
+                </div>
                 {getProjectsByStage(expandedStage).map(project => (
                   <div 
                     key={project.id} 
@@ -522,6 +528,8 @@ export default function ExecutiveDashboardPage() {
         .expanded-projects { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #e2e8f0; animation: slideDown 0.3s ease; }
         .expanded-projects h3 { font-size: 1rem; margin-bottom: 1rem; color: #1e293b; }
         .project-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .project-list-header { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr; gap: 1rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #64748b; letter-spacing: 0.04em; padding: 0 0.25rem; }
+        .project-list-header span:last-child { text-align: right; }
         .project-list-item { display: flex; justify-content: space-between; align-items: center; padding: 1rem; background: #f8fafc; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
         .project-list-item:hover { background: #e0f2fe; transform: translateX(4px); }
         .project-info { display: flex; flex-direction: column; gap: 0.25rem; }
