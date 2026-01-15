@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 import secrets
 import os
 from app.config import settings
+from app.services.email_service import send_client_reminder_email
 
 router = APIRouter(prefix="/projects", tags=["onboarding"])
 
@@ -752,13 +753,21 @@ def send_client_reminder(
     if onboarding and onboarding.client_access_token:
         message += f"\n\nComplete your onboarding form: {settings.FRONTEND_URL}/client-onboarding/{onboarding.client_access_token}"
     
+    email_sent = send_client_reminder_email(
+        to_emails=[data.recipient_email],
+        subject=f"Onboarding Reminder: {project.title}",
+        message=message,
+        project_title=project.title,
+        sender_name=current_user.name
+    )
+
     reminder = ClientReminder(
         project_id=project_id,
         recipient_email=data.recipient_email,
         recipient_name=data.recipient_name,
         reminder_type=data.reminder_type,
         message=message,
-        status="sent"
+        status="sent" if email_sent else "failed"
     )
     db.add(reminder)
     
@@ -770,7 +779,10 @@ def send_client_reminder(
     db.refresh(reminder)
     
     print(f"[REMINDER] Sent to {data.recipient_email}: {message}")
-    
+
+    if not email_sent:
+        raise HTTPException(status_code=500, detail="Failed to send reminder email")
+
     return reminder
 
 

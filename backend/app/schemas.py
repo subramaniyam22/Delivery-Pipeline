@@ -379,7 +379,7 @@ class ProjectTaskResponse(BaseModel):
 class ClientReminderCreate(BaseModel):
     recipient_email: EmailStr
     recipient_name: Optional[str] = None
-    reminder_type: str
+    reminder_type: str = "onboarding"
     message: str
 
 
