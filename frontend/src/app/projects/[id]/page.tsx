@@ -2233,55 +2233,6 @@ export default function ProjectDetailPage() {
                     <div className="admin-actions">
                         <h3>Project Actions</h3>
                         
-                        {/* Client Form Link */}
-                        {project.current_stage === 'ONBOARDING' && completionStatus?.client_form_url && (
-                            <div className="client-form-section">
-                                <h4>📤 Client Onboarding Form</h4>
-                                <p>Share this link with the client to collect onboarding information:</p>
-                                <div className="form-link-box">
-                                    <input 
-                                        type="text" 
-                                        readOnly 
-                                        value={`${window.location.origin}${completionStatus.client_form_url}`}
-                                        onClick={(e) => (e.target as HTMLInputElement).select()}
-                                    />
-                                    <button 
-                                        className="btn-copy"
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
-                                            setSuccess('Link copied to clipboard!');
-                                            setTimeout(() => setSuccess(''), 3000);
-                                        }}
-                                    >
-                                        📋 Copy
-                                    </button>
-                                </div>
-                                
-                                {/* Auto Reminder Toggle */}
-                                <div className="auto-reminder-toggle">
-                                    <label>
-                                        <input
-                                            type="checkbox"
-                                            checked={onboardingData?.auto_reminder_enabled ?? true}
-                                            onChange={async (e) => {
-                                                try {
-                                                    await onboardingAPI.toggleAutoReminder(projectId, e.target.checked);
-                                                    await loadOnboardingData();
-                                                    setSuccess(`Auto-reminders ${e.target.checked ? 'enabled' : 'disabled'}`);
-                                                } catch (err) {
-                                                    setError('Failed to update reminder settings');
-                                                }
-                                            }}
-                                        />
-                                        Send auto-reminder every 24 hours for missing information
-                                    </label>
-                                    {onboardingData?.next_reminder_at && onboardingData.auto_reminder_enabled && (
-                                        <p className="next-reminder">Next reminder: {new Date(onboardingData.next_reminder_at).toLocaleString()}</p>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                        
                         <div className="actions-row">
                             <button
                                 className="btn-advance"
@@ -2297,14 +2248,6 @@ export default function ProjectDetailPage() {
                             >
                                 ⬅️ Send Back
                             </button>
-                            {project.current_stage === 'ONBOARDING' && (
-                                <button
-                                    className="btn-reminder"
-                                    onClick={() => setShowReminderModal(true)}
-                                >
-                                    📧 Send Manual Reminder
-                                </button>
-                            )}
                         </div>
                     </div>
                 )}
