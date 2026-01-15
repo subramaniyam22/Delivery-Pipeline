@@ -532,6 +532,12 @@ export default function ClientOnboardingPage() {
                         />
                     </div>
                 </section>
+
+                <div className="submit-section">
+                    <button className="btn-submit-form" disabled={saving} onClick={submitClientForm}>
+                        {saving ? 'Submitting...' : 'Submit Form'}
+                    </button>
+                </div>
             </main>
 
             <footer className="page-footer">
@@ -711,6 +717,11 @@ export default function ClientOnboardingPage() {
                 .btn-submit-form:disabled {
                     opacity: 0.6;
                     cursor: not-allowed;
+                }
+                .submit-section {
+                    display: flex;
+                    justify-content: flex-end;
+                    padding: 0 0 20px;
                 }
 
                 .form-container {

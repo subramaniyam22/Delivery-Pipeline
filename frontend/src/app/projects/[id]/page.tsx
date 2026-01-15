@@ -1377,7 +1377,7 @@ export default function ProjectDetailPage() {
                                     <div className="readonly-grid">
                                         <div className="readonly-item">
                                             <label>Company Logo</label>
-                                            <span>{onboardingData.logo_url || 'Not provided'}</span>
+                                            <span>{onboardingData.logo_url || onboardingData.logo_file_path || 'Not provided'}</span>
                                         </div>
                                         <div className="readonly-item">
                                             <label>Website Images</label>
@@ -1420,7 +1420,7 @@ export default function ProjectDetailPage() {
                                 <div className="form-card readonly">
                                     <h3>🎨 Theme Preferences</h3>
                                     <div className="readonly-item">
-                                        <span>{onboardingData.theme_preference || 'Not selected'}</span>
+                                        <span>{onboardingData.selected_template_id || onboardingData.theme_preference || 'Not selected'}</span>
                                     </div>
                                 </div>
                                 
@@ -1515,7 +1515,7 @@ export default function ProjectDetailPage() {
                                 {/* Send Email to Contacts */}
                                 {onboardingData.contacts_json && onboardingData.contacts_json.length > 0 && (
                                     <div className="email-trigger-section">
-                                        <h4>📧 Send Form to Contacts</h4>
+                                        <h4>📧 Send form to contacts</h4>
                                         <p>Select contacts to receive the onboarding form link:</p>
                                         <div className="contact-checkboxes">
                                             {onboardingData.contacts_json.map((contact, index) => (
@@ -1532,36 +1532,39 @@ export default function ProjectDetailPage() {
                                                         }}
                                                     />
                                                     <span className="contact-label">
-                                                        {contact.name} ({contact.email})
+                                                        {contact.name} ({contact.email}){contact.role ? ` - ${contact.role}` : ''}
                                                     </span>
                                                 </label>
                                             ))}
                                         </div>
-                                        <button 
-                                            className="btn-send-email"
-                                            disabled={selectedEmailContacts.length === 0 || sendingEmail}
-                                            onClick={async () => {
-                                                setSendingEmail(true);
-                                                try {
-                                                    const selectedContacts = selectedEmailContacts.map(i => onboardingData.contacts_json![i]);
-                                                    for (const contact of selectedContacts) {
-                                                        await onboardingAPI.sendReminder(projectId, {
-                                                            recipient_email: contact.email,
-                                                            recipient_name: contact.name,
-                                                            message: `Please complete the onboarding form for ${project.title}`
-                                                        });
+                                        <label className="send-label">
+                                            <input
+                                                type="checkbox"
+                                                disabled={selectedEmailContacts.length === 0 || sendingEmail}
+                                                onChange={async (e) => {
+                                                    if (!e.target.checked) return;
+                                                    setSendingEmail(true);
+                                                    try {
+                                                        const selectedContacts = selectedEmailContacts.map(i => onboardingData.contacts_json![i]);
+                                                        for (const contact of selectedContacts) {
+                                                            await onboardingAPI.sendReminder(projectId, {
+                                                                recipient_email: contact.email,
+                                                                recipient_name: contact.name,
+                                                                message: `Please complete the onboarding form for ${project.title}`
+                                                            });
+                                                        }
+                                                        setSuccess(`Onboarding form sent to ${selectedContacts.length} contact(s)!`);
+                                                        setSelectedEmailContacts([]);
+                                                    } catch (err) {
+                                                        setError('Failed to send email');
+                                                    } finally {
+                                                        setSendingEmail(false);
+                                                        e.currentTarget.checked = false;
                                                     }
-                                                    setSuccess(`Onboarding form sent to ${selectedContacts.length} contact(s)!`);
-                                                    setSelectedEmailContacts([]);
-                                                } catch (err) {
-                                                    setError('Failed to send email');
-                                                } finally {
-                                                    setSendingEmail(false);
-                                                }
-                                            }}
-                                        >
-                                            {sendingEmail ? 'Sending...' : `📧 Send to ${selectedEmailContacts.length} Contact(s)`}
-                                        </button>
+                                                }}
+                                            />
+                                            <span>{sendingEmail ? 'Sending...' : `Send to ${selectedEmailContacts.length} contact(s)`}</span>
+                                        </label>
                                     </div>
                                 )}
                                 
@@ -3728,6 +3731,13 @@ export default function ProjectDetailPage() {
                     padding-left: 18px;
                     color: #1e3a8a;
                     font-size: 0.9rem;
+                }
+                .send-label {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 13px;
+                    color: var(--text-secondary);
                 }
 
                 .section-desc {
