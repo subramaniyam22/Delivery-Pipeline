@@ -23,6 +23,7 @@ interface Project {
   current_stage: string;
   status: string;
   priority: string;
+  created_at?: string;
 }
 
 interface ExecutiveDashboard {
@@ -350,33 +351,45 @@ export default function ExecutiveDashboardPage() {
           {expandedStage && (
             <div className="expanded-projects">
               <h3>{STAGE_ICONS[expandedStage]} {STAGE_LABELS[expandedStage]} Projects ({getProjectsByStage(expandedStage).length})</h3>
-              <div className="project-list">
-                <div className="project-list-header">
-                  <span>Project</span>
-                  <span>Client</span>
-                  <span>Priority</span>
-                  <span>Status</span>
-                </div>
-                {getProjectsByStage(expandedStage).map(project => (
-                  <div 
-                    key={project.id} 
-                    className="project-list-item"
-                    onClick={() => router.push(`/projects/${project.id}`)}
-                  >
-                    <div className="project-info">
-                      <span className="project-title">{project.title}</span>
-                      <span className="project-client">{project.client_name}</span>
-                    </div>
-                    <div className="project-badges">
-                      <span className={`badge badge-priority badge-${project.priority?.toLowerCase()}`}>
-                        {project.priority}
-                      </span>
-                      <span className={`badge badge-status badge-${project.status?.toLowerCase()}`}>
-                        {project.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+              <div className="projects-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Project Name</th>
+                      <th>Client</th>
+                      <th>Priority</th>
+                      <th>Created</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getProjectsByStage(expandedStage).map((project) => (
+                      <tr key={project.id}>
+                        <td className="cell-title">{project.title}</td>
+                        <td>{project.client_name}</td>
+                        <td>
+                          <span className={`badge badge-priority badge-${project.priority?.toLowerCase()}`}>
+                            {project.priority}
+                          </span>
+                        </td>
+                        <td className="cell-date">
+                          {project.created_at ? new Date(project.created_at).toLocaleDateString() : '-'}
+                        </td>
+                        <td>
+                          <button
+                            className="btn-view"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/projects/${project.id}`);
+                            }}
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}
@@ -565,13 +578,17 @@ export default function ExecutiveDashboardPage() {
         .pipeline-projects-preview { font-size: 0.75rem; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         
         .risk-table { overflow-x: auto; }
+        .projects-table { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
         th { text-align: left; padding: 0.75rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #64748b; border-bottom: 1px solid #e2e8f0; }
         td { padding: 0.75rem; border-bottom: 1px solid #f1f5f9; }
         .clickable-row { cursor: pointer; transition: background 0.2s; }
         .clickable-row:hover { background: #f8fafc; }
         .cell-title { font-weight: 500; color: #1e293b; }
+        .cell-date { font-size: 0.85rem; color: #64748b; }
         .status-badge { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 500; border: 1px solid; }
+        .btn-view { padding: 6px 14px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; border-radius: 6px; font-size: 0.75rem; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+        .btn-view:hover { background: #0ea5e9; color: white; border-color: #0ea5e9; }
         
         .sla-desc { color: #64748b; font-size: 0.9rem; margin-bottom: 1rem; }
         .sla-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
