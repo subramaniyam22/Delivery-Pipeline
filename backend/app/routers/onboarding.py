@@ -21,6 +21,7 @@ import secrets
 import os
 from app.config import settings
 from app.services.email_service import send_client_reminder_email
+from app.services.config_service import get_config
 
 router = APIRouter(prefix="/projects", tags=["onboarding"])
 
@@ -122,6 +123,27 @@ PREDEFINED_TASKS = {
     ],
 }
 
+DEFAULT_REQUIRED_FIELDS = ["logo", "images", "copy_text", "wcag", "privacy_policy", "theme", "contacts"]
+
+
+def resolve_required_fields(db: Session, project: Optional[Project]) -> List[str]:
+    """Resolve required onboarding fields from admin config and project overrides."""
+    required_fields = DEFAULT_REQUIRED_FIELDS
+
+    config = get_config(db, "onboarding_minimum_requirements")
+    if config and config.value_json:
+        if isinstance(config.value_json, list):
+            required_fields = config.value_json
+        elif isinstance(config.value_json, dict):
+            fields = config.value_json.get("fields")
+            if isinstance(fields, list):
+                required_fields = fields
+
+    if project and project.allow_requirements_exceptions and project.minimum_requirements_override is not None:
+        if isinstance(project.minimum_requirements_override, list):
+            required_fields = project.minimum_requirements_override
+
+    return required_fields
 
 def check_field_completion(onboarding_data: OnboardingData, field: str) -> bool:
     """Check if a specific onboarding field is completed"""
@@ -167,14 +189,14 @@ def auto_update_task_status(db: Session, project_id: UUID, onboarding_data: Onbo
     db.commit()
 
 
-def calculate_completion_percentage(onboarding_data: OnboardingData) -> int:
+def calculate_completion_percentage(onboarding_data: OnboardingData, required_fields: Optional[List[str]] = None) -> int:
     """Calculate the completion percentage based on filled fields"""
-    fields = ["logo", "images", "copy_text", "wcag", "privacy_policy", "theme", "contacts"]
+    fields = required_fields or DEFAULT_REQUIRED_FIELDS
     completed = sum(1 for f in fields if check_field_completion(onboarding_data, f))
-    return int((completed / len(fields)) * 100)
+    return int((completed / len(fields)) * 100) if fields else 100
 
 
-def get_missing_fields(onboarding_data: OnboardingData) -> List[str]:
+def get_missing_fields(onboarding_data: OnboardingData, required_fields: Optional[List[str]] = None) -> List[str]:
     """Get list of missing onboarding fields"""
     missing = []
     field_labels = {
@@ -186,7 +208,9 @@ def get_missing_fields(onboarding_data: OnboardingData) -> List[str]:
         "theme": "Theme/template selection",
         "contacts": "Primary contact information"
     }
-    for field, label in field_labels.items():
+    fields = required_fields or DEFAULT_REQUIRED_FIELDS
+    for field in fields:
+        label = field_labels.get(field, field)
         if not check_field_completion(onboarding_data, field):
             missing.append(label)
     return missing
@@ -215,7 +239,8 @@ async def send_auto_reminder(db: Session, project_id: UUID):
     if not project or project.current_stage != Stage.ONBOARDING:
         return
     
-    missing_fields = get_missing_fields(onboarding)
+    required_fields = resolve_required_fields(db, project)
+    missing_fields = get_missing_fields(onboarding, required_fields)
     if not missing_fields:
         return
     
@@ -404,7 +429,8 @@ def update_onboarding_data(
             setattr(onboarding, field, update_data[field])
     
     # Calculate completion percentage
-    onboarding.completion_percentage = calculate_completion_percentage(onboarding)
+    required_fields = resolve_required_fields(db, project)
+    onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
     
     db.commit()
     
@@ -438,8 +464,9 @@ def get_completion_status(
             "total_required_tasks": 7
         }
     
-    completion = calculate_completion_percentage(onboarding)
-    missing_fields = get_missing_fields(onboarding)
+    required_fields = resolve_required_fields(db, project)
+    completion = calculate_completion_percentage(onboarding, required_fields)
+    missing_fields = get_missing_fields(onboarding, required_fields)
     
     # Auto-update tasks and count
     auto_update_task_status(db, project_id, onboarding)
@@ -486,13 +513,16 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
     
     project = db.query(Project).filter(Project.id == onboarding.project_id).first()
     
-    missing_fields = get_missing_fields(onboarding)
+    required_fields = resolve_required_fields(db, project)
+    missing_fields = get_missing_fields(onboarding, required_fields)
     
     return {
         "project_title": project.title if project else "Unknown Project",
         "project_id": str(onboarding.project_id),
         "completion_percentage": onboarding.completion_percentage,
         "missing_fields": missing_fields,
+        "submitted_at": onboarding.submitted_at,
+        "missing_fields_eta_json": onboarding.missing_fields_eta_json,
         "data": {
             "logo_url": onboarding.logo_url,
             "logo_file_path": onboarding.logo_file_path,
@@ -509,6 +539,8 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
             "selected_template_id": onboarding.selected_template_id,
             "theme_colors": onboarding.theme_colors_json,
             "contacts": onboarding.contacts_json,
+            "submitted_at": onboarding.submitted_at,
+            "missing_fields_eta_json": onboarding.missing_fields_eta_json,
         },
         "templates": THEME_TEMPLATES,
         "copy_pricing": COPY_PRICING_TIERS,
@@ -546,7 +578,9 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
                 setattr(onboarding, field, data[field])
     
     # Calculate completion
-    onboarding.completion_percentage = calculate_completion_percentage(onboarding)
+    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+    required_fields = resolve_required_fields(db, project)
+    onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
     
     db.commit()
     
@@ -554,6 +588,54 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
     auto_update_task_status(db, onboarding.project_id, onboarding)
     
     return {"success": True, "completion_percentage": onboarding.completion_percentage}
+
+
+@client_router.post("/{token}/submit")
+def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """Submit onboarding form and notify the assigned consultant"""
+    onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
+
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Invalid or expired link")
+
+    if onboarding.token_expires_at and onboarding.token_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410, detail="This link has expired")
+
+    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+
+    missing_fields_eta = payload.get("missing_fields_eta", {})
+    if isinstance(missing_fields_eta, dict):
+        onboarding.missing_fields_eta_json = missing_fields_eta
+
+    onboarding.submitted_at = datetime.utcnow()
+    db.commit()
+
+    notification_sent = False
+    if project and project.consultant_user_id:
+        consultant = db.query(User).filter(User.id == project.consultant_user_id).first()
+        if consultant:
+            required_fields = resolve_required_fields(db, project)
+            missing_fields = get_missing_fields(onboarding, required_fields)
+            eta_lines = []
+            if isinstance(missing_fields_eta, dict):
+                for field, eta in missing_fields_eta.items():
+                    eta_lines.append(f"- {field}: {eta}")
+
+            message = "The client submitted the onboarding form."
+            if missing_fields:
+                message += "\n\nMissing information:\n" + "\n".join([f"- {f}" for f in missing_fields])
+            if eta_lines:
+                message += "\n\nClient provided ETA:\n" + "\n".join(eta_lines)
+
+            notification_sent = send_client_reminder_email(
+                to_emails=[consultant.email],
+                subject=f"Client submitted onboarding: {project.title}",
+                message=message,
+                project_title=project.title,
+                sender_name="Delivery Management"
+            )
+
+    return {"success": True, "notification_sent": notification_sent}
 
 
 @client_router.post("/{token}/upload-logo")
@@ -583,7 +665,9 @@ async def upload_client_logo(
         f.write(content)
     
     onboarding.logo_file_path = file_path
-    onboarding.completion_percentage = calculate_completion_percentage(onboarding)
+    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+    required_fields = resolve_required_fields(db, project)
+    onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
     db.commit()
     
     auto_update_task_status(db, onboarding.project_id, onboarding)
@@ -621,7 +705,9 @@ async def upload_client_image(
     images = onboarding.images_json or []
     images.append({"file_path": file_path, "filename": file.filename, "type": "uploaded"})
     onboarding.images_json = images
-    onboarding.completion_percentage = calculate_completion_percentage(onboarding)
+    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+    required_fields = resolve_required_fields(db, project)
+    onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
     db.commit()
     
     auto_update_task_status(db, onboarding.project_id, onboarding)
@@ -860,7 +946,8 @@ def check_and_auto_advance(
     if not onboarding:
         return {"can_advance": False, "reason": "No onboarding data found"}
     
-    completion = calculate_completion_percentage(onboarding)
+    required_fields = resolve_required_fields(db, project)
+    completion = calculate_completion_percentage(onboarding, required_fields)
     
     if completion >= 90:
         project.current_stage = Stage.ASSIGNMENT

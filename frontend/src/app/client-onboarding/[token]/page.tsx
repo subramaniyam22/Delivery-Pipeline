@@ -24,6 +24,8 @@ interface OnboardingFormData {
     project_id: string;
     completion_percentage: number;
     missing_fields: string[];
+    submitted_at?: string | null;
+    missing_fields_eta_json?: Record<string, string>;
     data: {
         logo_url: string | null;
         logo_file_path: string | null;
@@ -41,6 +43,8 @@ interface OnboardingFormData {
         selected_template_id: string | null;
         theme_colors: Record<string, string>;
         contacts: Array<{ name: string; email: string; role: string; is_primary: boolean }>;
+        submitted_at?: string | null;
+        missing_fields_eta_json?: Record<string, string>;
     };
     templates: Template[];
     copy_pricing: PricingTier[];
@@ -55,6 +59,7 @@ export default function ClientOnboardingPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [missingFieldsEta, setMissingFieldsEta] = useState<Record<string, string>>({});
 
     const logoInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
@@ -67,6 +72,7 @@ export default function ClientOnboardingPage() {
         try {
             const res = await clientAPI.getOnboardingForm(token);
             setFormData(res.data);
+            setMissingFieldsEta(res.data.missing_fields_eta_json || res.data.data?.missing_fields_eta_json || {});
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to load form. The link may be invalid or expired.');
         } finally {
@@ -114,19 +120,43 @@ export default function ClientOnboardingPage() {
     };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
 
         setSaving(true);
         try {
-            await clientAPI.uploadImage(token, file);
-            setSuccess('Image uploaded successfully!');
+            for (const file of files) {
+                await clientAPI.uploadImage(token, file);
+            }
+            setSuccess(`${files.length} image(s) uploaded successfully!`);
             await loadFormData();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to upload image');
+            setError(err.response?.data?.detail || 'Failed to upload image(s)');
+        } finally {
+            setSaving(false);
+            e.target.value = '';
+        }
+    };
+
+    const submitClientForm = async () => {
+        if (!formData) return;
+        setSaving(true);
+        setError('');
+        try {
+            await clientAPI.submitOnboardingForm(token, { missing_fields_eta: missingFieldsEta });
+            setSuccess('Form submitted successfully! Your consultant has been notified.');
+            await loadFormData();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to submit form');
         } finally {
             setSaving(false);
         }
+    };
+
+    const setEtaInDays = (field: string, days: number) => {
+        const targetDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        const isoDate = targetDate.toISOString().slice(0, 10);
+        setMissingFieldsEta(prev => ({ ...prev, [field]: isoDate }));
     };
 
     const selectTemplate = (templateId: string) => {
@@ -247,11 +277,28 @@ export default function ClientOnboardingPage() {
                 <div className="missing-alert">
                     <h3>⚠️ Information Needed</h3>
                     <p>Please provide the following to complete your onboarding:</p>
-                    <ul>
+                    <div className="missing-fields-grid">
                         {formData.missing_fields.map((field, i) => (
-                            <li key={i}>{field}</li>
+                            <div key={i} className="missing-field-row">
+                                <div className="missing-field-name">{field}</div>
+                                <div className="missing-field-actions">
+                                    <button type="button" className="eta-btn" onClick={() => setEtaInDays(field, 1)}>1 day</button>
+                                    <button type="button" className="eta-btn" onClick={() => setEtaInDays(field, 2)}>2 days</button>
+                                    <input
+                                        type="date"
+                                        className="eta-input"
+                                        value={missingFieldsEta[field] || ''}
+                                        onChange={(e) =>
+                                            setMissingFieldsEta(prev => ({ ...prev, [field]: e.target.value }))
+                                        }
+                                    />
+                                </div>
+                            </div>
                         ))}
-                    </ul>
+                    </div>
+                    <button className="btn-submit-form" disabled={saving} onClick={submitClientForm}>
+                        {saving ? 'Submitting...' : 'Submit Form'}
+                    </button>
                 </div>
             )}
 
@@ -319,6 +366,7 @@ export default function ClientOnboardingPage() {
                         ref={imageInputRef}
                         type="file"
                         accept="image/*"
+                        multiple
                         onChange={handleImageUpload}
                         hidden
                     />
@@ -603,6 +651,66 @@ export default function ClientOnboardingPage() {
                     margin: 0;
                     padding-left: 20px;
                     color: #78350f;
+                }
+                .missing-fields-grid {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    margin: 12px 0 16px;
+                }
+                .missing-field-row {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    padding: 10px 12px;
+                    background: #fff7ed;
+                    border: 1px solid #fed7aa;
+                    border-radius: 10px;
+                }
+                .missing-field-name {
+                    font-weight: 600;
+                    color: #7c2d12;
+                }
+                .missing-field-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    align-items: center;
+                }
+                .eta-btn {
+                    padding: 6px 10px;
+                    font-size: 12px;
+                    border-radius: 6px;
+                    border: 1px solid #fdba74;
+                    background: white;
+                    color: #9a3412;
+                    cursor: pointer;
+                }
+                .eta-btn:hover {
+                    background: #ffedd5;
+                }
+                .eta-input {
+                    padding: 6px 10px;
+                    border: 1px solid #fdba74;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    color: #9a3412;
+                    background: white;
+                }
+                .btn-submit-form {
+                    padding: 10px 16px;
+                    border-radius: 8px;
+                    border: none;
+                    background: #2563eb;
+                    color: white;
+                    font-weight: 600;
+                    cursor: pointer;
+                }
+                .btn-submit-form:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
                 }
 
                 .form-container {

@@ -140,6 +140,10 @@ class Project(Base):
     archived_at = Column(DateTime, nullable=True)
     archived_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     archive_reason = Column(Text, nullable=True)
+
+    # Minimum requirements overrides (Admin-configurable)
+    minimum_requirements_override = Column(JSONB, nullable=True)  # List of required onboarding fields
+    allow_requirements_exceptions = Column(Boolean, default=False)
     
     # Team Assignments
     pc_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -334,6 +338,10 @@ class OnboardingData(Base):
     reminder_count = Column(Integer, default=0)
     auto_reminder_enabled = Column(Boolean, default=True)
     reminder_interval_hours = Column(Integer, default=24)  # 6, 12, or 24 hours
+
+    # Client submission tracking
+    submitted_at = Column(DateTime, nullable=True)
+    missing_fields_eta_json = Column(JSONB, nullable=True)  # { field_key: "2026-01-18" }
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -177,6 +177,8 @@ export const clientAPI = {
         api.get(`/projects/client-onboarding/${token}`),
     updateOnboardingForm: (token: string, data: any) =>
         api.put(`/projects/client-onboarding/${token}`, data),
+    submitOnboardingForm: (token: string, data: any) =>
+        api.post(`/projects/client-onboarding/${token}/submit`, data),
     uploadLogo: (token: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);

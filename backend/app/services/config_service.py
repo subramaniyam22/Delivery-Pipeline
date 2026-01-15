@@ -53,7 +53,16 @@ DEFAULT_CONFIGS = {
         "test": "Analyze test coverage and results",
         "defect_validation": "Validate defects and determine actions",
         "complete": "Generate project completion summary"
-    }
+    },
+    "onboarding_minimum_requirements": [
+        "logo",
+        "images",
+        "copy_text",
+        "wcag",
+        "privacy_policy",
+        "theme",
+        "contacts"
+    ]
 }
 
 

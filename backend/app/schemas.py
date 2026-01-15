@@ -68,6 +68,8 @@ class ProjectUpdate(BaseModel):
     client_name: Optional[str] = None
     priority: Optional[str] = None
     status: Optional[ProjectStatus] = None
+    minimum_requirements_override: Optional[List[str]] = None
+    allow_requirements_exceptions: Optional[bool] = None
 
 
 class TeamAssignmentRequest(BaseModel):
@@ -104,6 +106,8 @@ class ProjectResponse(BaseModel):
     consultant_user_id: Optional[UUID] = None
     builder_user_id: Optional[UUID] = None
     tester_user_id: Optional[UUID] = None
+    minimum_requirements_override: Optional[List[str]] = None
+    allow_requirements_exceptions: Optional[bool] = None
     # Nested user info for display
     creator: Optional[UserBrief] = None
     consultant: Optional[UserBrief] = None
@@ -328,6 +332,9 @@ class OnboardingDataResponse(BaseModel):
     next_reminder_at: Optional[datetime]
     reminder_count: int
     auto_reminder_enabled: Optional[bool] = True
+    reminder_interval_hours: Optional[int] = 24
+    submitted_at: Optional[datetime] = None
+    missing_fields_eta_json: Optional[Dict[str, str]] = None
     created_at: datetime
     updated_at: datetime
 

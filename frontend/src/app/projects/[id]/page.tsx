@@ -39,6 +39,9 @@ interface OnboardingData {
     reminder_count: number;
     auto_reminder_enabled: boolean;
     next_reminder_at: string | null;
+    reminder_interval_hours?: number;
+    submitted_at?: string | null;
+    missing_fields_eta_json?: Record<string, string> | null;
 }
 
 interface Template {
@@ -1391,6 +1394,27 @@ export default function ProjectDetailPage() {
                                 )}
                             </div>
                         </div>
+
+                        {(onboardingData.submitted_at || (onboardingData.missing_fields_eta_json && Object.keys(onboardingData.missing_fields_eta_json).length > 0)) && (
+                            <div className="form-card highlight-section">
+                                <h3>📬 Client Submission</h3>
+                                {onboardingData.submitted_at && (
+                                    <div className="readonly-item">
+                                        <span>Submitted at: {new Date(onboardingData.submitted_at).toLocaleString()}</span>
+                                    </div>
+                                )}
+                                {onboardingData.missing_fields_eta_json && Object.keys(onboardingData.missing_fields_eta_json).length > 0 && (
+                                    <div className="readonly-item">
+                                        <p className="section-desc">Client provided ETA for missing items:</p>
+                                        <ul className="eta-list">
+                                            {Object.entries(onboardingData.missing_fields_eta_json).map(([field, eta]) => (
+                                                <li key={field}>{field}: {eta}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Client Onboarding Form Section */}
                         {completionStatus?.client_form_url && (
@@ -3684,6 +3708,12 @@ export default function ProjectDetailPage() {
 
                 .highlight-section h3 {
                     color: #1d4ed8;
+                }
+                .eta-list {
+                    margin: 0;
+                    padding-left: 18px;
+                    color: #1e3a8a;
+                    font-size: 0.9rem;
                 }
 
                 .section-desc {
