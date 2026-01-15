@@ -2,6 +2,7 @@
 
 import { useRouter, usePathname } from 'next/navigation';
 import { getCurrentUser, logout } from '@/lib/auth';
+import { healthAPI } from '@/lib/api';
 import { useEffect, useState } from 'react';
 
 export default function Navigation() {
@@ -12,6 +13,15 @@ export default function Navigation() {
     useEffect(() => {
         const currentUser = getCurrentUser();
         setUser(currentUser);
+
+        if (currentUser) {
+            healthAPI.ping().catch(() => {});
+            const interval = setInterval(() => {
+                healthAPI.ping().catch(() => {});
+            }, 5 * 60 * 1000);
+            return () => clearInterval(interval);
+        }
+        return;
     }, []);
 
     const isActive = (path: string) => pathname === path;

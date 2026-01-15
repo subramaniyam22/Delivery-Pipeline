@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { login } from '@/lib/auth';
-import { authAPI } from '@/lib/api';
+import { authAPI, healthAPI } from '@/lib/api';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -26,11 +28,11 @@ export default function LoginPage() {
       console.log('Login successful, token received:', token ? 'yes' : 'no');
       console.log('Token in localStorage:', localStorage.getItem('access_token') ? 'yes' : 'no');
       
-      // Small delay to ensure localStorage is written
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Use router for client-side navigation instead of full page reload
-      window.location.href = '/dashboard';
+      // Warm the backend in the background to reduce cold-start latency
+      healthAPI.ping().catch(() => {});
+
+      // Use client-side navigation instead of full page reload
+      router.push('/dashboard');
     } catch (err: any) {
       console.error('Login error:', err);
       let errorMessage = 'Login failed';

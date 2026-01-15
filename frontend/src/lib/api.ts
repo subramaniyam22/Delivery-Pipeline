@@ -70,6 +70,10 @@ export const authAPI = {
         api.post('/auth/reset-password', { token, new_password: newPassword }),
 };
 
+export const healthAPI = {
+    ping: () => api.get('/health'),
+};
+
 export const usersAPI = {
     me: () => api.get('/users/me'),
     list: () => api.get('/users'),
