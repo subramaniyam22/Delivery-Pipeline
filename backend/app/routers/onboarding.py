@@ -197,9 +197,10 @@ def generate_client_token() -> str:
 
 
 def schedule_next_reminder(db: Session, onboarding_data: OnboardingData):
-    """Schedule next auto-reminder in 24 hours"""
+    """Schedule next auto-reminder based on the configured interval"""
     if onboarding_data.auto_reminder_enabled and onboarding_data.completion_percentage < 100:
-        onboarding_data.next_reminder_at = datetime.utcnow() + timedelta(hours=24)
+        hours = onboarding_data.reminder_interval_hours or 24
+        onboarding_data.next_reminder_at = datetime.utcnow() + timedelta(hours=hours)
         db.commit()
 
 
@@ -800,8 +801,8 @@ def toggle_auto_reminder(
     current_user: User = Depends(get_current_active_user)
 ):
     """Enable/disable auto reminders with configurable interval"""
-    # Allow Admin, Manager, and Consultant (who manages onboarding)
-    if not check_full_access(current_user.role) and current_user.role != Role.CONSULTANT:
+    allowed_roles = [Role.ADMIN, Role.MANAGER, Role.CONSULTANT]
+    if current_user.role not in allowed_roles:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     
     onboarding = db.query(OnboardingData).filter(OnboardingData.project_id == project_id).first()
