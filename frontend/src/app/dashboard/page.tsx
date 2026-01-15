@@ -46,20 +46,38 @@ export default function DashboardPage() {
             return;
         }
         
-        loadProjects();
+        loadProjects(currentUser);
     }, [router]);
 
-    const loadProjects = async () => {
+    const loadProjects = async (currentUser: any) => {
         try {
             const response = await projectsAPI.list();
             const allProjects = response.data;
-            setProjects(allProjects);
+            let visibleProjects = allProjects;
+
+            if (currentUser?.role === 'CONSULTANT') {
+                visibleProjects = allProjects.filter(
+                    (p: any) => p.consultant_user_id === currentUser.id || p.consultant?.id === currentUser.id
+                );
+            } else if (!['ADMIN', 'MANAGER'].includes(currentUser?.role)) {
+                visibleProjects = allProjects.filter(
+                    (p: any) =>
+                        p.pc_user_id === currentUser.id ||
+                        p.builder_user_id === currentUser.id ||
+                        p.tester_user_id === currentUser.id ||
+                        p.pc?.id === currentUser.id ||
+                        p.builder?.id === currentUser.id ||
+                        p.tester?.id === currentUser.id
+                );
+            }
+
+            setProjects(visibleProjects);
 
             const stats = stageConfig.map((stage) => ({
                 stage: stage.label,
                 key: stage.key,
-                count: allProjects.filter((p: any) => p.current_stage === stage.key).length,
-                projects: allProjects.filter((p: any) => p.current_stage === stage.key),
+                count: visibleProjects.filter((p: any) => p.current_stage === stage.key).length,
+                projects: visibleProjects.filter((p: any) => p.current_stage === stage.key),
                 color: stage.color,
                 icon: stage.icon,
             }));
@@ -124,7 +142,7 @@ export default function DashboardPage() {
                 </header>
 
                 <section className="stages-section">
-                    <h2>Pipeline Stages</h2>
+                    <h2>Project Stages</h2>
                     <div className="stages-grid">
                         {stageStats.map((stage, index) => (
                             <button
