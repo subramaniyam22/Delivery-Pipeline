@@ -428,6 +428,8 @@ def update_onboarding_data(
     for field in simple_fields:
         if field in update_data:
             setattr(onboarding, field, update_data[field])
+    if 'selected_template_id' in update_data and update_data.get('selected_template_id'):
+        onboarding.theme_preference = update_data.get('selected_template_id')
     
     # Calculate completion percentage
     required_fields = resolve_required_fields(db, project)
@@ -577,6 +579,8 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
                 onboarding.contacts_json = data[field]
             else:
                 setattr(onboarding, field, data[field])
+            if field == 'selected_template_id' and data.get(field):
+                onboarding.theme_preference = data.get(field)
     
     # Calculate completion
     project = db.query(Project).filter(Project.id == onboarding.project_id).first()
