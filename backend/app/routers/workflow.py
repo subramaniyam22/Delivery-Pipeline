@@ -68,11 +68,11 @@ def send_back(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Send project back to previous stage (Admin/Manager only)"""
-    if not check_full_access(current_user.role):
+    """Send project back to previous stage (Admin/Manager/Consultant)"""
+    if current_user.role not in [Role.ADMIN, Role.MANAGER, Role.CONSULTANT]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin and Manager can send back projects"
+            detail="Only Admin, Manager, or Consultant can send back projects"
         )
     
     result = project_service.send_back(db, project_id, data.target_stage, data.reason, current_user)
