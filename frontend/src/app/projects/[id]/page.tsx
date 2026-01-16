@@ -4152,7 +4152,6 @@ export default function ProjectDetailPage() {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    position: relative;
                 }
                 .asset-thumb.is-empty {
                     background: var(--bg-secondary);
@@ -4166,11 +4165,9 @@ export default function ProjectDetailPage() {
                     display: block;
                 }
                 .asset-thumb img {
-                    max-width: 100%;
-                    max-height: 100%;
-                    width: auto;
-                    height: auto;
-                    object-fit: contain;
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
                 }
                 .asset-name {
                     font-size: 12px;
@@ -4208,45 +4205,57 @@ export default function ProjectDetailPage() {
                 }
                 .requirements-collapsible summary {
                     cursor: pointer;
-                    font-size: 13px;
-                    color: var(--text-secondary);
-                    margin-bottom: 8px;
-                }
-                .requirements-collapsible {
-                    background: var(--bg-secondary);
-                    border: 1px solid var(--border-light);
-                    border-radius: var(--radius-md);
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    margin-bottom: var(--space-sm);
                     padding: var(--space-sm);
                 }
+                .requirements-collapsible {
+                    background: var(--bg-card);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-md);
+                    padding: var(--space-md);
+                    margin-bottom: var(--space-md);
+                    box-shadow: var(--shadow-sm);
+                }
                 .requirements-collapsible summary::marker {
-                    color: var(--text-muted);
+                    color: var(--accent-primary);
                 }
                 .requirements-collapsible[open] summary {
-                    margin-bottom: 12px;
-                    color: var(--text-primary);
-                    font-weight: 600;
+                    margin-bottom: var(--space-md);
+                    padding-bottom: var(--space-sm);
+                    border-bottom: 1px solid var(--border-light);
                 }
                 .requirements-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-                    gap: 12px;
+                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                    gap: var(--space-md);
+                }
+                .requirements-grid .readonly-item {
+                    background: var(--bg-card);
+                    padding: var(--space-md);
+                    border-radius: var(--radius-md);
+                    border: 1px solid var(--border-light);
                 }
                 .requirements-grid label {
                     display: block;
-                    font-size: 12px;
-                    color: #64748b;
-                    margin-bottom: 4px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: var(--text-muted);
+                    margin-bottom: var(--space-xs);
                     text-transform: uppercase;
                     letter-spacing: 0.5px;
                 }
                 .requirements-grid span {
-                    font-size: 13px;
-                    color: #1e293b;
+                    font-size: 14px;
+                    color: var(--text-primary);
+                    font-weight: 500;
                 }
 
                 .readonly-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
                     gap: var(--space-md);
                 }
 
@@ -4254,10 +4263,11 @@ export default function ProjectDetailPage() {
                     display: flex;
                     flex-direction: column;
                     gap: var(--space-sm);
-                    background: var(--bg-tertiary);
+                    background: var(--bg-card);
                     border: 1px solid var(--border-light);
                     border-radius: var(--radius-md);
                     padding: var(--space-md);
+                    box-shadow: var(--shadow-sm);
                 }
 
                 .readonly-field.full-width {
@@ -4265,20 +4275,24 @@ export default function ProjectDetailPage() {
                 }
 
                 .readonly-field label {
-                    font-size: 0.8rem;
-                    color: #94a3b8;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: var(--text-muted);
                     text-transform: uppercase;
                     letter-spacing: 0.5px;
+                    margin-bottom: var(--space-xs);
                 }
 
                 .readonly-field span.filled {
-                    color: #1e293b;
+                    color: var(--text-primary);
                     font-weight: 500;
+                    font-size: 14px;
                 }
 
                 .readonly-field span.empty {
-                    color: #94a3b8;
+                    color: var(--text-muted);
                     font-style: italic;
+                    font-size: 14px;
                 }
 
                 /* Email Trigger Section */
