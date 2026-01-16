@@ -15,11 +15,8 @@ export default function Navigation() {
         setUser(currentUser);
 
         if (currentUser) {
+            // Single warm-up ping; avoid continuous background requests
             healthAPI.ping().catch(() => {});
-            const interval = setInterval(() => {
-                healthAPI.ping().catch(() => {});
-            }, 5 * 60 * 1000);
-            return () => clearInterval(interval);
         }
         return;
     }, []);

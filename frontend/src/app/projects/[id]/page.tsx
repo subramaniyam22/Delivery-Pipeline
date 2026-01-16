@@ -6011,6 +6011,10 @@ export default function ProjectDetailPage() {
                 .requirements-section {
                     margin-bottom: var(--space-xl);
                 }
+                .requirements-panel {
+                    margin-top: var(--space-lg);
+                    margin-bottom: var(--space-lg);
+                }
 
                 /* Executive Summary Section */
                 .executive-summary {
