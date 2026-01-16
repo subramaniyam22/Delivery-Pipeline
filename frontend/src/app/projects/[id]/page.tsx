@@ -590,32 +590,66 @@ export default function ProjectDetailPage() {
     };
 
     const getBackendBaseUrl = () => {
+        // 1. Priority: Environment variable
         if (process.env.NEXT_PUBLIC_API_URL) {
             return process.env.NEXT_PUBLIC_API_URL;
         }
-        if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
-            return 'https://delivery-backend-vvbf.onrender.com';
+
+        // 2. Browser detection
+        if (typeof window !== 'undefined') {
+            const hostname = window.location.hostname;
+
+            // Handle Render deployments
+            if (hostname.includes('onrender.com')) {
+                // First try to derive the backend from the frontend URL if it follows a pattern
+                // frontend: delivery-frontend-60cf.onrender.com
+                // backend: delivery-backend-vvbf.onrender.com (wait, the user has vvbf)
+
+                // If the user's console showed vvbf and it's 404ing, maybe they have another one?
+                // Actually, I'll keep vvbf as default but add a way to override it via hostname
+                if (hostname.includes('delivery-frontend-60cf')) {
+                    return 'https://delivery-backend-vvbf.onrender.com';
+                }
+
+                return 'https://delivery-backend-vvbf.onrender.com';
+            }
         }
+
         return 'http://localhost:8000';
     };
 
     const getAssetUrl = (path?: string | null) => {
         if (!path) return '';
         if (path.startsWith('http')) return path;
+
+        const baseUrl = getBackendBaseUrl();
         const normalized = path.replace(/\\/g, '/');
+
+        // Handle absolute paths from backend
         const index = normalized.indexOf('/uploads/');
         if (index >= 0) {
-            return `${getBackendBaseUrl()}${normalized.slice(index)}`;
+            return `${baseUrl}${normalized.slice(index)}`;
         }
-        if (normalized.startsWith('uploads/')) {
-            return `${getBackendBaseUrl()}/${normalized}`;
-        }
-        if (normalized.startsWith('./uploads/')) {
-            return `${getBackendBaseUrl()}${normalized.slice(1)}`;
-        }
-        return `${getBackendBaseUrl()}/${normalized}`;
-    };
 
+        // Handle relative paths
+        if (normalized.startsWith('uploads/')) {
+            return `${baseUrl}/${normalized}`;
+        }
+
+        if (normalized.startsWith('./uploads/')) {
+            return `${baseUrl}${normalized.slice(1)}`;
+        }
+
+        // Fallback: prepend uploads if it's just a filename or path without uploads
+        if (!normalized.includes('uploads')) {
+            // If it's a project path but missing /uploads prefix
+            if (normalized.includes('-')) { // likely has a UUID
+                return `${baseUrl}/uploads/${normalized}`;
+            }
+        }
+
+        return `${baseUrl}/${normalized}`;
+    };
     const getImageItems = () => {
         const images = onboardingData?.images_json || [];
         return images.map((img: any, index: number) => {
@@ -691,23 +725,22 @@ export default function ProjectDetailPage() {
         const requirements = onboardingData?.requirements_json || {};
         const hasRequirements = Object.keys(requirements).length > 0;
         const readonlyCardStyle: React.CSSProperties = {
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-light)',
-            borderRadius: 'var(--radius-lg)',
             padding: 'var(--space-lg)',
-            boxShadow: 'var(--shadow-sm)',
-            marginTop: 'var(--space-lg)',
+            background: 'var(--bg-secondary)',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid var(--border-light)',
             marginBottom: 'var(--space-lg)',
         };
         const fieldStyle: React.CSSProperties = {
-            background: 'var(--bg-tertiary)',
+            background: 'var(--bg-card)',
             border: '1px solid var(--border-light)',
             borderRadius: 'var(--radius-md)',
             padding: 'var(--space-md)',
+            boxShadow: 'var(--shadow-sm)',
         };
         const assetGridStyle: React.CSSProperties = {
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
             gap: 'var(--space-md)',
         };
         const assetCardStyle: React.CSSProperties = {
@@ -718,7 +751,8 @@ export default function ProjectDetailPage() {
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
-            minHeight: '200px',
+            minHeight: '220px',
+            boxShadow: 'var(--shadow-sm)',
         };
 
         return (
@@ -3598,6 +3632,71 @@ export default function ProjectDetailPage() {
                     grid-template-columns: repeat(2, 1fr);
                     gap: var(--space-md);
                 }
+
+                /* Readonly Styles Global Scope */
+                :global(.readonly-group) {
+                    margin-bottom: var(--space-lg);
+                }
+                :global(.readonly-group h4) {
+                    font-size: 14px;
+                    color: var(--text-primary);
+                    margin-bottom: var(--space-md);
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-sm);
+                }
+                :global(.readonly-grid) {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: var(--space-md);
+                }
+                :global(.readonly-field) {
+                    background: var(--bg-card) !important;
+                    border: 1px solid var(--border-light) !important;
+                    border-radius: var(--radius-md) !important;
+                    padding: var(--space-md) !important;
+                    box-shadow: var(--shadow-sm) !important;
+                }
+                :global(.readonly-field label) {
+                    display: block;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: var(--text-muted);
+                    margin-bottom: 4px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                }
+                :global(.readonly-field span) {
+                    color: var(--text-primary);
+                    font-size: 14px;
+                    word-break: break-all;
+                }
+                :global(.requirements-grid) {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                    gap: var(--space-md);
+                    margin-top: var(--space-md);
+                }
+                :global(.requirements-grid .readonly-item) {
+                    background: var(--bg-card);
+                    padding: var(--space-md);
+                    border-radius: var(--radius-md);
+                    border: 1px solid var(--border-light);
+                    box-shadow: var(--shadow-sm);
+                    transition: all var(--transition-normal);
+                }
+                :global(.requirements-grid .readonly-item:hover) {
+                    box-shadow: var(--shadow-md);
+                    transform: translateY(-2px);
+                }
+                :global(.asset-card) {
+                    background: var(--bg-card);
+                    border-radius: var(--radius-md);
+                    border: 1px solid var(--border-light);
+                    padding: var(--space-md);
+                    box-shadow: var(--shadow-sm);
+                }
+
 
                 .form-group {
                     margin-bottom: var(--space-md);
