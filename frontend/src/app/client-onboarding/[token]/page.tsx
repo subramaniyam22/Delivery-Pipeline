@@ -159,12 +159,14 @@ export default function ClientOnboardingPage() {
         if (path.startsWith('http')) return path;
 
         const baseUrl = getBackendBaseUrl();
-        const cleanPath = path.startsWith('/') ? path : `/${path}`;
+        // Remove leading ./ or / if present to normalize
+        let cleanPath = path.replace(/^\.?\//, '');
 
-        if (cleanPath.startsWith('/uploads')) {
-            return `${baseUrl}${cleanPath}`;
+        // If the path already has 'uploads/' at the start, don't duplicate it
+        if (cleanPath.startsWith('uploads/')) {
+            return `${baseUrl}/${cleanPath}`;
         }
-        return `${baseUrl}/uploads${cleanPath}`;
+        return `${baseUrl}/uploads/${cleanPath}`;
     };
 
     const handleDeleteImage = async (index: number) => {

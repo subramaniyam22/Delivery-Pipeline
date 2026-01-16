@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_HOURS: int = 6
     
-    # Upload - Use relative path for cloud deployments
-    UPLOAD_DIR: str = "./uploads"
+    # Upload - Use absolute path derived from project root
+    UPLOAD_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     
     # S3 Storage (optional)
