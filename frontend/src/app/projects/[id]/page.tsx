@@ -302,7 +302,7 @@ export default function ProjectDetailPage() {
     const [newTask, setNewTask] = useState({ title: '', description: '', stage: 'ONBOARDING', is_required: true });
     const [reminderData, setReminderData] = useState({ recipient_email: '', recipient_name: '', message: '' });
     const [newCustomField, setNewCustomField] = useState({ field_name: '', field_value: '', field_type: 'text' });
-    
+
     // Email trigger and reminder state
     const [selectedEmailContacts, setSelectedEmailContacts] = useState<number[]>([]);
     const [reminderInterval, setReminderInterval] = useState<number>(24);
@@ -319,7 +319,7 @@ export default function ProjectDetailPage() {
     const [phaseSummaries, setPhaseSummaries] = useState<PhaseSummary[]>([]);
     const [healthSummary, setHealthSummary] = useState<ProjectHealthSummary | null>(null);
     const [showUpdateNotice, setShowUpdateNotice] = useState(false);
-    
+
     // Test Phase UI State
     const [activeTestTab, setActiveTestTab] = useState<'scenarios' | 'executions' | 'defects'>('scenarios');
     const [selectedScenario, setSelectedScenario] = useState<TestScenario | null>(null);
@@ -327,14 +327,14 @@ export default function ProjectDetailPage() {
     const [selectedDefect, setSelectedDefect] = useState<Defect | null>(null);
     const [defectStatusFilter, setDefectStatusFilter] = useState<string>('');
     const [testLoading, setTestLoading] = useState(false);
-    
+
     // Test Phase Modals
     const [showCreateScenarioModal, setShowCreateScenarioModal] = useState(false);
     const [showCreateTestCaseModal, setShowCreateTestCaseModal] = useState(false);
     const [showRunExecutionModal, setShowRunExecutionModal] = useState(false);
     const [showReassignDefectModal, setShowReassignDefectModal] = useState(false);
     const [showFixDefectModal, setShowFixDefectModal] = useState(false);
-    
+
     // Test Phase Forms
     const [newScenario, setNewScenario] = useState({ name: '', description: '' });
     const [newTestCase, setNewTestCase] = useState({ title: '', description: '', steps: '', expected_result: '' });
@@ -358,7 +358,7 @@ export default function ProjectDetailPage() {
         tester_user_id: ''
     });
     const [assigningTeam, setAssigningTeam] = useState(false);
-    
+
     // Capacity State
     const [capacityByRole, setCapacityByRole] = useState<Record<string, UserCapacity[]>>({});
     const [aiSuggestions, setAiSuggestions] = useState<Record<string, SuggestionsResponse>>({});
@@ -373,7 +373,7 @@ export default function ProjectDetailPage() {
     // Role and assignment checks
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const isExecutiveAdmin = user?.role === 'ADMIN';
-    
+
     // Check if current user is assigned to this project (check both teamAssignments and project direct fields)
     const isAssignedToProject = user && project && (
         teamAssignments?.consultant?.id === user.id ||
@@ -386,11 +386,11 @@ export default function ProjectDetailPage() {
         (project as any).builder_user_id === user.id ||
         (project as any).tester_user_id === user.id
     );
-    
+
     // Check if user owns/manages this project
     const isProjectOwner = user?.role === 'CONSULTANT' && isAssignedToProject;
     const isProjectManager = user?.role === 'MANAGER';
-    
+
     // View mode: Full edit, read-only details, or executive summary
     const hasFullEditAccess = isProjectOwner || (user?.role === 'PC' && isAssignedToProject);
     const hasDetailedViewAccess = isProjectManager || hasFullEditAccess || (user?.role === 'BUILDER' && isAssignedToProject) || (user?.role === 'TESTER' && isAssignedToProject);
@@ -444,7 +444,7 @@ export default function ProjectDetailPage() {
 
             // Load tasks for current stage
             await loadTasks(projectRes.data.current_stage);
-            
+
             // Load team assignments (don't block if it fails)
             loadTeamData().catch(err => console.error('Team data load error:', err));
         } catch (error) {
@@ -465,7 +465,7 @@ export default function ProjectDetailPage() {
                 testingAPI.getDefectSummary(projectId),
                 testingAPI.getAvailableBuilders(projectId),
             ]);
-            
+
             setTestScenarios(scenariosRes.data || []);
             setTestExecutions(executionsRes.data || []);
             setDefects(defectsRes.data || []);
@@ -512,7 +512,7 @@ export default function ProjectDetailPage() {
                 setTeamPermissions(teamData?.permissions || {});
                 setAssignmentSequence(teamData?.assignment_sequence || {});
             }
-            
+
             // Load available users by role with capacity info
             const [pcsRes, consultantsRes, buildersRes, testersRes] = await Promise.all([
                 capacityAPI.getAvailableUsers('PC').catch(e => {
@@ -532,7 +532,7 @@ export default function ProjectDetailPage() {
                     return { data: [] };
                 }),
             ]);
-            
+
             // Store capacity data by role
             setCapacityByRole({
                 PC: pcsRes.data || [],
@@ -540,13 +540,13 @@ export default function ProjectDetailPage() {
                 BUILDER: buildersRes.data || [],
                 TESTER: testersRes.data || []
             });
-            
+
             // Also set basic available users for backwards compatibility
             setAvailablePCs((pcsRes.data || []).map((u: UserCapacity) => ({ id: u.user_id, name: u.user_name, email: '', region: u.region })));
             setAvailableConsultants((consultantsRes.data || []).map((u: UserCapacity) => ({ id: u.user_id, name: u.user_name, email: '', region: u.region })));
             setAvailableBuilders2((buildersRes.data || []).map((u: UserCapacity) => ({ id: u.user_id, name: u.user_name, email: '', region: u.region })));
             setAvailableTesters((testersRes.data || []).map((u: UserCapacity) => ({ id: u.user_id, name: u.user_name, email: '', region: u.region })));
-            
+
             // Pre-fill form with current assignments
             setTeamFormData({
                 pc_user_id: teamData?.team?.pc?.id || teamData?.pc?.id || '',
@@ -554,7 +554,7 @@ export default function ProjectDetailPage() {
                 builder_user_id: teamData?.team?.builder?.id || teamData?.builder?.id || '',
                 tester_user_id: teamData?.team?.tester?.id || teamData?.tester?.id || ''
             });
-            
+
             // Load project workload estimate
             const workloadRes = await capacityAPI.getProjectWorkload(projectId).catch(e => {
                 console.error('Error loading workload:', e);
@@ -565,7 +565,7 @@ export default function ProjectDetailPage() {
             console.error('Failed to load team data:', err);
         }
     };
-    
+
     const loadAiSuggestions = async (role: string) => {
         setLoadingSuggestions(true);
         setSelectedRoleForSuggestion(role);
@@ -578,7 +578,7 @@ export default function ProjectDetailPage() {
             setLoadingSuggestions(false);
         }
     };
-    
+
     const getCapacityStatusColor = (status: string) => {
         switch (status) {
             case 'LOW': return 'var(--color-success)';
@@ -708,17 +708,17 @@ export default function ProjectDetailPage() {
         const assetGridStyle: React.CSSProperties = {
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-            gap: '12px',
+            gap: 'var(--space-md)',
         };
         const assetCardStyle: React.CSSProperties = {
             background: 'var(--bg-card)',
             border: '1px solid var(--border-light)',
             borderRadius: 'var(--radius-md)',
-            padding: '10px',
+            padding: 'var(--space-md)',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
-            minHeight: '160px',
+            minHeight: '200px',
         };
 
         return (
@@ -726,7 +726,7 @@ export default function ProjectDetailPage() {
                 <div className="section-badge">
                     <span className="badge-readonly">👁️ Read-only (Client fills via form)</span>
                 </div>
-                
+
                 {/* Assets - Read Only */}
                 <div className="readonly-group">
                     <h4>🖼️ Website Assets</h4>
@@ -735,30 +735,30 @@ export default function ProjectDetailPage() {
                             <label>Company Logo</label>
                             {(onboardingData?.logo_url || onboardingData?.logo_file_path) ? (
                                 <div className="asset-card" style={assetCardStyle}>
-                                        <div className="asset-thumb">
+                                    <div className="asset-thumb">
                                         <img
                                             src={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
                                             alt="Company logo"
                                             onError={(e) => {
-                                                    const parent = e.currentTarget.parentElement;
-                                                    if (parent) parent.classList.add('is-empty');
-                                                    e.currentTarget.style.display = 'none';
+                                                const parent = e.currentTarget.parentElement;
+                                                if (parent) parent.classList.add('is-empty');
+                                                e.currentTarget.style.display = 'none';
                                             }}
-                                                onLoad={(e) => {
-                                                    const parent = e.currentTarget.parentElement;
-                                                    if (parent) parent.classList.remove('is-empty');
-                                                }}
+                                            onLoad={(e) => {
+                                                const parent = e.currentTarget.parentElement;
+                                                if (parent) parent.classList.remove('is-empty');
+                                            }}
                                         />
-                                            <span className="asset-fallback">No preview</span>
+                                        <span className="asset-fallback">No preview</span>
                                     </div>
                                     <span className="asset-name">Company Logo</span>
-                                            <a
-                                                className="asset-download"
-                                                href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
-                                                download
-                                            >
-                                                Download
-                                            </a>
+                                    <a
+                                        className="asset-download"
+                                        href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
+                                        download
+                                    >
+                                        Download
+                                    </a>
                                 </div>
                             ) : (
                                 <span className="empty">Not provided</span>
@@ -799,7 +799,7 @@ export default function ProjectDetailPage() {
                         </div>
                     </div>
                 </div>
-                
+
                 {/* Copy Text - Read Only */}
                 <div className="readonly-group">
                     <h4>📝 Copy Text</h4>
@@ -809,31 +809,31 @@ export default function ProjectDetailPage() {
                         </span>
                     </div>
                 </div>
-                
+
                 {/* WCAG - Read Only */}
                 <div className="readonly-group">
                     <h4>♿ Accessibility (WCAG)</h4>
                     <div className="readonly-field" style={fieldStyle}>
                         <span className={onboardingData?.wcag_compliance_required ? 'filled' : 'empty'}>
-                            {onboardingData?.wcag_compliance_required 
-                                ? `Required - Level ${onboardingData?.wcag_level || 'AA'}` 
+                            {onboardingData?.wcag_compliance_required
+                                ? `Required - Level ${onboardingData?.wcag_level || 'AA'}`
                                 : 'Not required'}
                         </span>
                     </div>
                 </div>
-                
+
                 {/* Privacy Policy - Read Only */}
                 <div className="readonly-group">
                     <h4>🔒 Privacy Policy</h4>
                     <div className="readonly-field full-width" style={fieldStyle}>
                         <span className={onboardingData?.privacy_policy_url || onboardingData?.privacy_policy_text ? 'filled' : 'empty'}>
-                            {onboardingData?.privacy_policy_url 
-                                ? `URL: ${onboardingData?.privacy_policy_url}` 
+                            {onboardingData?.privacy_policy_url
+                                ? `URL: ${onboardingData?.privacy_policy_url}`
                                 : (onboardingData?.privacy_policy_text ? 'Text provided' : 'Not provided')}
                         </span>
                     </div>
                 </div>
-                
+
                 {/* Theme - Read Only */}
                 <div className="readonly-group">
                     <h4>🎨 Theme Preferences</h4>
@@ -854,17 +854,17 @@ export default function ProjectDetailPage() {
 
                 <div className="readonly-group">
                     <h4>🧾 Project Requirements Checklist</h4>
-                                    <details className="requirements-collapsible">
-                                        <summary>View checklist</summary>
-                                        <div className="checklist-grid">
-                                            {getRequirementsChecklistItems().map((item) => (
-                                                <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
-                                                    <span>{item.label}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </details>
+                    <details className="requirements-collapsible">
+                        <summary>View checklist</summary>
+                        <div className="checklist-grid">
+                            {getRequirementsChecklistItems().map((item) => (
+                                <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
+                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
+                                    <span>{item.label}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </details>
                 </div>
 
                 {hasRequirements && (
@@ -904,12 +904,12 @@ export default function ProjectDetailPage() {
             </div>
         );
     };
-    
+
     const handleAcceptSuggestion = async (suggestion: AISuggestion, role: string) => {
         // Update the form with the suggested user
         const roleKey = role.toLowerCase() + '_user_id';
         setTeamFormData(prev => ({ ...prev, [roleKey]: suggestion.user_id }));
-        
+
         // Record feedback
         try {
             await capacityAPI.recordFeedback(suggestion.id, {
@@ -1155,7 +1155,7 @@ export default function ProjectDetailPage() {
     // Test Phase Handlers
     const handleCreateScenario = async () => {
         if (!newScenario.name.trim()) return;
-        
+
         try {
             await testingAPI.createScenario(projectId, newScenario);
             setSuccess('Test scenario created successfully');
@@ -1182,7 +1182,7 @@ export default function ProjectDetailPage() {
 
     const handleCreateTestCase = async () => {
         if (!selectedScenario || !newTestCase.title.trim()) return;
-        
+
         try {
             await testingAPI.createTestCase(selectedScenario.id, newTestCase);
             setSuccess('Test case created successfully');
@@ -1196,7 +1196,7 @@ export default function ProjectDetailPage() {
 
     const handleRunExecution = async () => {
         if (!executionName.trim()) return;
-        
+
         try {
             setTestLoading(true);
             await testingAPI.runExecution(projectId, executionName);
@@ -1218,7 +1218,7 @@ export default function ProjectDetailPage() {
 
     const handleReassignDefect = async () => {
         if (!selectedDefect || !reassignData.new_assignee_id) return;
-        
+
         try {
             await testingAPI.reassignDefect(selectedDefect.id, reassignData);
             setSuccess('Defect reassigned successfully');
@@ -1233,7 +1233,7 @@ export default function ProjectDetailPage() {
 
     const handleMarkDefectFixed = async () => {
         if (!selectedDefect || !fixDescription.trim()) return;
-        
+
         try {
             await testingAPI.markDefectFixed(selectedDefect.id, { fix_description: fixDescription });
             setSuccess('Defect marked as fixed');
@@ -1294,14 +1294,14 @@ export default function ProjectDetailPage() {
     const handleAssignTeam = async () => {
         setAssigningTeam(true);
         setError('');
-        
+
         try {
             const assignmentData: any = {};
             if (teamFormData.pc_user_id) assignmentData.pc_user_id = teamFormData.pc_user_id;
             if (teamFormData.consultant_user_id) assignmentData.consultant_user_id = teamFormData.consultant_user_id;
             if (teamFormData.builder_user_id) assignmentData.builder_user_id = teamFormData.builder_user_id;
             if (teamFormData.tester_user_id) assignmentData.tester_user_id = teamFormData.tester_user_id;
-            
+
             await projectsAPI.assignTeam(projectId, assignmentData);
             setSuccess('Team assigned successfully');
             setShowTeamModal(false);
@@ -1316,7 +1316,7 @@ export default function ProjectDetailPage() {
 
     // Team visibility: Only Admin, Manager, and PC can see team assignments
     const canViewTeam = user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'PC';
-    
+
     // Assignment permissions based on role
     const canAssignConsultant = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const canAssignPC = user?.role === 'ADMIN' || user?.role === 'MANAGER';
@@ -1363,7 +1363,7 @@ export default function ProjectDetailPage() {
                 {/* Project Header */}
                 <header className="project-header">
                     <div className="header-info">
-            <h1>{project.title}</h1>
+                        <h1>{project.title}</h1>
                         <div className="project-meta">
                             <span><strong>Client:</strong> {project.client_name}</span>
                             <span className={`priority priority-${project.priority.toLowerCase()}`}>
@@ -1550,75 +1550,75 @@ export default function ProjectDetailPage() {
 
                 {/* Team Assignment Section - Only visible to Admin, Manager, and PC */}
                 {canViewTeam && (
-                <div className="team-section">
-                    <div className="section-header">
-                        <h2>👥 Team Assignment</h2>
-                        {canAssignTeam && (
-                            <button className="btn-add" onClick={() => setShowTeamModal(true)}>
-                                ✏️ Manage Team
-                            </button>
-                        )}
-                        {user?.role === 'MANAGER' && user?.region && (
-                            <span className="region-badge">Region: {user.region}</span>
+                    <div className="team-section">
+                        <div className="section-header">
+                            <h2>👥 Team Assignment</h2>
+                            {canAssignTeam && (
+                                <button className="btn-add" onClick={() => setShowTeamModal(true)}>
+                                    ✏️ Manage Team
+                                </button>
+                            )}
+                            {user?.role === 'MANAGER' && user?.region && (
+                                <span className="region-badge">Region: {user.region}</span>
+                            )}
+                        </div>
+                        <div className="team-grid">
+                            <div className={`team-card ${teamAssignments.consultant ? 'assigned' : 'unassigned'}`}>
+                                <div className="team-role-icon">💼</div>
+                                <div className="team-role-label">Consultant</div>
+                                {teamAssignments.consultant ? (
+                                    <div className="team-member-info">
+                                        <span className="member-name">{teamAssignments.consultant.name}</span>
+                                        <span className="member-email">{teamAssignments.consultant.email}</span>
+                                    </div>
+                                ) : (
+                                    <div className="unassigned-label">Not assigned</div>
+                                )}
+                            </div>
+                            <div className={`team-card ${teamAssignments.pc ? 'assigned' : 'unassigned'}`}>
+                                <div className="team-role-icon">🎯</div>
+                                <div className="team-role-label">Project Coordinator (PC)</div>
+                                {teamAssignments.pc ? (
+                                    <div className="team-member-info">
+                                        <span className="member-name">{teamAssignments.pc.name}</span>
+                                        <span className="member-email">{teamAssignments.pc.email}</span>
+                                    </div>
+                                ) : (
+                                    <div className="unassigned-label">Not assigned</div>
+                                )}
+                            </div>
+                            <div className={`team-card ${teamAssignments.builder ? 'assigned' : 'unassigned'}`}>
+                                <div className="team-role-icon">🔨</div>
+                                <div className="team-role-label">Builder</div>
+                                {teamAssignments.builder ? (
+                                    <div className="team-member-info">
+                                        <span className="member-name">{teamAssignments.builder.name}</span>
+                                        <span className="member-email">{teamAssignments.builder.email}</span>
+                                    </div>
+                                ) : (
+                                    <div className="unassigned-label">Not assigned</div>
+                                )}
+                            </div>
+                            <div className={`team-card ${teamAssignments.tester ? 'assigned' : 'unassigned'}`}>
+                                <div className="team-role-icon">🧪</div>
+                                <div className="team-role-label">Tester</div>
+                                {teamAssignments.tester ? (
+                                    <div className="team-member-info">
+                                        <span className="member-name">{teamAssignments.tester.name}</span>
+                                        <span className="member-email">{teamAssignments.tester.email}</span>
+                                    </div>
+                                ) : (
+                                    <div className="unassigned-label">Not assigned</div>
+                                )}
+                            </div>
+                        </div>
+                        {!teamAssignments.pc && !teamAssignments.consultant && !teamAssignments.builder && !teamAssignments.tester && (
+                            <div className="team-empty-message">
+                                <p>No team members assigned yet.</p>
+                                {canAssignTeam && <p>Click "Manage Team" to assign team members to this project.</p>}
+                            </div>
                         )}
                     </div>
-                    <div className="team-grid">
-                        <div className={`team-card ${teamAssignments.consultant ? 'assigned' : 'unassigned'}`}>
-                            <div className="team-role-icon">💼</div>
-                            <div className="team-role-label">Consultant</div>
-                            {teamAssignments.consultant ? (
-                                <div className="team-member-info">
-                                    <span className="member-name">{teamAssignments.consultant.name}</span>
-                                    <span className="member-email">{teamAssignments.consultant.email}</span>
-                                </div>
-                            ) : (
-                                <div className="unassigned-label">Not assigned</div>
-                            )}
-                        </div>
-                        <div className={`team-card ${teamAssignments.pc ? 'assigned' : 'unassigned'}`}>
-                            <div className="team-role-icon">🎯</div>
-                            <div className="team-role-label">Project Coordinator (PC)</div>
-                            {teamAssignments.pc ? (
-                                <div className="team-member-info">
-                                    <span className="member-name">{teamAssignments.pc.name}</span>
-                                    <span className="member-email">{teamAssignments.pc.email}</span>
-                                </div>
-                            ) : (
-                                <div className="unassigned-label">Not assigned</div>
-                            )}
-                        </div>
-                        <div className={`team-card ${teamAssignments.builder ? 'assigned' : 'unassigned'}`}>
-                            <div className="team-role-icon">🔨</div>
-                            <div className="team-role-label">Builder</div>
-                            {teamAssignments.builder ? (
-                                <div className="team-member-info">
-                                    <span className="member-name">{teamAssignments.builder.name}</span>
-                                    <span className="member-email">{teamAssignments.builder.email}</span>
-                                </div>
-                            ) : (
-                                <div className="unassigned-label">Not assigned</div>
-                            )}
-                        </div>
-                        <div className={`team-card ${teamAssignments.tester ? 'assigned' : 'unassigned'}`}>
-                            <div className="team-role-icon">🧪</div>
-                            <div className="team-role-label">Tester</div>
-                            {teamAssignments.tester ? (
-                                <div className="team-member-info">
-                                    <span className="member-name">{teamAssignments.tester.name}</span>
-                                    <span className="member-email">{teamAssignments.tester.email}</span>
-                                </div>
-                            ) : (
-                                <div className="unassigned-label">Not assigned</div>
-                            )}
-                        </div>
-                    </div>
-                    {!teamAssignments.pc && !teamAssignments.consultant && !teamAssignments.builder && !teamAssignments.tester && (
-                        <div className="team-empty-message">
-                            <p>No team members assigned yet.</p>
-                            {canAssignTeam && <p>Click "Manage Team" to assign team members to this project.</p>}
-                        </div>
-                    )}
-                </div>
                 )}
 
                 {/* Onboarding Section - Role-based views */}
@@ -1646,7 +1646,7 @@ export default function ProjectDetailPage() {
                                             <p>{completionStatus?.completed_tasks || 0} of {completionStatus?.total_required_tasks || 0} items complete</p>
                                         </div>
                                     </div>
-                                    
+
                                     <div className="checklist-summary">
                                         <h4>📋 Requirements Checklist</h4>
                                         <div className="checklist-grid">
@@ -1692,7 +1692,7 @@ export default function ProjectDetailPage() {
                                             ))}
                                         </div>
                                     </div>
-                                    
+
                                     {completionStatus && completionStatus.missing_fields.length > 0 && (
                                         <div className="pending-items-summary">
                                             <h4>⏳ Pending Items ({completionStatus.missing_fields.length})</h4>
@@ -1730,7 +1730,7 @@ export default function ProjectDetailPage() {
                                         )}
                                     </div>
                                 </div>
-                                
+
                                 {/* Assets - Read Only */}
                                 <div className="form-card readonly">
                                     <h3>🖼️ Website Assets</h3>
@@ -1745,7 +1745,7 @@ export default function ProjectDetailPage() {
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 {/* Copy Text - Read Only */}
                                 <div className="form-card readonly">
                                     <h3>📝 Copy Text</h3>
@@ -1753,7 +1753,7 @@ export default function ProjectDetailPage() {
                                         <span>{getCopySummary()}</span>
                                     </div>
                                 </div>
-                                
+
                                 {/* WCAG - Read Only */}
                                 <div className="form-card readonly">
                                     <h3>♿ Accessibility</h3>
@@ -1761,7 +1761,7 @@ export default function ProjectDetailPage() {
                                         <span>{onboardingData.wcag_compliance_required ? `WCAG ${onboardingData.wcag_level} Required` : 'Not required'}</span>
                                     </div>
                                 </div>
-                                
+
                                 {/* Privacy Policy - Read Only */}
                                 <div className="form-card readonly">
                                     <h3>🔒 Privacy Policy</h3>
@@ -1769,7 +1769,7 @@ export default function ProjectDetailPage() {
                                         <span>{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'Provided' : 'Not provided'}</span>
                                     </div>
                                 </div>
-                                
+
                                 {/* Theme - Read Only */}
                                 <div className="form-card readonly">
                                     <h3>🎨 Theme Preferences</h3>
@@ -1792,7 +1792,7 @@ export default function ProjectDetailPage() {
                                         </div>
                                     </details>
                                 </div>
-                                
+
                                 {/* Missing Fields */}
                                 {completionStatus && completionStatus.missing_fields.length > 0 && (
                                     <div className="missing-fields-alert">
@@ -1810,242 +1810,242 @@ export default function ProjectDetailPage() {
                         {/* CONSULTANT VIEW - Editable Contacts + Read-only Details (Only for Assigned Consultant) */}
                         {user?.role === 'CONSULTANT' && isAssignedToProject && (
                             <>
-                        {/* Client Contacts - EDITABLE */}
-                        <div className="form-card editable-section">
-                            <div className="card-header">
-                                <h3>👥 Client Contacts</h3>
-                                <button className="btn-add" onClick={() => setShowContactModal(true)}>+ Add Contact</button>
-                            </div>
-                            <div className="contacts-list">
-                                {onboardingData.contacts_json?.length === 0 ? (
-                                    <p className="empty-message">No contacts added yet. Add contacts to send onboarding form.</p>
-                                ) : (
-                                    onboardingData.contacts_json?.map((contact, index) => (
-                                        <div key={index} className="contact-item">
-                                            <div className="contact-info">
-                                                <span className="contact-name">{contact.name}</span>
-                                                <span className="contact-email">{contact.email}</span>
-                                                {contact.role && <span className="contact-role">{contact.role}</span>}
-                                                {contact.is_primary && <span className="badge-primary">Primary</span>}
-                                            </div>
-                                            <button className="btn-remove" onClick={() => removeContact(index)}>×</button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
+                                {/* Client Contacts - EDITABLE */}
+                                <div className="form-card editable-section">
+                                    <div className="card-header">
+                                        <h3>👥 Client Contacts</h3>
+                                        <button className="btn-add" onClick={() => setShowContactModal(true)}>+ Add Contact</button>
+                                    </div>
+                                    <div className="contacts-list">
+                                        {onboardingData.contacts_json?.length === 0 ? (
+                                            <p className="empty-message">No contacts added yet. Add contacts to send onboarding form.</p>
+                                        ) : (
+                                            onboardingData.contacts_json?.map((contact, index) => (
+                                                <div key={index} className="contact-item">
+                                                    <div className="contact-info">
+                                                        <span className="contact-name">{contact.name}</span>
+                                                        <span className="contact-email">{contact.email}</span>
+                                                        {contact.role && <span className="contact-role">{contact.role}</span>}
+                                                        {contact.is_primary && <span className="badge-primary">Primary</span>}
+                                                    </div>
+                                                    <button className="btn-remove" onClick={() => removeContact(index)}>×</button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
 
-                        {(onboardingData.submitted_at || (onboardingData.missing_fields_eta_json && Object.keys(onboardingData.missing_fields_eta_json).length > 0)) && (
-                            <div className="form-card highlight-section">
-                                <h3>📬 Client Submission</h3>
-                                {onboardingData.submitted_at && (
-                                    <div className="readonly-item">
-                                        <span>Submitted at: {new Date(onboardingData.submitted_at).toLocaleString()}</span>
+                                {(onboardingData.submitted_at || (onboardingData.missing_fields_eta_json && Object.keys(onboardingData.missing_fields_eta_json).length > 0)) && (
+                                    <div className="form-card highlight-section">
+                                        <h3>📬 Client Submission</h3>
+                                        {onboardingData.submitted_at && (
+                                            <div className="readonly-item">
+                                                <span>Submitted at: {new Date(onboardingData.submitted_at).toLocaleString()}</span>
+                                            </div>
+                                        )}
+                                        {onboardingData.missing_fields_eta_json && Object.keys(onboardingData.missing_fields_eta_json).length > 0 && (
+                                            <div className="readonly-item">
+                                                <p className="section-desc">Client provided ETA for missing items:</p>
+                                                <ul className="eta-list">
+                                                    {Object.entries(onboardingData.missing_fields_eta_json).map(([field, eta]) => (
+                                                        <li key={field}>{field}: {eta}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
-                                {onboardingData.missing_fields_eta_json && Object.keys(onboardingData.missing_fields_eta_json).length > 0 && (
-                                    <div className="readonly-item">
-                                        <p className="section-desc">Client provided ETA for missing items:</p>
-                                        <ul className="eta-list">
-                                            {Object.entries(onboardingData.missing_fields_eta_json).map(([field, eta]) => (
-                                                <li key={field}>{field}: {eta}</li>
+
+                                {/* Client Onboarding Form Section */}
+                                {completionStatus?.client_form_url && (
+                                    <div className="form-card highlight-section">
+                                        <h3>📤 Client Onboarding Form</h3>
+                                        <p className="section-desc">Share this link with clients to collect required information</p>
+
+                                        <div className="form-link-box">
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                value={`${typeof window !== 'undefined' ? window.location.origin : ''}${completionStatus.client_form_url}`}
+                                                onClick={(e) => (e.target as HTMLInputElement).select()}
+                                            />
+                                            <button
+                                                className="btn-copy"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
+                                                    setSuccess('Link copied to clipboard!');
+                                                    setTimeout(() => setSuccess(''), 3000);
+                                                }}
+                                            >
+                                                📋 Copy
+                                            </button>
+                                        </div>
+
+                                        {/* Send Email to Contacts */}
+                                        {onboardingData.contacts_json && onboardingData.contacts_json.length > 0 && (
+                                            <div className="email-trigger-section">
+                                                <h4>📧 Send form to contacts</h4>
+                                                <p>Select contacts to receive the onboarding form link:</p>
+                                                <div className="contact-checkboxes">
+                                                    {onboardingData.contacts_json.map((contact, index) => (
+                                                        <label key={index} className="contact-checkbox">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selectedEmailContacts.includes(index)}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) {
+                                                                        setSelectedEmailContacts([...selectedEmailContacts, index]);
+                                                                    } else {
+                                                                        setSelectedEmailContacts(selectedEmailContacts.filter(i => i !== index));
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <span className="contact-label">
+                                                                {contact.name} ({contact.email}){contact.role ? ` - ${contact.role}` : ''}
+                                                            </span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                <label className="send-label">
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={selectedEmailContacts.length === 0 || sendingEmail}
+                                                        onChange={async (e) => {
+                                                            if (!e.target.checked) return;
+                                                            setSendingEmail(true);
+                                                            try {
+                                                                const selectedContacts = selectedEmailContacts.map(i => onboardingData.contacts_json![i]);
+                                                                for (const contact of selectedContacts) {
+                                                                    await onboardingAPI.sendReminder(projectId, {
+                                                                        recipient_email: contact.email,
+                                                                        recipient_name: contact.name,
+                                                                        message: `Please complete the onboarding form for ${project.title}`
+                                                                    });
+                                                                }
+                                                                setSuccess(`Onboarding form sent to ${selectedContacts.length} contact(s)!`);
+                                                                setSelectedEmailContacts([]);
+                                                            } catch (err) {
+                                                                setError('Failed to send email');
+                                                            } finally {
+                                                                setSendingEmail(false);
+                                                                e.currentTarget.checked = false;
+                                                            }
+                                                        }}
+                                                    />
+                                                    <span>{sendingEmail ? 'Sending...' : `Send to ${selectedEmailContacts.length} contact(s)`}</span>
+                                                </label>
+                                            </div>
+                                        )}
+
+                                        {/* Auto Reminder Settings */}
+                                        <div className="auto-reminder-section">
+                                            <h4>🔔 Auto Reminder Settings</h4>
+                                            <div className="reminder-options">
+                                                <label className="reminder-toggle">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={onboardingData?.auto_reminder_enabled ?? false}
+                                                        onChange={async (e) => {
+                                                            try {
+                                                                await onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval);
+                                                                await loadOnboardingData();
+                                                                setSuccess(`Auto-reminders ${e.target.checked ? 'enabled' : 'disabled'}`);
+                                                            } catch (err) {
+                                                                setError('Failed to update reminder settings');
+                                                            }
+                                                        }}
+                                                    />
+                                                    Enable auto-reminders for missing information
+                                                </label>
+
+                                                {onboardingData?.auto_reminder_enabled ? (
+                                                    <>
+                                                        <div className="interval-selector">
+                                                            <label>Reminder interval:</label>
+                                                            <div className="interval-buttons">
+                                                                {[
+                                                                    { value: 6, label: '6 hours' },
+                                                                    { value: 12, label: '12 hours' },
+                                                                    { value: 24, label: '24 hours' }
+                                                                ].map(opt => (
+                                                                    <button
+                                                                        key={opt.value}
+                                                                        className={`interval-btn ${reminderInterval === opt.value ? 'active' : ''}`}
+                                                                        onClick={async () => {
+                                                                            setReminderInterval(opt.value);
+                                                                            try {
+                                                                                await onboardingAPI.toggleAutoReminder(projectId, true, opt.value);
+                                                                                await loadOnboardingData();
+                                                                                setSuccess(`Reminder interval set to ${opt.value} hours`);
+                                                                            } catch (err) {
+                                                                                setError('Failed to update interval');
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        {opt.label}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="next-reminder-display">
+                                                            <p className="next-reminder">
+                                                                📅 Next reminder: {onboardingData?.next_reminder_at
+                                                                    ? new Date(onboardingData.next_reminder_at).toLocaleString()
+                                                                    : `In ${reminderInterval} hours from now`}
+                                                            </p>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <div className="manual-reminder-section">
+                                                        <p className="reminder-disabled-note">Auto-reminders are disabled. You can send a reminder manually.</p>
+                                                        <button
+                                                            className="btn-send-now"
+                                                            disabled={sendingEmail || !onboardingData?.contacts_json?.length}
+                                                            onClick={async () => {
+                                                                if (!onboardingData?.contacts_json?.length) {
+                                                                    setError('No contacts to send reminder to');
+                                                                    return;
+                                                                }
+                                                                setSendingEmail(true);
+                                                                try {
+                                                                    const primaryContact = onboardingData.contacts_json.find(c => c.is_primary) || onboardingData.contacts_json[0];
+                                                                    await onboardingAPI.sendReminder(projectId, {
+                                                                        recipient_email: primaryContact.email,
+                                                                        recipient_name: primaryContact.name,
+                                                                        message: `Please complete the onboarding form for ${project.title}`
+                                                                    });
+                                                                    setSuccess('Reminder sent successfully!');
+                                                                } catch (err) {
+                                                                    setError('Failed to send reminder');
+                                                                } finally {
+                                                                    setSendingEmail(false);
+                                                                }
+                                                            }}
+                                                        >
+                                                            {sendingEmail ? 'Sending...' : '📧 Send Reminder Now'}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* READ-ONLY Onboarding Details */}
+                                {renderReadonlyOnboardingDetails()}
+
+                                {/* Missing Fields Alert - Consultant View */}
+                                {completionStatus && completionStatus.missing_fields.length > 0 && (
+                                    <div className="missing-fields-alert">
+                                        <h4>⚠️ Pending from Client ({completionStatus.missing_fields.length} items)</h4>
+                                        <ul>
+                                            {completionStatus.missing_fields.map((field, index) => (
+                                                <li key={index}>{field}</li>
                                             ))}
                                         </ul>
                                     </div>
                                 )}
-                            </div>
-                        )}
-
-                        {/* Client Onboarding Form Section */}
-                        {completionStatus?.client_form_url && (
-                            <div className="form-card highlight-section">
-                                <h3>📤 Client Onboarding Form</h3>
-                                <p className="section-desc">Share this link with clients to collect required information</p>
-                                
-                                <div className="form-link-box">
-                                    <input 
-                                        type="text" 
-                                        readOnly 
-                                        value={`${typeof window !== 'undefined' ? window.location.origin : ''}${completionStatus.client_form_url}`}
-                                        onClick={(e) => (e.target as HTMLInputElement).select()}
-                                    />
-                                    <button 
-                                        className="btn-copy"
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
-                                            setSuccess('Link copied to clipboard!');
-                                            setTimeout(() => setSuccess(''), 3000);
-                                        }}
-                                    >
-                                        📋 Copy
-                                    </button>
-                                </div>
-                                
-                                {/* Send Email to Contacts */}
-                                {onboardingData.contacts_json && onboardingData.contacts_json.length > 0 && (
-                                    <div className="email-trigger-section">
-                                        <h4>📧 Send form to contacts</h4>
-                                        <p>Select contacts to receive the onboarding form link:</p>
-                                        <div className="contact-checkboxes">
-                                            {onboardingData.contacts_json.map((contact, index) => (
-                                                <label key={index} className="contact-checkbox">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedEmailContacts.includes(index)}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setSelectedEmailContacts([...selectedEmailContacts, index]);
-                                                            } else {
-                                                                setSelectedEmailContacts(selectedEmailContacts.filter(i => i !== index));
-                                                            }
-                                                        }}
-                                                    />
-                                                    <span className="contact-label">
-                                                        {contact.name} ({contact.email}){contact.role ? ` - ${contact.role}` : ''}
-                                                    </span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                        <label className="send-label">
-                                            <input
-                                                type="checkbox"
-                                                disabled={selectedEmailContacts.length === 0 || sendingEmail}
-                                                onChange={async (e) => {
-                                                    if (!e.target.checked) return;
-                                                    setSendingEmail(true);
-                                                    try {
-                                                        const selectedContacts = selectedEmailContacts.map(i => onboardingData.contacts_json![i]);
-                                                        for (const contact of selectedContacts) {
-                                                            await onboardingAPI.sendReminder(projectId, {
-                                                                recipient_email: contact.email,
-                                                                recipient_name: contact.name,
-                                                                message: `Please complete the onboarding form for ${project.title}`
-                                                            });
-                                                        }
-                                                        setSuccess(`Onboarding form sent to ${selectedContacts.length} contact(s)!`);
-                                                        setSelectedEmailContacts([]);
-                                                    } catch (err) {
-                                                        setError('Failed to send email');
-                                                    } finally {
-                                                        setSendingEmail(false);
-                                                        e.currentTarget.checked = false;
-                                                    }
-                                                }}
-                                            />
-                                            <span>{sendingEmail ? 'Sending...' : `Send to ${selectedEmailContacts.length} contact(s)`}</span>
-                                        </label>
-                                    </div>
-                                )}
-                                
-                                {/* Auto Reminder Settings */}
-                                <div className="auto-reminder-section">
-                                    <h4>🔔 Auto Reminder Settings</h4>
-                                    <div className="reminder-options">
-                                        <label className="reminder-toggle">
-                                            <input
-                                                type="checkbox"
-                                                checked={onboardingData?.auto_reminder_enabled ?? false}
-                                                onChange={async (e) => {
-                                                    try {
-                                                        await onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval);
-                                                        await loadOnboardingData();
-                                                        setSuccess(`Auto-reminders ${e.target.checked ? 'enabled' : 'disabled'}`);
-                                                    } catch (err) {
-                                                        setError('Failed to update reminder settings');
-                                                    }
-                                                }}
-                                            />
-                                            Enable auto-reminders for missing information
-                                        </label>
-                                        
-                                        {onboardingData?.auto_reminder_enabled ? (
-                                            <>
-                                                <div className="interval-selector">
-                                                    <label>Reminder interval:</label>
-                                                    <div className="interval-buttons">
-                                                        {[
-                                                            { value: 6, label: '6 hours' },
-                                                            { value: 12, label: '12 hours' },
-                                                            { value: 24, label: '24 hours' }
-                                                        ].map(opt => (
-                                                            <button
-                                                                key={opt.value}
-                                                                className={`interval-btn ${reminderInterval === opt.value ? 'active' : ''}`}
-                                                                onClick={async () => {
-                                                                    setReminderInterval(opt.value);
-                                                                    try {
-                                                                        await onboardingAPI.toggleAutoReminder(projectId, true, opt.value);
-                                                                        await loadOnboardingData();
-                                                                        setSuccess(`Reminder interval set to ${opt.value} hours`);
-                                                                    } catch (err) {
-                                                                        setError('Failed to update interval');
-                                                                    }
-                                                                }}
-                                                            >
-                                                                {opt.label}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                                
-                                                <div className="next-reminder-display">
-                                                    <p className="next-reminder">
-                                                        📅 Next reminder: {onboardingData?.next_reminder_at 
-                                                            ? new Date(onboardingData.next_reminder_at).toLocaleString()
-                                                            : `In ${reminderInterval} hours from now`}
-                                                    </p>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <div className="manual-reminder-section">
-                                                <p className="reminder-disabled-note">Auto-reminders are disabled. You can send a reminder manually.</p>
-                                                <button 
-                                                    className="btn-send-now"
-                                                    disabled={sendingEmail || !onboardingData?.contacts_json?.length}
-                                                    onClick={async () => {
-                                                        if (!onboardingData?.contacts_json?.length) {
-                                                            setError('No contacts to send reminder to');
-                                                            return;
-                                                        }
-                                                        setSendingEmail(true);
-                                                        try {
-                                                            const primaryContact = onboardingData.contacts_json.find(c => c.is_primary) || onboardingData.contacts_json[0];
-                                                            await onboardingAPI.sendReminder(projectId, {
-                                                                recipient_email: primaryContact.email,
-                                                                recipient_name: primaryContact.name,
-                                                                message: `Please complete the onboarding form for ${project.title}`
-                                                            });
-                                                            setSuccess('Reminder sent successfully!');
-                                                        } catch (err) {
-                                                            setError('Failed to send reminder');
-                                                        } finally {
-                                                            setSendingEmail(false);
-                                                        }
-                                                    }}
-                                                >
-                                                    {sendingEmail ? 'Sending...' : '📧 Send Reminder Now'}
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* READ-ONLY Onboarding Details */}
-                        {renderReadonlyOnboardingDetails()}
-
-                        {/* Missing Fields Alert - Consultant View */}
-                        {completionStatus && completionStatus.missing_fields.length > 0 && (
-                            <div className="missing-fields-alert">
-                                <h4>⚠️ Pending from Client ({completionStatus.missing_fields.length} items)</h4>
-                                <ul>
-                                    {completionStatus.missing_fields.map((field, index) => (
-                                        <li key={index}>{field}</li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
                             </>
                         )}
                     </div>
@@ -2068,81 +2068,81 @@ export default function ProjectDetailPage() {
 
                 {/* Tasks Section - Auto-updated based on client inputs - Hidden from Executive Admin */}
                 {!isExecutiveView && (
-                <div className="tasks-section">
-                    <div className="section-header">
-                        <h2>✅ Tasks ({tasks.length})</h2>
-                        <div className="section-header-right">
-                            {project.current_stage === 'ONBOARDING' && (
-                                <span className="auto-update-badge">🔄 Auto-updates from client inputs</span>
-                            )}
-                            {hasFullEditAccess && !project.current_stage.includes('ONBOARDING') && (
-                                <button className="btn-add" onClick={() => setShowTaskModal(true)}>+ Add Task</button>
-                            )}
+                    <div className="tasks-section">
+                        <div className="section-header">
+                            <h2>✅ Tasks ({tasks.length})</h2>
+                            <div className="section-header-right">
+                                {project.current_stage === 'ONBOARDING' && (
+                                    <span className="auto-update-badge">🔄 Auto-updates from client inputs</span>
+                                )}
+                                {hasFullEditAccess && !project.current_stage.includes('ONBOARDING') && (
+                                    <button className="btn-add" onClick={() => setShowTaskModal(true)}>+ Add Task</button>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                    <div className="tasks-list">
-                        {tasks.map((task) => (
-                            <div key={task.id} className={`task-item ${task.status === 'DONE' ? 'completed' : ''} ${task.is_auto_completed ? 'auto-completed' : ''}`}>
-                                <div className="task-status-indicator">
-                                    {task.status === 'DONE' ? (
-                                        <span className="status-done">✓</span>
-                                    ) : (
-                                        <span className="status-pending">○</span>
-                                    )}
-                                </div>
-                                <div className="task-content">
-                                    <span className="task-title">{task.title}</span>
-                                    {task.description && <span className="task-description">{task.description}</span>}
-                                    <div className="task-meta">
-                                        {task.is_auto_completed && <span className="badge-auto">Auto-completed</span>}
-                                        {task.linked_field && <span className="badge-linked">Linked: {task.linked_field}</span>}
-                                        {task.is_required && <span className="badge-required">Required</span>}
+                        <div className="tasks-list">
+                            {tasks.map((task) => (
+                                <div key={task.id} className={`task-item ${task.status === 'DONE' ? 'completed' : ''} ${task.is_auto_completed ? 'auto-completed' : ''}`}>
+                                    <div className="task-status-indicator">
+                                        {task.status === 'DONE' ? (
+                                            <span className="status-done">✓</span>
+                                        ) : (
+                                            <span className="status-pending">○</span>
+                                        )}
+                                    </div>
+                                    <div className="task-content">
+                                        <span className="task-title">{task.title}</span>
+                                        {task.description && <span className="task-description">{task.description}</span>}
+                                        <div className="task-meta">
+                                            {task.is_auto_completed && <span className="badge-auto">Auto-completed</span>}
+                                            {task.linked_field && <span className="badge-linked">Linked: {task.linked_field}</span>}
+                                            {task.is_required && <span className="badge-required">Required</span>}
+                                        </div>
+                                    </div>
+                                    <div className="task-status-badge">
+                                        {task.status === 'DONE' ? (
+                                            <span className="status-badge done">Complete</span>
+                                        ) : (
+                                            <span className="status-badge pending">Pending</span>
+                                        )}
                                     </div>
                                 </div>
-                                <div className="task-status-badge">
-                                    {task.status === 'DONE' ? (
-                                        <span className="status-badge done">Complete</span>
-                                    ) : (
-                                        <span className="status-badge pending">Pending</span>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    {completionStatus && (
-                        <div className="task-progress">
-                            <div className="progress-bar">
-                                <div
-                                    className="progress-fill"
-                                    style={{ width: `${completionStatus.task_completion_percentage}%` }}
-                                />
-                            </div>
-                            <span className="progress-text">
-                                {completionStatus.completed_tasks} of {completionStatus.total_required_tasks} tasks complete
-                            </span>
+                            ))}
                         </div>
-                    )}
-                </div>
+                        {completionStatus && (
+                            <div className="task-progress">
+                                <div className="progress-bar">
+                                    <div
+                                        className="progress-fill"
+                                        style={{ width: `${completionStatus.task_completion_percentage}%` }}
+                                    />
+                                </div>
+                                <span className="progress-text">
+                                    {completionStatus.completed_tasks} of {completionStatus.total_required_tasks} tasks complete
+                                </span>
+                            </div>
+                        )}
+                    </div>
                 )}
 
                 {/* Artifacts Section - Hidden from Executive Admin */}
                 {!isExecutiveView && (
-                <div className="artifacts-section">
-                    <h2>📎 Artifacts ({artifacts.length})</h2>
-                    {artifacts.length === 0 ? (
-                        <p className="empty-message">No artifacts uploaded yet</p>
-                    ) : (
-                        <ul className="artifacts-list">
-                            {artifacts.map((artifact) => (
-                                <li key={artifact.id} className="artifact-item">
-                                    <span className="artifact-name">{artifact.filename}</span>
-                                    <span className="artifact-stage">{artifact.stage}</span>
-                                    <span className="artifact-type">{artifact.type}</span>
-                            </li>
-                        ))}
-                    </ul>
-                    )}
-                </div>
+                    <div className="artifacts-section">
+                        <h2>📎 Artifacts ({artifacts.length})</h2>
+                        {artifacts.length === 0 ? (
+                            <p className="empty-message">No artifacts uploaded yet</p>
+                        ) : (
+                            <ul className="artifacts-list">
+                                {artifacts.map((artifact) => (
+                                    <li key={artifact.id} className="artifact-item">
+                                        <span className="artifact-name">{artifact.filename}</span>
+                                        <span className="artifact-stage">{artifact.stage}</span>
+                                        <span className="artifact-type">{artifact.type}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
                 )}
 
                 {/* Test Phase Section - Visible in TEST and DEFECT_VALIDATION stages - Hidden from Executive */}
@@ -2154,19 +2154,19 @@ export default function ProjectDetailPage() {
 
                         {/* Test Phase Tabs */}
                         <div className="test-tabs">
-                            <button 
+                            <button
                                 className={`tab-btn ${activeTestTab === 'scenarios' ? 'active' : ''}`}
                                 onClick={() => setActiveTestTab('scenarios')}
                             >
                                 📋 Test Scenarios
                             </button>
-                            <button 
+                            <button
                                 className={`tab-btn ${activeTestTab === 'executions' ? 'active' : ''}`}
                                 onClick={() => setActiveTestTab('executions')}
                             >
                                 ▶️ Executions
                             </button>
-                            <button 
+                            <button
                                 className={`tab-btn ${activeTestTab === 'defects' ? 'active' : ''}`}
                                 onClick={() => setActiveTestTab('defects')}
                             >
@@ -2187,14 +2187,14 @@ export default function ProjectDetailPage() {
                                 <div className="content-header">
                                     <h3>Test Scenarios ({testScenarios.length})</h3>
                                     <div className="header-actions">
-                                        <button 
+                                        <button
                                             className="btn-add"
                                             onClick={() => setShowCreateScenarioModal(true)}
                                         >
                                             + Create Scenario
                                         </button>
                                         {isAdmin && (
-                                            <button 
+                                            <button
                                                 className="btn-generate"
                                                 onClick={() => handleGenerateScenario('Auto-Generated Scenarios')}
                                                 disabled={testLoading}
@@ -2214,8 +2214,8 @@ export default function ProjectDetailPage() {
                                 ) : (
                                     <div className="scenarios-grid">
                                         {testScenarios.map((scenario) => (
-                                            <div 
-                                                key={scenario.id} 
+                                            <div
+                                                key={scenario.id}
                                                 className={`scenario-card ${selectedScenario?.id === scenario.id ? 'selected' : ''}`}
                                                 onClick={() => setSelectedScenario(scenario)}
                                             >
@@ -2246,14 +2246,14 @@ export default function ProjectDetailPage() {
                                     <div className="scenario-details">
                                         <div className="details-header">
                                             <h4>📋 {selectedScenario.name} - Test Cases</h4>
-                                            <button 
+                                            <button
                                                 className="btn-add small"
                                                 onClick={() => setShowCreateTestCaseModal(true)}
                                             >
                                                 + Add Test Case
                                             </button>
                                         </div>
-                                        
+
                                         {selectedScenario.test_cases?.length === 0 ? (
                                             <p className="empty-message">No test cases in this scenario</p>
                                         ) : (
@@ -2289,7 +2289,7 @@ export default function ProjectDetailPage() {
                             <div className="test-executions-content">
                                 <div className="content-header">
                                     <h3>Test Executions ({testExecutions.length})</h3>
-                                    <button 
+                                    <button
                                         className="btn-run"
                                         onClick={() => setShowRunExecutionModal(true)}
                                         disabled={testScenarios.length === 0}
@@ -2307,8 +2307,8 @@ export default function ProjectDetailPage() {
                                 ) : (
                                     <div className="executions-list">
                                         {testExecutions.map((execution) => (
-                                            <div 
-                                                key={execution.id} 
+                                            <div
+                                                key={execution.id}
                                                 className={`execution-card ${selectedExecution?.id === execution.id ? 'selected' : ''}`}
                                             >
                                                 <div className="execution-main">
@@ -2326,11 +2326,11 @@ export default function ProjectDetailPage() {
                                                 </div>
                                                 <div className="execution-progress">
                                                     <div className="progress-bar">
-                                                        <div 
+                                                        <div
                                                             className="progress-passed"
                                                             style={{ width: `${(execution.passed_tests / execution.total_tests) * 100}%` }}
                                                         />
-                                                        <div 
+                                                        <div
                                                             className="progress-failed"
                                                             style={{ width: `${(execution.failed_tests / execution.total_tests) * 100}%` }}
                                                         />
@@ -2338,11 +2338,11 @@ export default function ProjectDetailPage() {
                                                 </div>
                                                 <div className="execution-footer">
                                                     <span className="execution-date">
-                                                        {execution.started_at 
+                                                        {execution.started_at
                                                             ? new Date(execution.started_at).toLocaleString()
                                                             : 'Not started'}
                                                     </span>
-                                                    <button 
+                                                    <button
                                                         className="btn-view-results"
                                                         onClick={() => handleViewExecutionResults(execution)}
                                                     >
@@ -2359,7 +2359,7 @@ export default function ProjectDetailPage() {
                                     <div className="results-panel">
                                         <div className="panel-header">
                                             <h4>📊 Results: {selectedExecution.execution_name}</h4>
-                                            <button 
+                                            <button
                                                 className="btn-close"
                                                 onClick={() => {
                                                     setSelectedExecution(null);
@@ -2374,8 +2374,8 @@ export default function ProjectDetailPage() {
                                                 <p className="empty-message">No results available</p>
                                             ) : (
                                                 testResults.map((result) => (
-                                                    <div 
-                                                        key={result.id} 
+                                                    <div
+                                                        key={result.id}
                                                         className={`result-item ${result.status.toLowerCase()}`}
                                                     >
                                                         <div className="result-status-icon">
@@ -2434,7 +2434,7 @@ export default function ProjectDetailPage() {
                                 <div className="content-header">
                                     <h3>Defect List</h3>
                                     <div className="header-actions">
-                                        <select 
+                                        <select
                                             className="filter-select"
                                             value={defectStatusFilter}
                                             onChange={(e) => {
@@ -2450,7 +2450,7 @@ export default function ProjectDetailPage() {
                                             <option value="CLOSED">Closed</option>
                                         </select>
                                         {isAdmin && defects.some(d => d.status === 'FIXED') && (
-                                            <button 
+                                            <button
                                                 className="btn-validate-all"
                                                 onClick={handleValidateAllDefects}
                                             >
@@ -2472,7 +2472,7 @@ export default function ProjectDetailPage() {
                                             <div key={defect.id} className="defect-card">
                                                 <div className="defect-header">
                                                     <div className="defect-title-row">
-                                                        <span 
+                                                        <span
                                                             className="severity-badge"
                                                             style={{ backgroundColor: getSeverityColor(defect.severity) }}
                                                         >
@@ -2480,7 +2480,7 @@ export default function ProjectDetailPage() {
                                                         </span>
                                                         <h4>{defect.title}</h4>
                                                     </div>
-                                                    <span 
+                                                    <span
                                                         className="status-badge"
                                                         style={{ color: getStatusColor(defect.status) }}
                                                     >
@@ -2506,7 +2506,7 @@ export default function ProjectDetailPage() {
                                                 <div className="defect-actions">
                                                     {(defect.status === 'OPEN' || defect.status === 'IN_PROGRESS') && (
                                                         <>
-                                                            <button 
+                                                            <button
                                                                 className="btn-action reassign"
                                                                 onClick={() => {
                                                                     setSelectedDefect(defect);
@@ -2515,7 +2515,7 @@ export default function ProjectDetailPage() {
                                                             >
                                                                 🔄 Reassign
                                                             </button>
-                                                            <button 
+                                                            <button
                                                                 className="btn-action fix"
                                                                 onClick={() => {
                                                                     setSelectedDefect(defect);
@@ -2527,7 +2527,7 @@ export default function ProjectDetailPage() {
                                                         </>
                                                     )}
                                                     {defect.status === 'FIXED' && isAdmin && (
-                                                        <button 
+                                                        <button
                                                             className="btn-action validate"
                                                             onClick={() => handleValidateDefect(defect.id)}
                                                         >
@@ -2548,7 +2548,7 @@ export default function ProjectDetailPage() {
                 {hasFullEditAccess && !isExecutiveAdmin && (
                     <div className="admin-actions">
                         <h3>Project Actions</h3>
-                        
+
                         <div className="actions-row">
                             <button
                                 className="btn-advance"
@@ -2850,7 +2850,7 @@ export default function ProjectDetailPage() {
                             </div>
                             <div className="modal-actions">
                                 <button className="btn-cancel" onClick={() => setShowRunExecutionModal(false)}>Cancel</button>
-                                <button 
+                                <button
                                     className="btn-submit run"
                                     onClick={handleRunExecution}
                                     disabled={testLoading}
@@ -2878,12 +2878,12 @@ export default function ProjectDetailPage() {
                                 >
                                     <option value="">Select a builder...</option>
                                     {availableBuilders.map((builder) => (
-                                        <option 
-                                            key={builder.id} 
+                                        <option
+                                            key={builder.id}
                                             value={builder.id}
                                             disabled={!builder.is_available}
                                         >
-                                            {builder.name} ({builder.region}) 
+                                            {builder.name} ({builder.region})
                                             {!builder.is_available ? ' - Unavailable' : ` - ${builder.current_workload} tasks`}
                                         </option>
                                     ))}
@@ -2945,10 +2945,10 @@ export default function ProjectDetailPage() {
                             <h2>👥 Assign Team Members</h2>
                             <p className="modal-description">
                                 Assign team members in sequence: Consultant → PC → Builder → Tester
-                                {user?.role === 'MANAGER' && <><br/><span className="region-note">📍 As a Manager, you can only assign from your region: <strong>{user?.region}</strong></span></>}
-                                {user?.role === 'PC' && user?.region === 'INDIA' && <><br/><span className="region-note">📍 As a PC, you can assign Builder and Tester from India region</span></>}
+                                {user?.role === 'MANAGER' && <><br /><span className="region-note">📍 As a Manager, you can only assign from your region: <strong>{user?.region}</strong></span></>}
+                                {user?.role === 'PC' && user?.region === 'INDIA' && <><br /><span className="region-note">📍 As a PC, you can assign Builder and Tester from India region</span></>}
                             </p>
-                            
+
                             {/* Assignment Progress */}
                             <div className="assignment-progress">
                                 <div className={`progress-step ${assignmentSequence.consultant_assigned ? 'completed' : assignmentSequence.next_to_assign === 'consultant' ? 'current' : ''}`}>
@@ -2971,7 +2971,7 @@ export default function ProjectDetailPage() {
                                     <span className="step-label">Tester</span>
                                 </div>
                             </div>
-                            
+
                             {/* Project Workload Estimate */}
                             {projectWorkload && (
                                 <div className="workload-estimate">
@@ -2984,25 +2984,25 @@ export default function ProjectDetailPage() {
                                     </div>
                                 </div>
                             )}
-                            
+
                             {/* Role Selection Cards - Order: CONSULTANT, PC, BUILDER, TESTER */}
                             {['CONSULTANT', 'PC', 'BUILDER', 'TESTER'].map((role) => {
                                 // Permission check
-                                const canAssignThisRole = 
+                                const canAssignThisRole =
                                     (role === 'CONSULTANT' && canAssignConsultant) ||
                                     (role === 'PC' && canAssignPC) ||
                                     (role === 'BUILDER' && canAssignBuilder) ||
                                     (role === 'TESTER' && canAssignTester);
-                                
+
                                 // Sequential check
-                                const isSequenceAllowed = 
+                                const isSequenceAllowed =
                                     (role === 'CONSULTANT') ||
                                     (role === 'PC' && (assignmentSequence.consultant_assigned || teamFormData.consultant_user_id)) ||
                                     (role === 'BUILDER' && (assignmentSequence.pc_assigned || teamFormData.pc_user_id)) ||
                                     (role === 'TESTER' && (assignmentSequence.builder_assigned || teamFormData.builder_user_id));
-                                
+
                                 const isDisabled = !canAssignThisRole || !isSequenceAllowed;
-                                const isAlreadyAssigned = 
+                                const isAlreadyAssigned =
                                     (role === 'CONSULTANT' && assignmentSequence.consultant_assigned) ||
                                     (role === 'PC' && assignmentSequence.pc_assigned) ||
                                     (role === 'BUILDER' && assignmentSequence.builder_assigned) ||
@@ -3014,7 +3014,7 @@ export default function ProjectDetailPage() {
                                 const selectedValue = teamFormData[roleKey as keyof typeof teamFormData];
                                 const requiredHours = projectWorkload?.by_role?.[role] || 0;
                                 const stepNumber = role === 'CONSULTANT' ? 1 : role === 'PC' ? 2 : role === 'BUILDER' ? 3 : 4;
-                                
+
                                 return (
                                     <div key={role} className={`role-assignment-card ${isDisabled ? 'disabled' : ''} ${isAlreadyAssigned ? 'assigned' : ''}`}>
                                         <div className="role-header">
@@ -3030,7 +3030,7 @@ export default function ProjectDetailPage() {
                                             </h4>
                                             <div className="role-header-actions">
                                                 {!isDisabled && (
-                                                    <button 
+                                                    <button
                                                         className="btn-ai-suggest"
                                                         onClick={() => loadAiSuggestions(role)}
                                                         disabled={loadingSuggestions && selectedRoleForSuggestion === role}
@@ -3043,7 +3043,7 @@ export default function ProjectDetailPage() {
                                                 )}
                                             </div>
                                         </div>
-                                        
+
                                         {/* AI Suggestions Panel */}
                                         {suggestions && (
                                             <div className={`ai-suggestions-panel ${suggestions.capacity_crunch ? 'crunch' : ''}`}>
@@ -3075,9 +3075,9 @@ export default function ProjectDetailPage() {
                                                                         </div>
                                                                         <div className="suggestion-capacity">
                                                                             <span className="capacity-bar-mini">
-                                                                                <span 
+                                                                                <span
                                                                                     className="capacity-fill-mini"
-                                                                                    style={{ 
+                                                                                    style={{
                                                                                         width: `${s.utilization_percentage}%`,
                                                                                         backgroundColor: getCapacityStatusColor(s.capacity_status)
                                                                                     }}
@@ -3087,7 +3087,7 @@ export default function ProjectDetailPage() {
                                                                         </div>
                                                                         <span className="confidence-badge">{(s.confidence_score * 100).toFixed(0)}% match</span>
                                                                     </div>
-                                                                    <button 
+                                                                    <button
                                                                         className="btn-accept-suggestion"
                                                                         onClick={() => handleAcceptSuggestion(s, role)}
                                                                     >
@@ -3100,14 +3100,14 @@ export default function ProjectDetailPage() {
                                                 )}
                                             </div>
                                         )}
-                                        
+
                                         {/* User Selection with Capacity */}
                                         <div className="capacity-user-list">
                                             {capacityList.length === 0 ? (
                                                 <p className="no-users-hint">No {role}s available. Create users with {role} role first.</p>
                                             ) : (
                                                 capacityList.map((user) => (
-                                                    <div 
+                                                    <div
                                                         key={user.user_id}
                                                         className={`capacity-user-item ${selectedValue === user.user_id ? 'selected' : ''} ${!user.is_recommended ? 'not-recommended' : ''}`}
                                                         onClick={() => setTeamFormData({ ...teamFormData, [roleKey]: user.user_id })}
@@ -3118,9 +3118,9 @@ export default function ProjectDetailPage() {
                                                         </div>
                                                         <div className="user-capacity">
                                                             <div className="capacity-bar">
-                                                                <div 
+                                                                <div
                                                                     className="capacity-fill"
-                                                                    style={{ 
+                                                                    style={{
                                                                         width: `${user.utilization_percentage}%`,
                                                                         backgroundColor: getCapacityStatusColor(user.capacity_status)
                                                                     }}
@@ -3143,11 +3143,11 @@ export default function ProjectDetailPage() {
                                     </div>
                                 );
                             })}
-                            
+
                             <div className="modal-actions">
                                 <button className="btn-cancel" onClick={() => setShowTeamModal(false)}>Cancel</button>
-                                <button 
-                                    className="btn-submit" 
+                                <button
+                                    className="btn-submit"
                                     onClick={handleAssignTeam}
                                     disabled={assigningTeam}
                                 >
@@ -4107,9 +4107,9 @@ export default function ProjectDetailPage() {
                 }
 
                 .readonly-group {
-                    margin-bottom: 1.5rem;
-                    padding-bottom: 1rem;
-                    border-bottom: 1px solid #e2e8f0;
+                    margin-bottom: var(--space-lg);
+                    padding-bottom: var(--space-md);
+                    border-bottom: 1px solid var(--border-light);
                 }
 
                 .readonly-group:last-child {
@@ -4119,8 +4119,8 @@ export default function ProjectDetailPage() {
 
                 .readonly-group h4 {
                     font-size: 0.9rem;
-                    color: #475569;
-                    margin-bottom: 0.75rem;
+                    color: var(--text-secondary);
+                    margin-bottom: var(--space-sm);
                 }
                 .asset-preview {
                     display: flex;
@@ -4130,21 +4130,21 @@ export default function ProjectDetailPage() {
                 .asset-grid {
                     display: grid;
                     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-                    gap: 12px;
+                    gap: var(--space-md);
                 }
                 .asset-card {
                     display: flex;
                     flex-direction: column;
-                    gap: 6px;
-                    padding: 10px;
+                    gap: var(--space-sm);
+                    padding: var(--space-md);
                     background: var(--bg-card);
                     border: 1px solid var(--border-light);
                     border-radius: var(--radius-md);
-                    box-shadow: var(--shadow-xs);
+                    box-shadow: var(--shadow-sm);
                 }
                 .asset-thumb {
                     width: 100%;
-                    height: 100px;
+                    height: 120px;
                     border-radius: var(--radius-sm);
                     border: 1px solid var(--border-light);
                     background: var(--bg-tertiary);
@@ -4152,6 +4152,7 @@ export default function ProjectDetailPage() {
                     display: flex;
                     align-items: center;
                     justify-content: center;
+                    position: relative;
                 }
                 .asset-thumb.is-empty {
                     background: var(--bg-secondary);
@@ -4165,21 +4166,23 @@ export default function ProjectDetailPage() {
                     display: block;
                 }
                 .asset-thumb img {
-                    width: 100%;
-                    height: 100%;
-                    object-fit: cover;
-                    border-radius: var(--radius-sm);
+                    max-width: 100%;
+                    max-height: 100%;
+                    width: auto;
+                    height: auto;
+                    object-fit: contain;
                 }
                 .asset-name {
                     font-size: 12px;
                     color: var(--text-muted);
                     word-break: break-word;
+                    text-align: center;
                 }
                 .asset-download {
                     display: inline-flex;
                     align-items: center;
                     justify-content: center;
-                    padding: 4px 8px;
+                    padding: var(--space-xs) var(--space-sm);
                     font-size: 12px;
                     color: var(--accent-primary);
                     border: 1px solid var(--color-info-border);
@@ -4187,11 +4190,13 @@ export default function ProjectDetailPage() {
                     background: var(--color-info-bg);
                     text-decoration: none;
                     width: 100%;
-                    margin-top: 6px;
+                    margin-top: var(--space-xs);
+                    transition: all var(--transition-fast);
                 }
                 .asset-download:hover {
                     background: var(--color-info);
                     color: white;
+                    text-decoration: none;
                 }
                 .template-preview img {
                     margin-top: 8px;
@@ -4242,13 +4247,13 @@ export default function ProjectDetailPage() {
                 .readonly-grid {
                     display: grid;
                     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-                    gap: 1rem;
+                    gap: var(--space-md);
                 }
 
                 .readonly-field {
                     display: flex;
                     flex-direction: column;
-                    gap: 0.5rem;
+                    gap: var(--space-sm);
                     background: var(--bg-tertiary);
                     border: 1px solid var(--border-light);
                     border-radius: var(--radius-md);

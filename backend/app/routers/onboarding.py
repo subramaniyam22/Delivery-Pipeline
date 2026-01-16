@@ -16,13 +16,15 @@ from app.schemas import (
 from app.deps import get_current_active_user
 from app.rbac import check_full_access
 from typing import List, Dict, Any, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime, timedelta
 import secrets
 import os
+import boto3
 from app.config import settings
 from app.services.email_service import send_client_reminder_email
 from app.services.config_service import get_config
+from app.services.storage_service import s3_enabled, upload_bytes_to_s3
 
 router = APIRouter(prefix="/projects", tags=["onboarding"])
 
@@ -125,6 +127,36 @@ PREDEFINED_TASKS = {
 }
 
 DEFAULT_REQUIRED_FIELDS = ["logo", "images", "copy_text", "wcag", "privacy_policy", "theme", "contacts"]
+
+
+def is_s3_configured() -> bool:
+    return bool(settings.S3_BUCKET and settings.AWS_REGION and settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY)
+
+
+def build_s3_url(key: str) -> str:
+    if settings.S3_PUBLIC_BASE_URL:
+        return f"{settings.S3_PUBLIC_BASE_URL.rstrip('/')}/{key}"
+    if settings.AWS_REGION and settings.AWS_REGION != "us-east-1":
+        return f"https://{settings.S3_BUCKET}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
+    return f"https://{settings.S3_BUCKET}.s3.amazonaws.com/{key}"
+
+
+def upload_file_to_s3(file: UploadFile, key: str) -> str:
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        region_name=settings.AWS_REGION,
+    )
+    body = file.file.read()
+    s3.put_object(
+        Bucket=settings.S3_BUCKET,
+        Key=key,
+        Body=body,
+        ContentType=file.content_type,
+        ACL="public-read",
+    )
+    return build_s3_url(key)
 
 
 def resolve_required_fields(db: Session, project: Optional[Project]) -> List[str]:
@@ -668,16 +700,19 @@ async def upload_client_logo(
     if file.content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Invalid file type. Allowed: PNG, JPEG, SVG, WEBP")
     
-    # Save file
-    upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "logo")
-    os.makedirs(upload_dir, exist_ok=True)
-    
-    file_path = os.path.join(upload_dir, file.filename)
-    with open(file_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
-    
-    onboarding.logo_file_path = file_path
+    content = await file.read()
+    if s3_enabled():
+        key = f"projects/{onboarding.project_id}/logo/{file.filename}"
+        logo_url = upload_bytes_to_s3(content, key, file.content_type)
+        onboarding.logo_url = logo_url
+        onboarding.logo_file_path = None
+    else:
+        upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "logo")
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, file.filename)
+        with open(file_path, "wb") as f:
+            f.write(content)
+        onboarding.logo_file_path = file_path
     project = db.query(Project).filter(Project.id == onboarding.project_id).first()
     required_fields = resolve_required_fields(db, project)
     onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
@@ -705,18 +740,19 @@ async def upload_client_image(
     if file.content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Invalid file type")
     
-    # Save file
-    upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "images")
-    os.makedirs(upload_dir, exist_ok=True)
-    
-    file_path = os.path.join(upload_dir, file.filename)
-    with open(file_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
-    
-    # Add to images list
+    content = await file.read()
     images = list(onboarding.images_json or [])
-    images.append({"file_path": file_path, "filename": file.filename, "type": "uploaded"})
+    if s3_enabled():
+        key = f"projects/{onboarding.project_id}/images/{file.filename}"
+        image_url = upload_bytes_to_s3(content, key, file.content_type)
+        images.append({"url": image_url, "filename": file.filename, "type": "uploaded"})
+    else:
+        upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "images")
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, file.filename)
+        with open(file_path, "wb") as f:
+            f.write(content)
+        images.append({"file_path": file_path, "filename": file.filename, "type": "uploaded"})
     onboarding.images_json = images
     flag_modified(onboarding, "images_json")
     project = db.query(Project).filter(Project.id == onboarding.project_id).first()

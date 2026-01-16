@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     
+    # S3 Storage (optional)
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_REGION: Optional[str] = None
+    S3_BUCKET: Optional[str] = None
+    S3_PUBLIC_BASE_URL: Optional[str] = None
+    
     # OpenAI (optional)
     OPENAI_API_KEY: Optional[str] = None
     
