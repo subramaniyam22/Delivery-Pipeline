@@ -696,6 +696,8 @@ export default function ProjectDetailPage() {
             borderRadius: 'var(--radius-lg)',
             padding: 'var(--space-lg)',
             boxShadow: 'var(--shadow-sm)',
+            marginTop: 'var(--space-lg)',
+            marginBottom: 'var(--space-lg)',
         };
         const fieldStyle: React.CSSProperties = {
             background: 'var(--bg-tertiary)',
@@ -713,6 +715,10 @@ export default function ProjectDetailPage() {
             border: '1px solid var(--border-light)',
             borderRadius: 'var(--radius-md)',
             padding: '10px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            minHeight: '160px',
         };
 
         return (
@@ -746,13 +752,13 @@ export default function ProjectDetailPage() {
                                             <span className="asset-fallback">No preview</span>
                                     </div>
                                     <span className="asset-name">Company Logo</span>
-                                    <a
-                                        className="asset-download"
-                                        href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
-                                        download
-                                    >
-                                        Download
-                                    </a>
+                                            <a
+                                                className="asset-download"
+                                                href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
+                                                download
+                                            >
+                                                Download
+                                            </a>
                                 </div>
                             ) : (
                                 <span className="empty">Not provided</span>
@@ -3470,6 +3476,7 @@ export default function ProjectDetailPage() {
                     padding: 0.75rem 1rem;
                     border-radius: 8px;
                     font-size: 0.9rem;
+                    border: 1px solid var(--border-light);
                 }
                 
                 .checklist-item.provided {
@@ -4179,7 +4186,8 @@ export default function ProjectDetailPage() {
                     border-radius: var(--radius-sm);
                     background: var(--color-info-bg);
                     text-decoration: none;
-                    width: fit-content;
+                    width: 100%;
+                    margin-top: 6px;
                 }
                 .asset-download:hover {
                     background: var(--color-info);
@@ -4204,6 +4212,14 @@ export default function ProjectDetailPage() {
                     border: 1px solid var(--border-light);
                     border-radius: var(--radius-md);
                     padding: var(--space-sm);
+                }
+                .requirements-collapsible summary::marker {
+                    color: var(--text-muted);
+                }
+                .requirements-collapsible[open] summary {
+                    margin-bottom: 12px;
+                    color: var(--text-primary);
+                    font-weight: 600;
                 }
                 .requirements-grid {
                     display: grid;
