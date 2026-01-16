@@ -4116,9 +4116,21 @@ export default function ProjectDetailPage() {
                     word-break: break-word;
                 }
                 .asset-download {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 4px 8px;
                     font-size: 12px;
                     color: var(--accent-primary);
-                    text-decoration: underline;
+                    border: 1px solid var(--color-info-border);
+                    border-radius: var(--radius-sm);
+                    background: var(--color-info-bg);
+                    text-decoration: none;
+                    width: fit-content;
+                }
+                .asset-download:hover {
+                    background: var(--color-info);
+                    color: white;
                 }
                 .template-preview img {
                     margin-top: 8px;
@@ -4126,6 +4138,7 @@ export default function ProjectDetailPage() {
                     max-width: 100%;
                     border-radius: 10px;
                     border: 1px solid var(--border-light);
+                    background: var(--bg-tertiary);
                 }
                 .requirements-collapsible summary {
                     cursor: pointer;
@@ -4159,14 +4172,18 @@ export default function ProjectDetailPage() {
 
                 .readonly-grid {
                     display: grid;
-                    grid-template-columns: repeat(2, 1fr);
+                    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
                     gap: 1rem;
                 }
 
                 .readonly-field {
                     display: flex;
                     flex-direction: column;
-                    gap: 0.25rem;
+                    gap: 0.5rem;
+                    background: var(--bg-tertiary);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-md);
+                    padding: var(--space-md);
                 }
 
                 .readonly-field.full-width {
