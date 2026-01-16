@@ -120,7 +120,7 @@ export default function ClientOnboardingPage() {
             const res = await clientAPI.updateOnboardingForm(token, updates);
             setSuccess('Changes saved successfully!');
             setTimeout(() => setSuccess(''), 3000);
-            
+
             // Update local state
             setFormData(prev => prev ? {
                 ...prev,
@@ -139,6 +139,50 @@ export default function ClientOnboardingPage() {
         const current = formData.data.requirements || {};
         const next = { ...current, ...updates };
         saveFormData({ requirements: next });
+    };
+
+    const getBackendBaseUrl = () => {
+        if (process.env.NEXT_PUBLIC_API_URL) {
+            return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
+        }
+        if (typeof window !== 'undefined') {
+            const hostname = window.location.hostname;
+            if (hostname.includes('onrender.com')) {
+                return 'https://delivery-backend-vvbf.onrender.com';
+            }
+        }
+        return 'http://localhost:8000';
+    };
+
+    const getAssetUrl = (path?: string | null) => {
+        if (!path) return '';
+        if (path.startsWith('http')) return path;
+
+        const baseUrl = getBackendBaseUrl();
+        const cleanPath = path.startsWith('/') ? path : `/${path}`;
+
+        if (cleanPath.startsWith('/uploads')) {
+            return `${baseUrl}${cleanPath}`;
+        }
+        return `${baseUrl}/uploads${cleanPath}`;
+    };
+
+    const handleDeleteImage = async (index: number) => {
+        if (!window.confirm('Are you sure you want to delete this image?')) return;
+
+        setSaving(true);
+        try {
+            const res = await clientAPI.deleteImage(token, index);
+            setSuccess('Image deleted successfully');
+            setFormData(prev => prev ? {
+                ...prev,
+                data: { ...prev.data, images: res.data.images }
+            } : null);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to delete image');
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -402,12 +446,23 @@ export default function ClientOnboardingPage() {
                 <section className="form-section">
                     <h2>🖼️ Company Logo</h2>
                     <p className="section-desc">Upload your company logo (PNG, SVG, or JPEG)</p>
-                    
+
                     <div className="upload-area">
-                        {formData.data.logo_file_path || formData.data.logo_url ? (
-                            <div className="uploaded-preview">
-                                <div className="preview-badge">✓ Logo Uploaded</div>
-                                <p>{formData.data.logo_file_path || formData.data.logo_url}</p>
+                        {formData.data.logo_url || formData.data.logo_file_path ? (
+                            <div className="logo-preview-container">
+                                <div className="logo-preview-card">
+                                    <img
+                                        src={getAssetUrl(formData.data.logo_url || formData.data.logo_file_path)}
+                                        alt="Company Logo"
+                                        className="logo-thumbnail"
+                                    />
+                                    <div className="logo-actions">
+                                        <div className="preview-badge">✓ Logo Uploaded</div>
+                                        <button className="btn-replace" onClick={() => logoInputRef.current?.click()}>
+                                            Replace Logo
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         ) : (
                             <div className="upload-placeholder" onClick={() => logoInputRef.current?.click()}>
@@ -422,13 +477,10 @@ export default function ClientOnboardingPage() {
                             onChange={handleLogoUpload}
                             hidden
                         />
-                        <button className="btn-upload" onClick={() => logoInputRef.current?.click()}>
-                            {formData.data.logo_file_path ? 'Replace Logo' : 'Upload Logo'}
-                        </button>
                     </div>
 
                     <div className="or-divider"><span>or</span></div>
-                    
+
                     <div className="url-input">
                         <label>Logo URL</label>
                         <input
@@ -444,15 +496,29 @@ export default function ClientOnboardingPage() {
                 <section className="form-section">
                     <h2>📸 Website Images</h2>
                     <p className="section-desc">Upload images for your website (hero images, product photos, etc.)</p>
-                    
+
                     <div className="images-grid">
-                        {formData.data.images?.map((img, i) => (
-                            <div key={i} className="image-item">
-                                <span className="image-badge">✓</span>
-                                <span className="image-name">{img.filename || img}</span>
-                            </div>
-                        ))}
-                        <div className="upload-placeholder small" onClick={() => imageInputRef.current?.click()}>
+                        {formData.data.images?.map((img, i) => {
+                            const url = getAssetUrl(img.url || img.file_path || (typeof img === 'string' ? img : ''));
+                            return (
+                                <div key={i} className="image-card">
+                                    <div className="image-preview">
+                                        <img src={url} alt={img.filename || 'Uploaded image'} />
+                                        <button
+                                            className="btn-delete"
+                                            onClick={() => handleDeleteImage(i)}
+                                            title="Delete image"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                    <div className="image-info">
+                                        <span className="image-name">{img.filename || 'Website Image'}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <div className="upload-placeholder-card" onClick={() => imageInputRef.current?.click()}>
                             <span className="upload-icon">+</span>
                             <span>Add Image</span>
                         </div>
@@ -549,7 +615,7 @@ export default function ClientOnboardingPage() {
                                 className={`template-card ${formData.data.selected_template_id === template.id ? 'selected' : ''}`}
                                 onClick={() => selectTemplate(template.id)}
                             >
-                                <div className="template-preview" style={{ 
+                                <div className="template-preview" style={{
                                     background: `linear-gradient(135deg, ${template.colors.primary} 0%, ${template.colors.secondary} 100%)`
                                 }}>
                                     {formData.data.selected_template_id === template.id && (
@@ -612,7 +678,7 @@ export default function ClientOnboardingPage() {
                             <input
                                 type="checkbox"
                                 checked={formData.data.wcag_compliance_required}
-                                onChange={(e) => saveFormData({ 
+                                onChange={(e) => saveFormData({
                                     wcag_compliance_required: e.target.checked,
                                     wcag_confirmed: true  // Mark as explicitly confirmed by client
                                 })}
@@ -625,7 +691,7 @@ export default function ClientOnboardingPage() {
                             <label>Compliance Level</label>
                             <select
                                 value={formData.data.wcag_level}
-                                onChange={(e) => saveFormData({ 
+                                onChange={(e) => saveFormData({
                                     wcag_level: e.target.value,
                                     wcag_confirmed: true  // Mark as explicitly confirmed by client
                                 })}
@@ -1499,6 +1565,145 @@ export default function ClientOnboardingPage() {
                     .copy-options, .pricing-grid, .templates-grid {
                         grid-template-columns: 1fr;
                     }
+                }
+
+                .logo-preview-container {
+                    width: 100%;
+                    display: flex;
+                    justify-content: center;
+                    margin-bottom: 20px;
+                }
+
+                .logo-preview-card {
+                    background: white;
+                    padding: 24px;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 16px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 20px;
+                    max-width: 400px;
+                    width: 100%;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+                }
+
+                .logo-thumbnail {
+                    max-width: 200px;
+                    max-height: 200px;
+                    object-fit: contain;
+                }
+
+                .logo-actions {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 12px;
+                    width: 100%;
+                }
+
+                .btn-replace {
+                    padding: 8px 16px;
+                    background: white;
+                    color: #2563eb;
+                    border: 1px solid #2563eb;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 500;
+                    font-size: 14px;
+                    transition: all 0.2s;
+                }
+
+                .btn-replace:hover {
+                    background: #eff6ff;
+                }
+
+                .image-card {
+                    background: white;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+                    transition: all 0.2s;
+                    position: relative;
+                }
+
+                .image-card:hover {
+                    transform: translateY(-4px);
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+                }
+
+                .image-preview {
+                    position: relative;
+                    aspect-ratio: 1;
+                    background: #f8fafc;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-bottom: 1px solid #f1f5f9;
+                }
+
+                .image-preview img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                }
+
+                .btn-delete {
+                    position: absolute;
+                    top: 8px;
+                    right: 8px;
+                    width: 24px;
+                    height: 24px;
+                    background: rgba(220, 38, 38, 0.9);
+                    color: white;
+                    border: none;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    font-size: 16px;
+                    opacity: 0;
+                    transition: opacity 0.2s;
+                    z-index: 5;
+                }
+
+                .image-card:hover .btn-delete {
+                    opacity: 1;
+                }
+
+                .image-info {
+                    padding: 8px 12px;
+                }
+
+                .image-name {
+                    font-size: 12px;
+                    color: #475569;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    display: block;
+                }
+
+                .upload-placeholder-card {
+                    aspect-ratio: 1;
+                    border: 2px dashed #cbd5e1;
+                    border-radius: 12px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    background: #f8fafc;
+                }
+
+                .upload-placeholder-card:hover {
+                    border-color: #2563eb;
+                    background: #eff6ff;
+                    color: #2563eb;
                 }
             `}</style>
         </div>

@@ -165,8 +165,8 @@ export const onboardingAPI = {
     getTemplates: () => api.get('/projects/templates'),
     getCopyPricing: () => api.get('/projects/copy-pricing'),
     toggleAutoReminder: (projectId: string, enabled: boolean, intervalHours?: number) =>
-        api.post(`/projects/${projectId}/toggle-auto-reminder`, null, { 
-            params: { enabled, ...(intervalHours && { interval_hours: intervalHours }) } 
+        api.post(`/projects/${projectId}/toggle-auto-reminder`, null, {
+            params: { enabled, ...(intervalHours && { interval_hours: intervalHours }) }
         }),
     sendReminder: (projectId: string, data: { recipient_email: string; recipient_name: string; message: string }) =>
         api.post(`/projects/${projectId}/send-reminder`, data),
@@ -194,6 +194,8 @@ export const clientAPI = {
             headers: { 'Content-Type': 'multipart/form-data' },
         });
     },
+    deleteImage: (token: string, index: number) =>
+        api.delete(`/projects/client-onboarding/${token}/image`, { params: { index } }),
 };
 
 export const projectTasksAPI = {
@@ -222,13 +224,13 @@ export const testingAPI = {
         api.post(`/testing/projects/${projectId}/scenarios`, data),
     generateScenario: (projectId: string, scenarioName: string) =>
         api.post(`/testing/projects/${projectId}/scenarios/generate?scenario_name=${encodeURIComponent(scenarioName)}`),
-    
+
     // Test Cases
     getTestCases: (scenarioId: string) =>
         api.get(`/testing/scenarios/${scenarioId}/cases`),
     createTestCase: (scenarioId: string, data: any) =>
         api.post(`/testing/scenarios/${scenarioId}/cases`, data),
-    
+
     // Test Executions
     getExecutions: (projectId: string) =>
         api.get(`/testing/projects/${projectId}/executions`),
@@ -236,7 +238,7 @@ export const testingAPI = {
         api.post(`/testing/projects/${projectId}/executions?execution_name=${encodeURIComponent(executionName)}`),
     getResults: (executionId: string, statusFilter?: string) =>
         api.get(`/testing/executions/${executionId}/results`, { params: statusFilter ? { status_filter: statusFilter } : {} }),
-    
+
     // Defect Management
     getDefects: (projectId: string, statusFilter?: string) =>
         api.get(`/testing/projects/${projectId}/defects`, { params: statusFilter ? { status_filter: statusFilter } : {} }),
@@ -250,7 +252,7 @@ export const testingAPI = {
         api.post(`/testing/defects/${defectId}/validate`),
     validateAllDefects: (projectId: string) =>
         api.post(`/testing/projects/${projectId}/defects/validate-all`),
-    
+
     // Builder Availability
     getAvailableBuilders: (projectId?: string) =>
         api.get('/testing/available-builders', { params: projectId ? { project_id: projectId } : {} }),
@@ -265,27 +267,27 @@ export const capacityAPI = {
     // Configs
     getConfigs: () => api.get('/capacity/configs'),
     updateConfig: (configId: string, data: any) => api.put(`/capacity/configs/${configId}`, data),
-    
+
     // User Capacity
-    getUserCapacity: (userId: string, weeks?: number) => 
+    getUserCapacity: (userId: string, weeks?: number) =>
         api.get(`/capacity/users/${userId}/summary`, { params: weeks ? { weeks } : {} }),
     getAvailableUsers: (role: string, minHours?: number) =>
         api.get(`/capacity/available-users/${role}`, { params: minHours ? { min_hours: minHours } : {} }),
     getTeamOverview: () => api.get('/capacity/team-overview'),
-    
+
     // Allocations
     allocateCapacity: (data: { user_id: string; project_id: string; date: string; hours: number }) =>
         api.post('/capacity/allocate', data),
-    
+
     // AI Suggestions
     getSuggestions: (projectId: string, role: string) =>
         api.get(`/capacity/suggestions/${projectId}/${role}`),
     recordFeedback: (suggestionId: string, data: { was_accepted: boolean; feedback_notes?: string; actual_outcome?: string }) =>
         api.post(`/capacity/suggestions/${suggestionId}/feedback`, data),
-    
+
     // Manual Input
     recordManualInput: (data: any) => api.post('/capacity/manual-input', data),
-    
+
     // Project Workload
     getProjectWorkload: (projectId: string) => api.get(`/capacity/projects/${projectId}/workload`),
 };

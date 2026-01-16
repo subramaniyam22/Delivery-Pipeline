@@ -129,34 +129,7 @@ PREDEFINED_TASKS = {
 DEFAULT_REQUIRED_FIELDS = ["logo", "images", "copy_text", "wcag", "privacy_policy", "theme", "contacts"]
 
 
-def is_s3_configured() -> bool:
-    return bool(settings.S3_BUCKET and settings.AWS_REGION and settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY)
-
-
-def build_s3_url(key: str) -> str:
-    if settings.S3_PUBLIC_BASE_URL:
-        return f"{settings.S3_PUBLIC_BASE_URL.rstrip('/')}/{key}"
-    if settings.AWS_REGION and settings.AWS_REGION != "us-east-1":
-        return f"https://{settings.S3_BUCKET}.s3.{settings.AWS_REGION}.amazonaws.com/{key}"
-    return f"https://{settings.S3_BUCKET}.s3.amazonaws.com/{key}"
-
-
-def upload_file_to_s3(file: UploadFile, key: str) -> str:
-    s3 = boto3.client(
-        "s3",
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=settings.AWS_REGION,
-    )
-    body = file.file.read()
-    s3.put_object(
-        Bucket=settings.S3_BUCKET,
-        Key=key,
-        Body=body,
-        ContentType=file.content_type,
-        ACL="public-read",
-    )
-    return build_s3_url(key)
+# S3 helper functions are now imported from app.services.storage_service
 
 
 def resolve_required_fields(db: Session, project: Optional[Project]) -> List[str]:
@@ -702,29 +675,35 @@ async def upload_client_logo(
     
     content = await file.read()
     file_path_result = None
-    if s3_enabled():
-        key = f"projects/{onboarding.project_id}/logo/{file.filename}"
-        logo_url = upload_bytes_to_s3(content, key, file.content_type)
-        onboarding.logo_url = logo_url
-        onboarding.logo_file_path = None
-        file_path_result = logo_url
-    else:
-        upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "logo")
-        os.makedirs(upload_dir, exist_ok=True)
-        file_path = os.path.join(upload_dir, file.filename)
-        with open(file_path, "wb") as f:
-            f.write(content)
-        onboarding.logo_file_path = file_path
-        file_path_result = file_path
+    
+    try:
+        if s3_enabled():
+            key = f"projects/{onboarding.project_id}/logo/{file.filename}"
+            logo_url = upload_bytes_to_s3(content, key, file.content_type)
+            onboarding.logo_url = logo_url
+            onboarding.logo_file_path = None
+            file_path_result = logo_url
+        else:
+            upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "logo")
+            os.makedirs(upload_dir, exist_ok=True)
+            file_path = os.path.join(upload_dir, file.filename)
+            with open(file_path, "wb") as f:
+                f.write(content)
+            onboarding.logo_file_path = file_path
+            onboarding.logo_url = None # Clear URL if local upload
+            file_path_result = file_path
+            
+        project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+        required_fields = resolve_required_fields(db, project)
+        onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
+        db.commit()
         
-    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
-    required_fields = resolve_required_fields(db, project)
-    onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
-    db.commit()
-    
-    auto_update_task_status(db, onboarding.project_id, onboarding)
-    
-    return {"success": True, "file_path": file_path_result}
+        auto_update_task_status(db, onboarding.project_id, onboarding)
+        
+        return {"success": True, "file_path": file_path_result}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Logo upload failed: {str(e)}")
 
 
 @client_router.post("/{token}/upload-image")
@@ -747,30 +726,68 @@ async def upload_client_image(
     content = await file.read()
     images = list(onboarding.images_json or [])
     file_path_result = None
-    if s3_enabled():
-        key = f"projects/{onboarding.project_id}/images/{file.filename}"
-        image_url = upload_bytes_to_s3(content, key, file.content_type)
-        images.append({"url": image_url, "filename": file.filename, "type": "uploaded"})
-        file_path_result = image_url
-    else:
-        upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "images")
-        os.makedirs(upload_dir, exist_ok=True)
-        file_path = os.path.join(upload_dir, file.filename)
-        with open(file_path, "wb") as f:
-            f.write(content)
-        images.append({"file_path": file_path, "filename": file.filename, "type": "uploaded"})
-        file_path_result = file_path
+    
+    try:
+        if s3_enabled():
+            key = f"projects/{onboarding.project_id}/images/{file.filename}"
+            image_url = upload_bytes_to_s3(content, key, file.content_type)
+            images.append({"url": image_url, "filename": file.filename, "type": "uploaded"})
+            file_path_result = image_url
+        else:
+            upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "images")
+            os.makedirs(upload_dir, exist_ok=True)
+            file_path = os.path.join(upload_dir, file.filename)
+            with open(file_path, "wb") as f:
+                f.write(content)
+            images.append({"file_path": file_path, "filename": file.filename, "type": "uploaded"})
+            file_path_result = file_path
+            
+        onboarding.images_json = images
+        flag_modified(onboarding, "images_json")
+        project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+        required_fields = resolve_required_fields(db, project)
+        onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
+        db.commit()
         
-    onboarding.images_json = images
-    flag_modified(onboarding, "images_json")
-    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
-    required_fields = resolve_required_fields(db, project)
-    onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
-    db.commit()
+        auto_update_task_status(db, onboarding.project_id, onboarding)
+        
+        return {"success": True, "file_path": file_path_result, "images": images}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
+
+
+@client_router.delete("/{token}/image")
+def delete_client_image(
+    token: str,
+    index: int = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Delete an uploaded image"""
+    onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
     
-    auto_update_task_status(db, onboarding.project_id, onboarding)
-    
-    return {"success": True, "file_path": file_path_result, "images": images}
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Invalid link")
+        
+    images = list(onboarding.images_json or [])
+    if 0 <= index < len(images):
+        # We don't necessarily delete from S3/Storage here for simplicity, 
+        # just remove from the list.
+        images.pop(index)
+        onboarding.images_json = images
+        flag_modified(onboarding, "images_json")
+        
+        # Recalculate completion
+        project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+        required_fields = resolve_required_fields(db, project)
+        onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
+        
+        db.commit()
+        auto_update_task_status(db, onboarding.project_id, onboarding)
+        
+        return {"success": True, "images": images}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid image index")
 
 
 # ============= Project Task Endpoints =============
