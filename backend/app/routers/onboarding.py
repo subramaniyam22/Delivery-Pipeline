@@ -701,11 +701,13 @@ async def upload_client_logo(
         raise HTTPException(status_code=400, detail="Invalid file type. Allowed: PNG, JPEG, SVG, WEBP")
     
     content = await file.read()
+    file_path_result = None
     if s3_enabled():
         key = f"projects/{onboarding.project_id}/logo/{file.filename}"
         logo_url = upload_bytes_to_s3(content, key, file.content_type)
         onboarding.logo_url = logo_url
         onboarding.logo_file_path = None
+        file_path_result = logo_url
     else:
         upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "logo")
         os.makedirs(upload_dir, exist_ok=True)
@@ -713,6 +715,8 @@ async def upload_client_logo(
         with open(file_path, "wb") as f:
             f.write(content)
         onboarding.logo_file_path = file_path
+        file_path_result = file_path
+        
     project = db.query(Project).filter(Project.id == onboarding.project_id).first()
     required_fields = resolve_required_fields(db, project)
     onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
@@ -720,7 +724,7 @@ async def upload_client_logo(
     
     auto_update_task_status(db, onboarding.project_id, onboarding)
     
-    return {"success": True, "file_path": file_path}
+    return {"success": True, "file_path": file_path_result}
 
 
 @client_router.post("/{token}/upload-image")
@@ -742,10 +746,12 @@ async def upload_client_image(
     
     content = await file.read()
     images = list(onboarding.images_json or [])
+    file_path_result = None
     if s3_enabled():
         key = f"projects/{onboarding.project_id}/images/{file.filename}"
         image_url = upload_bytes_to_s3(content, key, file.content_type)
         images.append({"url": image_url, "filename": file.filename, "type": "uploaded"})
+        file_path_result = image_url
     else:
         upload_dir = os.path.join(settings.UPLOAD_DIR, str(onboarding.project_id), "images")
         os.makedirs(upload_dir, exist_ok=True)
@@ -753,6 +759,8 @@ async def upload_client_image(
         with open(file_path, "wb") as f:
             f.write(content)
         images.append({"file_path": file_path, "filename": file.filename, "type": "uploaded"})
+        file_path_result = file_path
+        
     onboarding.images_json = images
     flag_modified(onboarding, "images_json")
     project = db.query(Project).filter(Project.id == onboarding.project_id).first()
@@ -762,7 +770,7 @@ async def upload_client_image(
     
     auto_update_task_status(db, onboarding.project_id, onboarding)
     
-    return {"success": True, "file_path": file_path, "images": images}
+    return {"success": True, "file_path": file_path_result, "images": images}
 
 
 # ============= Project Task Endpoints =============

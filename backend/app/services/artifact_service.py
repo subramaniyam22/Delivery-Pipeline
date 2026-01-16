@@ -61,22 +61,34 @@ async def upload_artifact(
             detail=f"File size exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE} bytes"
         )
     
-    # Create upload directory if it doesn't exist
-    upload_dir = os.path.join(settings.UPLOAD_DIR, str(project_id), stage.value)
-    os.makedirs(upload_dir, exist_ok=True)
-    
-    # Save file
-    file_path = os.path.join(upload_dir, file.filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    
     # Create artifact record
+    from app.services.storage_service import s3_enabled, upload_bytes_to_s3
+    
+    file_url = None
+    if s3_enabled():
+        # Reset file pointer since we seeked earlier
+        file.file.seek(0)
+        content = file.file.read()
+        key = f"projects/{project_id}/artifacts/{stage.value}/{file.filename}"
+        file_url = upload_bytes_to_s3(content, key, file.content_type)
+    else:
+        # Create upload directory if it doesn't exist
+        upload_dir = os.path.join(settings.UPLOAD_DIR, str(project_id), stage.value)
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Save file locally
+        file_path = os.path.join(upload_dir, file.filename)
+        file.file.seek(0)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        file_url = file_path
+    
     artifact = Artifact(
         project_id=project_id,
         stage=stage,
         type=artifact_type,
         filename=file.filename,
-        url=file_path,
+        url=file_url,
         notes=notes,
         uploaded_by_user_id=user.id
     )
