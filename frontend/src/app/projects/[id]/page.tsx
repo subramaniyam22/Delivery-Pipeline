@@ -3476,7 +3476,8 @@ export default function ProjectDetailPage() {
                 
                 /* Manager Read-Only View */
                 .onboarding-readonly-view .form-card.readonly {
-                    background: #f8fafc;
+                    background: var(--bg-card);
+                    border: 1px solid var(--border-light);
                 }
                 
                 .readonly-grid {
@@ -4037,8 +4038,10 @@ export default function ProjectDetailPage() {
                 }
 
                 .readonly-section {
-                    border: 1px solid #e2e8f0;
-                    background: #f8fafc;
+                    border: 1px solid var(--border-light);
+                    background: var(--bg-card);
+                    border-radius: var(--radius-lg);
+                    padding: var(--space-lg);
                     position: relative;
                 }
 
