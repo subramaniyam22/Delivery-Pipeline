@@ -91,6 +91,7 @@ export default function ClientOnboardingPage() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [missingFieldsEta, setMissingFieldsEta] = useState<Record<string, string>>({});
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
 
     const logoInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
@@ -198,6 +199,24 @@ export default function ClientOnboardingPage() {
             await loadFormData();
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to upload logo');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDeleteLogo = async () => {
+        if (!window.confirm('Are you sure you want to delete the logo?')) return;
+
+        setSaving(true);
+        try {
+            await clientAPI.deleteLogo(token);
+            setSuccess('Logo deleted successfully');
+            setFormData(prev => prev ? {
+                ...prev,
+                data: { ...prev.data, logo_url: null, logo_file_path: null }
+            } : null);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to delete logo');
         } finally {
             setSaving(false);
         }
@@ -457,12 +476,19 @@ export default function ClientOnboardingPage() {
                                         src={getAssetUrl(formData.data.logo_url || formData.data.logo_file_path)}
                                         alt="Company Logo"
                                         className="logo-thumbnail"
+                                        onClick={() => setPreviewImage(getAssetUrl(formData.data.logo_url || formData.data.logo_file_path))}
+                                        title="Click to preview"
                                     />
                                     <div className="logo-actions">
                                         <div className="preview-badge">✓ Logo Uploaded</div>
-                                        <button className="btn-replace" onClick={() => logoInputRef.current?.click()}>
-                                            Replace Logo
-                                        </button>
+                                        <div className="logo-btn-group">
+                                            <button className="btn-replace" onClick={() => logoInputRef.current?.click()}>
+                                                Replace
+                                            </button>
+                                            <button className="btn-remove-logo" onClick={handleDeleteLogo}>
+                                                Remove
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -505,7 +531,13 @@ export default function ClientOnboardingPage() {
                             return (
                                 <div key={i} className="image-card">
                                     <div className="image-preview">
-                                        <img src={url} alt={img.filename || 'Uploaded image'} />
+                                        <img
+                                            src={url}
+                                            alt={img.filename || 'Uploaded image'}
+                                            onClick={() => setPreviewImage(url)}
+                                            style={{ cursor: 'pointer' }}
+                                            title="Click to preview"
+                                        />
                                         <button
                                             className="btn-delete"
                                             onClick={() => handleDeleteImage(i)}
@@ -1707,8 +1739,186 @@ export default function ClientOnboardingPage() {
                     background: #eff6ff;
                     color: #2563eb;
                 }
+
+                .logo-preview-card {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    background: white;
+                    padding: 24px;
+                    border-radius: 12px;
+                    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                    width: 100%;
+                    max-width: 400px;
+                }
+                .logo-thumbnail {
+                    height: 200px;
+                    width: auto;
+                    object-fit: contain;
+                    margin-bottom: 16px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    transition: transform 0.2s;
+                }
+                .logo-thumbnail:hover {
+                    transform: scale(1.02);
+                }
+                .logo-actions {
+                    width: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .logo-btn-group {
+                    display: flex;
+                    gap: 12px;
+                }
+                .btn-replace {
+                    padding: 8px 16px;
+                    background: #2563eb;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    transition: background 0.2s;
+                }
+                .btn-replace:hover {
+                    background: #1d4ed8;
+                }
+                .btn-remove-logo {
+                    padding: 8px 16px;
+                    background: #fee2e2;
+                    color: #dc2626;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    transition: background 0.2s;
+                }
+                .btn-remove-logo:hover {
+                    background: #fecaca;
+                }
+                /* Images Grid */
+                .images-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                    gap: 16px;
+                }
+                .image-card {
+                    background: white;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    transition: transform 0.2s;
+                    border: 1px solid #e2e8f0;
+                }
+                .image-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+                }
+                .image-preview {
+                    position: relative;
+                    aspect-ratio: 16 / 9;
+                    background: #f1f5f9;
+                    overflow: hidden;
+                }
+                .image-preview img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    transition: transform 0.3s;
+                }
+                .image-preview:hover img {
+                    transform: scale(1.05);
+                }
+                .btn-delete {
+                    position: absolute;
+                    top: 8px;
+                    right: 8px;
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 50%;
+                    background: rgba(0, 0, 0, 0.6);
+                    color: white;
+                    border: none;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    opacity: 0;
+                    transition: all 0.2s;
+                    font-size: 18px;
+                    line-height: 1;
+                }
+                .image-card:hover .btn-delete {
+                    opacity: 1;
+                }
+                .btn-delete:hover {
+                    background: #ef4444;
+                    transform: scale(1.1);
+                }
+                
+                /* Lightbox */
+                .lightbox-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.9);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    padding: 24px;
+                    animation: fadeIn 0.2s ease-out;
+                }
+                .lightbox-content {
+                    position: relative;
+                    max-width: 90vw;
+                    max-height: 90vh;
+                }
+                .lightbox-content img {
+                    max-width: 100%;
+                    max-height: 90vh;
+                    object-fit: contain;
+                    border-radius: 4px;
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                }
+                .lightbox-close {
+                    position: absolute;
+                    top: -40px;
+                    right: -10px;
+                    background: none;
+                    border: none;
+                    color: white;
+                    font-size: 32px;
+                    cursor: pointer;
+                    padding: 8px;
+                    line-height: 1;
+                    opacity: 0.8;
+                    transition: opacity 0.2s;
+                }
+                .lightbox-close:hover {
+                    opacity: 1;
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
             `}</style>
+
+            {/* Lightbox Modal */}
+            {previewImage && (
+                <div className="lightbox-overlay" onClick={() => setPreviewImage(null)}>
+                    <div className="lightbox-content" onClick={e => e.stopPropagation()}>
+                        <button className="lightbox-close" onClick={() => setPreviewImage(null)}>×</button>
+                        <img src={previewImage} alt="Full size preview" />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
-

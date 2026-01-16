@@ -196,6 +196,8 @@ export const clientAPI = {
     },
     deleteImage: (token: string, index: number) =>
         api.delete(`/projects/client-onboarding/${token}/image`, { params: { index } }),
+    deleteLogo: (token: string) =>
+        api.delete(`/projects/client-onboarding/${token}/logo`),
 };
 
 export const projectTasksAPI = {

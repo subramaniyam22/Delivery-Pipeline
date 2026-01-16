@@ -813,6 +813,39 @@ def delete_client_image(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@client_router.delete("/{token}/logo")
+def delete_client_logo(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """Delete an uploaded logo"""
+    logger.info(f"Deletion request for logo with token {token}")
+    onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
+    
+    if not onboarding:
+        logger.warning(f"Invalid token for deletion: {token}")
+        raise HTTPException(status_code=404, detail="Invalid link")
+        
+    try:
+        onboarding.logo_url = None
+        onboarding.logo_file_path = None
+        
+        # Recalculate completion
+        project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+        required_fields = resolve_required_fields(db, project)
+        onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
+        
+        db.commit()
+        auto_update_task_status(db, onboarding.project_id, onboarding)
+        
+        return {"success": True, "message": "Logo deleted"}
+        
+    except Exception as e:
+        logger.error(f"Error deleting logo: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============= Project Task Endpoints =============
 
 @router.get("/{project_id}/project-tasks", response_model=List[ProjectTaskResponse])
