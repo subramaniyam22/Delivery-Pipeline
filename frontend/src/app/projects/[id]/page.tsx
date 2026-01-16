@@ -49,6 +49,7 @@ interface Template {
     id: string;
     name: string;
     description: string;
+    preview_url?: string;
     colors: { primary: string; secondary: string; accent: string };
     features: string[];
 }
