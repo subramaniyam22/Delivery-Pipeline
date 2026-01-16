@@ -3660,11 +3660,11 @@ export default function ProjectDetailPage() {
                 :global(.readonly-field label) {
                     display: block;
                     font-size: 11px;
-                    font-weight: 600;
+                    font-weight: 700;
                     color: var(--text-muted);
                     margin-bottom: 4px;
                     text-transform: uppercase;
-                    letter-spacing: 0.05em;
+                    letter-spacing: 0.1em;
                 }
                 :global(.readonly-field span) {
                     color: var(--text-primary);
@@ -3684,10 +3684,88 @@ export default function ProjectDetailPage() {
                     border: 1px solid var(--border-light);
                     box-shadow: var(--shadow-sm);
                     transition: all var(--transition-normal);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
+                :global(.requirements-grid .readonly-item label) {
+                    display: block;
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: var(--text-muted);
+                    text-transform: uppercase;
+                    letter-spacing: 0.1em;
+                    margin: 0;
+                }
+                :global(.requirements-grid .readonly-item span) {
+                    color: var(--text-primary);
+                    font-size: 15px;
+                    font-weight: 500;
+                    line-height: 1.4;
                 }
                 :global(.requirements-grid .readonly-item:hover) {
                     box-shadow: var(--shadow-md);
                     transform: translateY(-2px);
+                    border-color: var(--accent-primary);
+                }
+                :global(.requirements-collapsible) {
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-md);
+                    overflow: hidden;
+                    background: var(--bg-secondary);
+                }
+                :global(.requirements-collapsible summary) {
+                    padding: var(--space-md);
+                    cursor: pointer;
+                    font-weight: 700;
+                    color: var(--accent-primary);
+                    background: var(--bg-card);
+                    border-bottom: 1px solid var(--border-light);
+                    list-style: none;
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-sm);
+                    transition: all var(--transition-fast);
+                }
+                :global(.requirements-collapsible summary::before) {
+                    content: '📂';
+                    font-size: 14px;
+                }
+                :global(.requirements-collapsible[open] summary) {
+                    border-bottom: 1px solid var(--border-light);
+                }
+                :global(.checklist-grid) {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                    gap: var(--space-sm);
+                    padding: var(--space-md);
+                }
+                :global(.checklist-item) {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-md);
+                    padding: 12px 16px;
+                    background: var(--bg-card);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-md);
+                    font-size: 14px;
+                    box-shadow: var(--shadow-sm);
+                    transition: all var(--transition-fast);
+                }
+                :global(.checklist-item.provided) {
+                    border-left: 4px solid var(--color-success);
+                }
+                :global(.checklist-item.pending) {
+                    border-left: 4px solid var(--color-warning);
+                    color: var(--text-muted);
+                }
+                :global(.checklist-item:hover) {
+                    transform: translateX(6px);
+                    border-color: var(--accent-primary);
+                    box-shadow: var(--shadow-md);
+                }
+                :global(.checklist-icon) {
+                    font-size: 16px;
                 }
                 :global(.asset-card) {
                     background: var(--bg-card);
