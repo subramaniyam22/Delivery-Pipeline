@@ -704,15 +704,22 @@ export default function ProjectDetailPage() {
                         <div className="readonly-field">
                             <label>Company Logo</label>
                             {(onboardingData?.logo_url || onboardingData?.logo_file_path) ? (
-                                <div className="asset-card">
-                                    <div className="asset-thumb">
+                                    <div className="asset-card">
+                                        <div className="asset-thumb">
                                         <img
                                             src={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
                                             alt="Company logo"
                                             onError={(e) => {
-                                                e.currentTarget.style.opacity = '0';
+                                                    const parent = e.currentTarget.parentElement;
+                                                    if (parent) parent.classList.add('is-empty');
+                                                    e.currentTarget.style.display = 'none';
                                             }}
+                                                onLoad={(e) => {
+                                                    const parent = e.currentTarget.parentElement;
+                                                    if (parent) parent.classList.remove('is-empty');
+                                                }}
                                         />
+                                            <span className="asset-fallback">No preview</span>
                                     </div>
                                     <span className="asset-name">Company Logo</span>
                                     <a
@@ -738,9 +745,16 @@ export default function ProjectDetailPage() {
                                                     src={img.url}
                                                     alt={img.name}
                                                     onError={(e) => {
-                                                        e.currentTarget.style.opacity = '0';
+                                                        const parent = e.currentTarget.parentElement;
+                                                        if (parent) parent.classList.add('is-empty');
+                                                        e.currentTarget.style.display = 'none';
+                                                    }}
+                                                    onLoad={(e) => {
+                                                        const parent = e.currentTarget.parentElement;
+                                                        if (parent) parent.classList.remove('is-empty');
                                                     }}
                                                 />
+                                                <span className="asset-fallback">No preview</span>
                                             </div>
                                             <span className="asset-name">{img.name}</span>
                                             <a className="asset-download" href={img.url} download>
@@ -4043,6 +4057,7 @@ export default function ProjectDetailPage() {
                     border-radius: var(--radius-lg);
                     padding: var(--space-lg);
                     position: relative;
+                    box-shadow: var(--shadow-sm);
                 }
 
                 .section-badge {
@@ -4106,6 +4121,17 @@ export default function ProjectDetailPage() {
                     display: flex;
                     align-items: center;
                     justify-content: center;
+                }
+                .asset-thumb.is-empty {
+                    background: var(--bg-secondary);
+                }
+                .asset-fallback {
+                    display: none;
+                    font-size: 12px;
+                    color: var(--text-muted);
+                }
+                .asset-thumb.is-empty .asset-fallback {
+                    display: block;
                 }
                 .asset-thumb img {
                     width: 100%;
