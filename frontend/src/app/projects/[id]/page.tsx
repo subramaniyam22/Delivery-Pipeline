@@ -704,12 +704,17 @@ export default function ProjectDetailPage() {
                         <div className="readonly-field">
                             <label>Company Logo</label>
                             {(onboardingData?.logo_url || onboardingData?.logo_file_path) ? (
-                                <div className="asset-preview">
-                                    <img
-                                        src={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
-                                        alt="Company logo"
-                                        className="asset-thumb"
-                                    />
+                                <div className="asset-card">
+                                    <div className="asset-thumb">
+                                        <img
+                                            src={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
+                                            alt="Company logo"
+                                            onError={(e) => {
+                                                e.currentTarget.style.opacity = '0';
+                                            }}
+                                        />
+                                    </div>
+                                    <span className="asset-name">Company Logo</span>
                                     <a
                                         className="asset-download"
                                         href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
@@ -728,7 +733,16 @@ export default function ProjectDetailPage() {
                                 <div className="asset-grid">
                                     {getImageItems().map((img) => (
                                         <div key={img.key} className="asset-card">
-                                            <img src={img.url} alt={img.name} className="asset-thumb" />
+                                            <div className="asset-thumb">
+                                                <img
+                                                    src={img.url}
+                                                    alt={img.name}
+                                                    onError={(e) => {
+                                                        e.currentTarget.style.opacity = '0';
+                                                    }}
+                                                />
+                                            </div>
+                                            <span className="asset-name">{img.name}</span>
                                             <a className="asset-download" href={img.url} download>
                                                 Download
                                             </a>
@@ -796,14 +810,17 @@ export default function ProjectDetailPage() {
 
                 <div className="readonly-group">
                     <h4>🧾 Project Requirements Checklist</h4>
-                    <div className="checklist-grid">
-                        {getRequirementsChecklistItems().map((item) => (
-                            <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
-                                <span>{item.label}</span>
-                            </div>
-                        ))}
-                    </div>
+                                    <details className="requirements-collapsible">
+                                        <summary>View checklist</summary>
+                                        <div className="checklist-grid">
+                                            {getRequirementsChecklistItems().map((item) => (
+                                                <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
+                                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
+                                                    <span>{item.label}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </details>
                 </div>
 
                 {hasRequirements && (
@@ -1719,14 +1736,17 @@ export default function ProjectDetailPage() {
 
                                 <div className="form-card readonly">
                                     <h3>🧾 Project Requirements Checklist</h3>
-                                    <div className="checklist-grid">
-                                        {getRequirementsChecklistItems().map((item) => (
-                                            <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
-                                                <span>{item.label}</span>
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <details className="requirements-collapsible">
+                                        <summary>View checklist</summary>
+                                        <div className="checklist-grid">
+                                            {getRequirementsChecklistItems().map((item) => (
+                                                <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
+                                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
+                                                    <span>{item.label}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </details>
                                 </div>
                                 
                                 {/* Missing Fields */}
@@ -4060,21 +4080,39 @@ export default function ProjectDetailPage() {
                 }
                 .asset-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
                     gap: 12px;
                 }
                 .asset-card {
                     display: flex;
                     flex-direction: column;
                     gap: 6px;
+                    padding: 10px;
+                    background: #ffffff;
+                    border: 1px solid var(--border-light);
+                    border-radius: 10px;
                 }
                 .asset-thumb {
                     width: 100%;
-                    max-width: 140px;
-                    height: 90px;
-                    object-fit: cover;
+                    height: 100px;
                     border-radius: 8px;
                     border: 1px solid var(--border-light);
+                    background: #f8fafc;
+                    overflow: hidden;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .asset-thumb img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    border-radius: 8px;
+                }
+                .asset-name {
+                    font-size: 12px;
+                    color: #475569;
+                    word-break: break-word;
                 }
                 .asset-download {
                     font-size: 12px;
@@ -4087,6 +4125,12 @@ export default function ProjectDetailPage() {
                     max-width: 100%;
                     border-radius: 10px;
                     border: 1px solid var(--border-light);
+                }
+                .requirements-collapsible summary {
+                    cursor: pointer;
+                    font-size: 13px;
+                    color: var(--text-secondary);
+                    margin-bottom: 8px;
                 }
                 .requirements-grid {
                     display: grid;
