@@ -740,11 +740,13 @@ export default function ProjectDetailPage() {
                                             src={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
                                             alt="Company logo"
                                             onError={(e) => {
+                                                console.error('Logo failed to load:', e.currentTarget.src);
                                                 const parent = e.currentTarget.parentElement;
                                                 if (parent) parent.classList.add('is-empty');
                                                 e.currentTarget.style.display = 'none';
                                             }}
                                             onLoad={(e) => {
+                                                console.log('Logo loaded successfully:', e.currentTarget.src);
                                                 const parent = e.currentTarget.parentElement;
                                                 if (parent) parent.classList.remove('is-empty');
                                             }}
@@ -775,11 +777,13 @@ export default function ProjectDetailPage() {
                                                     src={img.url}
                                                     alt={img.name}
                                                     onError={(e) => {
+                                                        console.error('Image failed to load:', img.name, img.url);
                                                         const parent = e.currentTarget.parentElement;
                                                         if (parent) parent.classList.add('is-empty');
                                                         e.currentTarget.style.display = 'none';
                                                     }}
                                                     onLoad={(e) => {
+                                                        console.log('Image loaded successfully:', img.name, img.url);
                                                         const parent = e.currentTarget.parentElement;
                                                         if (parent) parent.classList.remove('is-empty');
                                                     }}
@@ -871,33 +875,33 @@ export default function ProjectDetailPage() {
                     <div className="readonly-group">
                         <h4>🧾 Project Requirements</h4>
                         <div className="requirements-grid">
-                            <div><label>Project Summary</label><span>{requirements.project_summary || 'Not provided'}</span></div>
-                            <div><label>Project Notes</label><span>{requirements.project_notes || 'Not provided'}</span></div>
-                            <div><label>Phase</label><span>{requirements.phase_number || 'Not provided'}</span></div>
-                            <div><label>Template Mode</label><span>{requirements.template_mode || 'Not provided'}</span></div>
-                            <div><label>Template References</label><span>{requirements.template_references || 'Not provided'}</span></div>
-                            <div><label>Brand Guidelines</label><span>{requirements.brand_guidelines_available === true ? 'Yes' : requirements.brand_guidelines_available === false ? 'No' : 'Not provided'}</span></div>
-                            <div><label>Brand Guidelines Details</label><span>{requirements.brand_guidelines_details || 'Not provided'}</span></div>
-                            <div><label>Color Selection</label><span>{requirements.color_selection || 'Not provided'}</span></div>
-                            <div><label>Color Notes</label><span>{requirements.color_notes || 'Not provided'}</span></div>
-                            <div><label>Font Selection</label><span>{requirements.font_selection || 'Not provided'}</span></div>
-                            <div><label>Font Notes</label><span>{requirements.font_notes || 'Not provided'}</span></div>
-                            <div><label>Custom Graphic Notes</label><span>{requirements.custom_graphic_notes_enabled === true ? 'Yes' : requirements.custom_graphic_notes_enabled === false ? 'No' : 'Not provided'}</span></div>
-                            <div><label>Custom Graphic Details</label><span>{requirements.custom_graphic_notes || 'Not provided'}</span></div>
-                            <div><label>Navigation Notes</label><span>{requirements.navigation_notes_option || 'Not provided'}</span></div>
-                            <div><label>Navigation Details</label><span>{requirements.navigation_notes || 'Not provided'}</span></div>
-                            <div><label>Stock Images Reference</label><span>{requirements.stock_images_reference || 'Not provided'}</span></div>
-                            <div><label>Floor Plan Images</label><span>{requirements.floor_plan_images || 'Not provided'}</span></div>
-                            <div><label>Sitemap</label><span>{requirements.sitemap || 'Not provided'}</span></div>
-                            <div><label>Virtual Tours</label><span>{requirements.virtual_tours || 'Not provided'}</span></div>
-                            <div><label>POI Categories</label><span>{requirements.poi_categories || 'Not provided'}</span></div>
-                            <div><label>Specials</label><span>{requirements.specials_enabled === true ? 'Yes' : requirements.specials_enabled === false ? 'No' : 'Not provided'}</span></div>
-                            <div><label>Specials Details</label><span>{requirements.specials_details || 'Not provided'}</span></div>
-                            <div><label>Copy Scope Notes</label><span>{requirements.copy_scope_notes || 'Not provided'}</span></div>
-                            <div><label>Pages</label><span>{requirements.pages || 'Not provided'}</span></div>
-                            <div><label>Domain Type</label><span>{requirements.domain_type || 'Not provided'}</span></div>
-                            <div><label>Vanity Domains</label><span>{requirements.vanity_domains || 'Not provided'}</span></div>
-                            <div><label>Call Tracking Plan</label><span>{requirements.call_tracking_plan || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Project Summary</label><span>{requirements.project_summary || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Project Notes</label><span>{requirements.project_notes || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Phase</label><span>{requirements.phase_number || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Template Mode</label><span>{requirements.template_mode || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Template References</label><span>{requirements.template_references || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Brand Guidelines</label><span>{requirements.brand_guidelines_available === true ? 'Yes' : requirements.brand_guidelines_available === false ? 'No' : 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Brand Guidelines Details</label><span>{requirements.brand_guidelines_details || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Color Selection</label><span>{requirements.color_selection || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Color Notes</label><span>{requirements.color_notes || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Font Selection</label><span>{requirements.font_selection || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Font Notes</label><span>{requirements.font_notes || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Custom Graphic Notes</label><span>{requirements.custom_graphic_notes_enabled === true ? 'Yes' : requirements.custom_graphic_notes_enabled === false ? 'No' : 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Custom Graphic Details</label><span>{requirements.custom_graphic_notes || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Navigation Notes</label><span>{requirements.navigation_notes_option || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Navigation Details</label><span>{requirements.navigation_notes || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Stock Images Reference</label><span>{requirements.stock_images_reference || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Floor Plan Images</label><span>{requirements.floor_plan_images || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Sitemap</label><span>{requirements.sitemap || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Virtual Tours</label><span>{requirements.virtual_tours || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>POI Categories</label><span>{requirements.poi_categories || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Specials</label><span>{requirements.specials_enabled === true ? 'Yes' : requirements.specials_enabled === false ? 'No' : 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Specials Details</label><span>{requirements.specials_details || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Copy Scope Notes</label><span>{requirements.copy_scope_notes || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Pages</label><span>{requirements.pages || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Domain Type</label><span>{requirements.domain_type || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Vanity Domains</label><span>{requirements.vanity_domains || 'Not provided'}</span></div>
+                            <div className="readonly-item"><label>Call Tracking Plan</label><span>{requirements.call_tracking_plan || 'Not provided'}</span></div>
                         </div>
                     </div>
                 )}
