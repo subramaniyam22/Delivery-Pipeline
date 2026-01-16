@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management
@@ -92,6 +93,10 @@ app.include_router(sla.router)
 app.include_router(client_management.router)
 app.include_router(project_management.router)
 app.include_router(config_admin.router)
+
+# Serve uploaded files
+if os.path.isdir(settings.UPLOAD_DIR):
+    app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
 @app.get("/")

@@ -576,6 +576,45 @@ export default function ProjectDetailPage() {
         }
     };
 
+    const getBackendBaseUrl = () => {
+        if (process.env.NEXT_PUBLIC_API_URL) {
+            return process.env.NEXT_PUBLIC_API_URL;
+        }
+        if (typeof window !== 'undefined' && window.location.hostname.includes('onrender.com')) {
+            return 'https://delivery-backend-vvbf.onrender.com';
+        }
+        return 'http://localhost:8000';
+    };
+
+    const getAssetUrl = (path?: string | null) => {
+        if (!path) return '';
+        if (path.startsWith('http')) return path;
+        const normalized = path.replace(/\\/g, '/');
+        const index = normalized.indexOf('/uploads/');
+        if (index >= 0) {
+            return `${getBackendBaseUrl()}${normalized.slice(index)}`;
+        }
+        if (normalized.startsWith('uploads/')) {
+            return `${getBackendBaseUrl()}/${normalized}`;
+        }
+        if (normalized.startsWith('./uploads/')) {
+            return `${getBackendBaseUrl()}${normalized.slice(1)}`;
+        }
+        return `${getBackendBaseUrl()}/${normalized}`;
+    };
+
+    const getImageItems = () => {
+        const images = onboardingData?.images_json || [];
+        return images.map((img: any, index: number) => {
+            if (typeof img === 'string') {
+                return { key: `${img}-${index}`, name: img, url: getAssetUrl(img) };
+            }
+            const path = img.url || img.file_path || img.path || '';
+            const name = img.filename || img.name || path.split('/').pop() || `image-${index + 1}`;
+            return { key: `${name}-${index}`, name, url: getAssetUrl(path) };
+        });
+    };
+
     const getTemplateLabel = () => {
         if (onboardingData?.selected_template_id) {
             const selected = templates.find(t => t.id === onboardingData.selected_template_id);
@@ -1694,15 +1733,41 @@ export default function ProjectDetailPage() {
                                 <div className="readonly-grid">
                                     <div className="readonly-field">
                                         <label>Company Logo</label>
-                                        <span className={onboardingData.logo_url || onboardingData.logo_file_path ? 'filled' : 'empty'}>
-                                            {onboardingData.logo_url || onboardingData.logo_file_path || 'Not provided'}
-                                        </span>
+                                            {(onboardingData.logo_url || onboardingData.logo_file_path) ? (
+                                                <div className="asset-preview">
+                                                    <img
+                                                        src={getAssetUrl(onboardingData.logo_url || onboardingData.logo_file_path)}
+                                                        alt="Company logo"
+                                                        className="asset-thumb"
+                                                    />
+                                                    <a
+                                                        className="asset-download"
+                                                        href={getAssetUrl(onboardingData.logo_url || onboardingData.logo_file_path)}
+                                                        download
+                                                    >
+                                                        Download
+                                                    </a>
+                                                </div>
+                                            ) : (
+                                                <span className="empty">Not provided</span>
+                                            )}
                                     </div>
                                     <div className="readonly-field">
                                         <label>Website Images</label>
-                                        <span className={onboardingData.images_json?.length ? 'filled' : 'empty'}>
-                                            {onboardingData.images_json?.length ? `${onboardingData.images_json.length} image(s)` : 'Not provided'}
-                                        </span>
+                                            {getImageItems().length ? (
+                                                <div className="asset-grid">
+                                                    {getImageItems().map((img) => (
+                                                        <div key={img.key} className="asset-card">
+                                                            <img src={img.url} alt={img.name} className="asset-thumb" />
+                                                            <a className="asset-download" href={img.url} download>
+                                                                Download
+                                                            </a>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <span className="empty">Not provided</span>
+                                            )}
                                     </div>
                                 </div>
                             </div>
@@ -1748,6 +1813,14 @@ export default function ProjectDetailPage() {
                                     <span className={(onboardingData.theme_preference || onboardingData.selected_template_id) ? 'filled' : 'empty'}>
                                         {getTemplateLabel()}
                                     </span>
+                                    {onboardingData.selected_template_id && templates.length > 0 && (
+                                        <div className="template-preview">
+                                            <img
+                                                src={templates.find(t => t.id === onboardingData.selected_template_id)?.preview_url || ''}
+                                                alt="Selected template preview"
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -3797,6 +3870,41 @@ export default function ProjectDetailPage() {
                     font-size: 0.9rem;
                     color: #475569;
                     margin-bottom: 0.75rem;
+                }
+                .asset-preview {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                .asset-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                    gap: 12px;
+                }
+                .asset-card {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
+                .asset-thumb {
+                    width: 100%;
+                    max-width: 140px;
+                    height: 90px;
+                    object-fit: cover;
+                    border-radius: 8px;
+                    border: 1px solid var(--border-light);
+                }
+                .asset-download {
+                    font-size: 12px;
+                    color: var(--accent-primary);
+                    text-decoration: underline;
+                }
+                .template-preview img {
+                    margin-top: 8px;
+                    width: 220px;
+                    max-width: 100%;
+                    border-radius: 10px;
+                    border: 1px solid var(--border-light);
                 }
 
                 .readonly-grid {
