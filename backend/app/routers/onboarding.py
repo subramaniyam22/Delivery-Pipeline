@@ -780,30 +780,37 @@ def delete_client_image(
     db: Session = Depends(get_db)
 ):
     """Delete an uploaded image"""
+    logger.info(f"Deletion request for image at index {index} with token {token}")
     onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
     
     if not onboarding:
+        logger.warning(f"Invalid token for deletion: {token}")
         raise HTTPException(status_code=404, detail="Invalid link")
         
-    images = list(onboarding.images_json or [])
-    if 0 <= index < len(images):
-        # We don't necessarily delete from S3/Storage here for simplicity, 
-        # just remove from the list.
-        images.pop(index)
-        onboarding.images_json = images
-        flag_modified(onboarding, "images_json")
-        
-        # Recalculate completion
-        project = db.query(Project).filter(Project.id == onboarding.project_id).first()
-        required_fields = resolve_required_fields(db, project)
-        onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
-        
-        db.commit()
-        auto_update_task_status(db, onboarding.project_id, onboarding)
-        
-        return {"success": True, "images": images}
-    else:
-        raise HTTPException(status_code=400, detail="Invalid image index")
+    try:
+        images = list(onboarding.images_json or [])
+        if 0 <= index < len(images):
+            removed = images.pop(index)
+            logger.info(f"Removing image: {removed}")
+            onboarding.images_json = images
+            flag_modified(onboarding, "images_json")
+            
+            # Recalculate completion
+            project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+            required_fields = resolve_required_fields(db, project)
+            onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
+            
+            db.commit()
+            auto_update_task_status(db, onboarding.project_id, onboarding)
+            
+            return {"success": True, "images": images}
+        else:
+            logger.warning(f"Invalid image index {index} for project {onboarding.project_id}")
+            raise HTTPException(status_code=400, detail="Invalid image index")
+    except Exception as e:
+        logger.error(f"Error deleting image: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============= Project Task Endpoints =============

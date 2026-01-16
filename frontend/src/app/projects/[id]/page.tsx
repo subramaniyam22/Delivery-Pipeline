@@ -623,32 +623,14 @@ export default function ProjectDetailPage() {
         if (path.startsWith('http')) return path;
 
         const baseUrl = getBackendBaseUrl();
-        const normalized = path.replace(/\\/g, '/');
+        // Remove leading ./ or / if present to normalize
+        let cleanPath = path.replace(/\\/g, '/').replace(/^\.?\//, '');
 
-        // Handle absolute paths from backend
-        const index = normalized.indexOf('/uploads/');
-        if (index >= 0) {
-            return `${baseUrl}${normalized.slice(index)}`;
+        // If the path already has 'uploads/' at the start, don't duplicate it
+        if (cleanPath.startsWith('uploads/')) {
+            return `${baseUrl}/${cleanPath}`;
         }
-
-        // Handle relative paths
-        if (normalized.startsWith('uploads/')) {
-            return `${baseUrl}/${normalized}`;
-        }
-
-        if (normalized.startsWith('./uploads/')) {
-            return `${baseUrl}${normalized.slice(1)}`;
-        }
-
-        // Fallback: prepend uploads if it's just a filename or path without uploads
-        if (!normalized.includes('uploads')) {
-            // If it's a project path but missing /uploads prefix
-            if (normalized.includes('-')) { // likely has a UUID
-                return `${baseUrl}/uploads/${normalized}`;
-            }
-        }
-
-        return `${baseUrl}/${normalized}`;
+        return `${baseUrl}/uploads/${cleanPath}`;
     };
     const getImageItems = () => {
         const images = onboardingData?.images_json || [];
