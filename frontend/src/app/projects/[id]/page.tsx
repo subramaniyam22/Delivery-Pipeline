@@ -43,6 +43,7 @@ interface OnboardingData {
     reminder_interval_hours?: number;
     submitted_at?: string | null;
     missing_fields_eta_json?: Record<string, string> | null;
+    updated_at?: string;
 }
 
 interface Template {
@@ -317,6 +318,7 @@ export default function ProjectDetailPage() {
     const [availableBuilders, setAvailableBuilders] = useState<AvailableBuilder[]>([]);
     const [phaseSummaries, setPhaseSummaries] = useState<PhaseSummary[]>([]);
     const [healthSummary, setHealthSummary] = useState<ProjectHealthSummary | null>(null);
+    const [showUpdateNotice, setShowUpdateNotice] = useState(false);
     
     // Test Phase UI State
     const [activeTestTab, setActiveTestTab] = useState<'scenarios' | 'executions' | 'defects'>('scenarios');
@@ -403,6 +405,17 @@ export default function ProjectDetailPage() {
         setUser(currentUser);
         loadAllData();
     }, [projectId]);
+
+    useEffect(() => {
+        if (!onboardingData?.updated_at || !user?.role) return;
+        if (user.role !== 'CONSULTANT' || !isAssignedToProject) return;
+        const key = `onboarding_seen_${projectId}`;
+        const lastSeen = localStorage.getItem(key);
+        const updatedAt = new Date(onboardingData.updated_at);
+        if (!lastSeen || updatedAt > new Date(lastSeen)) {
+            setShowUpdateNotice(true);
+        }
+    }, [onboardingData?.updated_at, user?.role, isAssignedToProject, projectId]);
 
     const loadAllData = async () => {
         try {
@@ -638,6 +651,42 @@ export default function ProjectDetailPage() {
         return onboardingData.copy_text || 'Not provided';
     };
 
+    const getRequirementsChecklistItems = () => {
+        const req = onboardingData?.requirements_json || {};
+        const hasValue = (value: any) => value !== undefined && value !== null && value !== '';
+        const hasBoolean = (value: any) => value === true || value === false;
+
+        return [
+            { label: 'Project Summary', filled: hasValue(req.project_summary) },
+            { label: 'Project Notes', filled: hasValue(req.project_notes) },
+            { label: 'Phase', filled: hasValue(req.phase_number) },
+            { label: 'Template Mode', filled: hasValue(req.template_mode) },
+            { label: 'Template References', filled: hasValue(req.template_references) },
+            { label: 'Brand Guidelines', filled: hasBoolean(req.brand_guidelines_available) },
+            { label: 'Brand Guidelines Details', filled: hasValue(req.brand_guidelines_details) },
+            { label: 'Color Selection', filled: hasValue(req.color_selection) },
+            { label: 'Color Notes', filled: hasValue(req.color_notes) },
+            { label: 'Font Selection', filled: hasValue(req.font_selection) },
+            { label: 'Font Notes', filled: hasValue(req.font_notes) },
+            { label: 'Custom Graphic Notes', filled: hasBoolean(req.custom_graphic_notes_enabled) },
+            { label: 'Custom Graphic Details', filled: hasValue(req.custom_graphic_notes) },
+            { label: 'Navigation Notes', filled: hasValue(req.navigation_notes_option) },
+            { label: 'Navigation Details', filled: hasValue(req.navigation_notes) },
+            { label: 'Stock Images Reference', filled: hasValue(req.stock_images_reference) },
+            { label: 'Floor Plan Images', filled: hasValue(req.floor_plan_images) },
+            { label: 'Sitemap', filled: hasValue(req.sitemap) },
+            { label: 'Virtual Tours', filled: hasValue(req.virtual_tours) },
+            { label: 'POI Categories', filled: hasValue(req.poi_categories) },
+            { label: 'Specials', filled: hasBoolean(req.specials_enabled) },
+            { label: 'Specials Details', filled: hasValue(req.specials_details) },
+            { label: 'Copy Scope Notes', filled: hasValue(req.copy_scope_notes) },
+            { label: 'Pages', filled: hasValue(req.pages) },
+            { label: 'Domain Type', filled: hasValue(req.domain_type) },
+            { label: 'Vanity Domains', filled: hasValue(req.vanity_domains) },
+            { label: 'Call Tracking Plan', filled: hasValue(req.call_tracking_plan) },
+        ];
+    };
+
     const renderReadonlyOnboardingDetails = () => {
         const requirements = onboardingData?.requirements_json || {};
         const hasRequirements = Object.keys(requirements).length > 0;
@@ -742,6 +791,18 @@ export default function ProjectDetailPage() {
                                 />
                             </div>
                         )}
+                    </div>
+                </div>
+
+                <div className="readonly-group">
+                    <h4>🧾 Project Requirements Checklist</h4>
+                    <div className="checklist-grid">
+                        {getRequirementsChecklistItems().map((item) => (
+                            <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
+                                <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
+                                <span>{item.label}</span>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
@@ -1289,6 +1350,23 @@ export default function ProjectDetailPage() {
                 {/* Alerts */}
                 {error && <div className="alert alert-error">{error}</div>}
                 {success && <div className="alert alert-success">{success}</div>}
+                {showUpdateNotice && onboardingData?.updated_at && (
+                    <div className="alert alert-info">
+                        <div className="alert-content">
+                            <strong>Client updates received.</strong>
+                            <span>Updated on {new Date(onboardingData.updated_at).toLocaleString()}</span>
+                        </div>
+                        <button
+                            className="btn-dismiss"
+                            onClick={() => {
+                                localStorage.setItem(`onboarding_seen_${projectId}`, onboardingData.updated_at || new Date().toISOString());
+                                setShowUpdateNotice(false);
+                            }}
+                        >
+                            Mark as read
+                        </button>
+                    </div>
+                )}
 
                 {/* My Capacity on this Project - Visible to all assigned team members */}
                 {isAssignedToProject && (
@@ -1541,6 +1619,18 @@ export default function ProjectDetailPage() {
                                             </div>
                                         </div>
                                     </div>
+
+                                    <div className="checklist-summary">
+                                        <h4>🧾 Project Requirements Checklist</h4>
+                                        <div className="checklist-grid">
+                                            {getRequirementsChecklistItems().map((item) => (
+                                                <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
+                                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
+                                                    <span>{item.label}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                     
                                     {completionStatus && completionStatus.missing_fields.length > 0 && (
                                         <div className="pending-items-summary">
@@ -1624,6 +1714,18 @@ export default function ProjectDetailPage() {
                                     <h3>🎨 Theme Preferences</h3>
                                     <div className="readonly-item">
                                         <span>{getTemplateLabel()}</span>
+                                    </div>
+                                </div>
+
+                                <div className="form-card readonly">
+                                    <h3>🧾 Project Requirements Checklist</h3>
+                                    <div className="checklist-grid">
+                                        {getRequirementsChecklistItems().map((item) => (
+                                            <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
+                                                <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
+                                                <span>{item.label}</span>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                                 
@@ -3194,6 +3296,27 @@ export default function ProjectDetailPage() {
                     background: var(--color-success-bg);
                     color: var(--color-success);
                     border: 1px solid var(--color-success-border);
+                }
+                .alert-info {
+                    background: #eff6ff;
+                    color: #1d4ed8;
+                    border: 1px solid #bfdbfe;
+                }
+                .alert-info .alert-content {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+                .btn-dismiss {
+                    margin-left: auto;
+                    padding: 6px 10px;
+                    border-radius: 6px;
+                    border: 1px solid #93c5fd;
+                    background: white;
+                    color: #1d4ed8;
+                    cursor: pointer;
+                    font-size: 12px;
+                    font-weight: 600;
                 }
 
                 .section-header {
