@@ -159,6 +159,55 @@ export default function ClientOnboardingPage() {
         updateLocalData({ requirements: next });
     };
 
+    const hasValue = (val: any) => {
+        if (val === null || val === undefined) return false;
+        if (typeof val === 'string') return val.trim().length > 0;
+        if (Array.isArray(val)) return val.length > 0;
+        if (typeof val === 'boolean') return true; // Boolean true/false counts as answered if not null
+        return true;
+    };
+
+    const getAllRequirements = () => {
+        if (!formData) return [];
+        const req = formData.data.requirements || {};
+        const data = formData.data;
+
+        const items = [
+            // Assets
+            { id: 'logo', label: 'Company Logo', provided: !!(data.logo_url || data.logo_file_path), eta: missingFieldsEta['Company Logo'] },
+            { id: 'images', label: 'Website Images', provided: (data.images?.length || 0) > 0, eta: missingFieldsEta['Website Images'] },
+            { id: 'copy', label: 'Copy Text', provided: !!(data.copy_text || data.use_custom_copy), eta: missingFieldsEta['Copy Text'] },
+            { id: 'wcag', label: 'Accessibility Choice', provided: data.wcag_confirmed !== undefined, eta: missingFieldsEta['WCAG Compliance'] },
+            { id: 'privacy', label: 'Privacy Policy', provided: !!(data.privacy_policy_url || data.privacy_policy_text), eta: missingFieldsEta['Privacy Policy'] },
+            { id: 'theme', label: 'Theme Selection', provided: !!(data.selected_template_id), eta: missingFieldsEta['Theme Preference'] },
+            { id: 'contacts', label: 'Contacts', provided: (data.contacts?.length || 0) > 0, eta: missingFieldsEta['Contacts'] },
+
+            // Project Requirements
+            { id: 'project_summary', label: 'Project Summary', provided: hasValue(req.project_summary), eta: missingFieldsEta['Project Summary'] },
+            { id: 'project_notes', label: 'Project Notes', provided: hasValue(req.project_notes), eta: missingFieldsEta['Project Notes'] },
+            { id: 'phase_number', label: 'Phase', provided: hasValue(req.phase_number), eta: missingFieldsEta['Phase'] },
+            { id: 'template_mode', label: 'Template Mode', provided: hasValue(req.template_mode), eta: missingFieldsEta['Template Mode'] },
+            { id: 'template_references', label: 'Template References', provided: hasValue(req.template_references), eta: missingFieldsEta['Template References'] },
+            { id: 'brand_guidelines', label: 'Brand Guidelines', provided: data.requirements?.brand_guidelines_available === true ? hasValue(req.brand_guidelines_details) : data.requirements?.brand_guidelines_available === false, eta: missingFieldsEta['Brand Guidelines'] },
+            { id: 'color_selection', label: 'Color Selection', provided: hasValue(req.color_selection), eta: missingFieldsEta['Color Selection'] },
+            { id: 'font_selection', label: 'Font Selection', provided: hasValue(req.font_selection), eta: missingFieldsEta['Font Selection'] },
+            { id: 'custom_graphics', label: 'Custom Graphics', provided: data.requirements?.custom_graphic_notes_enabled === true ? hasValue(req.custom_graphic_notes) : data.requirements?.custom_graphic_notes_enabled === false, eta: missingFieldsEta['Custom Graphics'] },
+            { id: 'navigation', label: 'Navigation', provided: hasValue(req.navigation_notes), eta: missingFieldsEta['Navigation'] },
+            { id: 'stock_images', label: 'Stock Images', provided: hasValue(req.stock_images_reference), eta: missingFieldsEta['Stock Images'] },
+            { id: 'floor_plans', label: 'Floor Plans', provided: hasValue(req.floor_plan_images), eta: missingFieldsEta['Floor Plans'] },
+            { id: 'sitemap', label: 'Sitemap', provided: hasValue(req.sitemap), eta: missingFieldsEta['Sitemap'] },
+            { id: 'virtual_tours', label: 'Virtual Tours', provided: hasValue(req.virtual_tours), eta: missingFieldsEta['Virtual Tours'] },
+            { id: 'poi', label: 'POI Categories', provided: hasValue(req.poi_categories), eta: missingFieldsEta['POI Categories'] },
+            { id: 'specials', label: 'Specials', provided: data.requirements?.specials_enabled === true ? hasValue(req.specials_details) : data.requirements?.specials_enabled === false, eta: missingFieldsEta['Specials'] },
+            { id: 'copy_scope', label: 'Copy Scope', provided: hasValue(req.copy_scope_notes), eta: missingFieldsEta['Copy Scope'] },
+            { id: 'pages', label: 'Pages', provided: hasValue(req.pages), eta: missingFieldsEta['Pages'] },
+            { id: 'domain', label: 'Domain Type', provided: hasValue(req.domain_type), eta: missingFieldsEta['Domain Type'] },
+            { id: 'vanity', label: 'Vanity Domains', provided: hasValue(req.vanity_domains), eta: missingFieldsEta['Vanity Domains'] },
+            { id: 'call_tracking', label: 'Call Tracking', provided: hasValue(req.call_tracking_plan), eta: missingFieldsEta['Call Tracking'] },
+        ];
+        return items;
+    };
+
     const getBackendBaseUrl = () => {
         if (process.env.NEXT_PUBLIC_API_URL) {
             return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '');
@@ -405,10 +454,8 @@ export default function ClientOnboardingPage() {
                     <div className="completion-text">
                         <span className="completion-label">Complete</span>
                         <span className="items-count">
-                            {/* Calculate provided items based on completion math from backend logic or simple diff */}
-                            {Math.round((formData.completion_percentage / 100) * (formData.missing_fields.length + Math.round((formData.completion_percentage / 100) * formData.missing_fields.length / (100 - formData.completion_percentage) * 100))) || '0'}/{formData.missing_fields.length + Math.round((formData.completion_percentage / 100) * formData.missing_fields.length / (100 - formData.completion_percentage) * 100) || '0'} items
+                            {getAllRequirements().filter(i => i.provided).length}/{getAllRequirements().length} items
                         </span>
-
                     </div>
                 </div>
             </header>
@@ -418,29 +465,39 @@ export default function ClientOnboardingPage() {
             {success && <div className="alert alert-success">{success}</div>}
 
             {/* Missing Fields Alert */}
-            {formData.missing_fields.length > 0 && (
+            {/* Requirements Checklist Unified */}
+            {getAllRequirements().filter(i => !i.provided).length > 0 ? (
                 <div className="missing-alert">
-                    <h3>⚠️ Information Needed</h3>
-                    <p>Please provide the following to complete your onboarding:</p>
+                    <h3>⚠️ Action Required</h3>
+                    <p>Please complete the following items ({getAllRequirements().filter(i => !i.provided).length} remaining):</p>
                     <div className="missing-fields-grid">
-                        {formData.missing_fields.map((field, i) => (
-                            <div key={i} className="missing-field-row">
-                                <div className="missing-field-name">{field}</div>
+                        {getAllRequirements().filter(i => !i.provided).map((item, i) => (
+                            <div key={item.id} className="missing-field-row">
+                                <span className="checklist-icon">❌</span>
+                                <div className="missing-field-name">{item.label}</div>
                                 <div className="missing-field-actions">
-                                    <button type="button" className="eta-btn" onClick={() => setEtaInDays(field, 1)}>1 day</button>
-                                    <button type="button" className="eta-btn" onClick={() => setEtaInDays(field, 2)}>2 days</button>
+                                    <button type="button" className="eta-btn" onClick={() => setEtaInDays(item.label, 1)}>1 day</button>
+                                    <button type="button" className="eta-btn" onClick={() => setEtaInDays(item.label, 2)}>2 days</button>
                                     <input
                                         type="date"
                                         className="eta-input"
-                                        value={missingFieldsEta[field] || ''}
+                                        value={missingFieldsEta[item.label] || ''}
                                         onChange={(e) =>
-                                            setMissingFieldsEta(prev => ({ ...prev, [field]: e.target.value }))
+                                            setMissingFieldsEta(prev => ({ ...prev, [item.label]: e.target.value }))
                                         }
                                     />
                                 </div>
                             </div>
                         ))}
                     </div>
+                    <button className="btn-submit-form" disabled={saving} onClick={submitClientForm}>
+                        {saving ? 'Submitting...' : 'Submit Form'}
+                    </button>
+                </div>
+            ) : (
+                <div className="missing-alert success-alert">
+                    <h3>✅ All Set!</h3>
+                    <p>You have provided all necessary information. Please review and submit.</p>
                     <button className="btn-submit-form" disabled={saving} onClick={submitClientForm}>
                         {saving ? 'Submitting...' : 'Submit Form'}
                     </button>
