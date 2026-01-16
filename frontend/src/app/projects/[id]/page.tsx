@@ -420,10 +420,8 @@ export default function ProjectDetailPage() {
                 setHealthSummary(phaseRes.data?.health || null);
             }
 
-            // Load onboarding data if in onboarding stage
-            if (projectRes.data.current_stage === 'ONBOARDING') {
-                await loadOnboardingData();
-            }
+            // Load onboarding data for requirements visibility across stages
+            await loadOnboardingData();
 
             // Load test phase data if in TEST or DEFECT_VALIDATION stage
             if (projectRes.data.current_stage === 'TEST' || projectRes.data.current_stage === 'DEFECT_VALIDATION') {
@@ -1888,6 +1886,15 @@ export default function ProjectDetailPage() {
 
                 {(user?.role === 'BUILDER' || user?.role === 'TESTER') && isAssignedToProject && project.current_stage === 'ONBOARDING' && onboardingData && (
                     <div className="onboarding-readonly-view">
+                        {renderReadonlyOnboardingDetails()}
+                    </div>
+                )}
+
+                {project.current_stage !== 'ONBOARDING' && onboardingData && hasDetailedViewAccess && !isExecutiveView && (
+                    <div className="requirements-section">
+                        <div className="section-header">
+                            <h2>📄 Project Requirements</h2>
+                        </div>
                         {renderReadonlyOnboardingDetails()}
                     </div>
                 )}
@@ -5739,6 +5746,9 @@ export default function ProjectDetailPage() {
                     padding: var(--space-md);
                     color: var(--text-secondary);
                     border-bottom: 1px solid var(--border-light);
+                }
+                .requirements-section {
+                    margin-bottom: var(--space-xl);
                 }
 
                 /* Executive Summary Section */
