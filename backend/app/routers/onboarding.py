@@ -364,6 +364,7 @@ def get_onboarding_data(
             images_json=[],
             theme_colors_json={},
             custom_fields_json=[],
+            requirements_json={},
             next_reminder_at=datetime.utcnow() + timedelta(hours=24)
         )
         db.add(onboarding)
@@ -403,7 +404,8 @@ def update_onboarding_data(
             contacts_json=[],
             images_json=[],
             theme_colors_json={},
-            custom_fields_json=[]
+            custom_fields_json=[],
+            requirements_json={}
         )
         db.add(onboarding)
     
@@ -418,6 +420,8 @@ def update_onboarding_data(
         onboarding.theme_colors_json = update_data['theme_colors'] or {}
     if 'custom_fields' in update_data:
         onboarding.custom_fields_json = update_data['custom_fields']
+    if 'requirements' in update_data:
+        onboarding.requirements_json = update_data['requirements'] or {}
     
     # Update simple fields
     simple_fields = ['logo_url', 'logo_file_path', 'copy_text', 'use_custom_copy', 
@@ -542,6 +546,7 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
             "selected_template_id": onboarding.selected_template_id,
             "theme_colors": onboarding.theme_colors_json,
             "contacts": onboarding.contacts_json,
+            "requirements": onboarding.requirements_json,
             "submitted_at": onboarding.submitted_at,
             "missing_fields_eta_json": onboarding.missing_fields_eta_json,
         },
@@ -566,7 +571,8 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
         'logo_url', 'images', 'copy_text', 'use_custom_copy',
         'custom_copy_word_count', 'custom_copy_final_price', 'custom_copy_notes',
         'wcag_compliance_required', 'wcag_level', 'wcag_confirmed', 'privacy_policy_url', 
-        'privacy_policy_text', 'selected_template_id', 'theme_colors', 'contacts'
+        'privacy_policy_text', 'selected_template_id', 'theme_colors', 'contacts',
+        'requirements'
     ]
     
     for field in client_updatable_fields:
@@ -577,6 +583,8 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
                 onboarding.theme_colors_json = data[field]
             elif field == 'contacts':
                 onboarding.contacts_json = data[field]
+            elif field == 'requirements':
+                onboarding.requirements_json = data[field] or {}
             else:
                 setattr(onboarding, field, data[field])
             if field == 'selected_template_id' and data.get(field):

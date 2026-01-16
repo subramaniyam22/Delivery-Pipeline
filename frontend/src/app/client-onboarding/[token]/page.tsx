@@ -19,6 +19,36 @@ interface PricingTier {
     description: string;
 }
 
+interface RequirementsData {
+    project_summary?: string;
+    project_notes?: string;
+    phase_number?: string;
+    template_mode?: 'NEW' | 'CLONE';
+    template_references?: string;
+    brand_guidelines_available?: boolean;
+    brand_guidelines_details?: string;
+    color_selection?: string;
+    color_notes?: string;
+    font_selection?: string;
+    font_notes?: string;
+    custom_graphic_notes_enabled?: boolean;
+    custom_graphic_notes?: string;
+    navigation_notes_option?: string;
+    navigation_notes?: string;
+    stock_images_reference?: string;
+    floor_plan_images?: string;
+    sitemap?: string;
+    virtual_tours?: string;
+    poi_categories?: string;
+    specials_enabled?: boolean;
+    specials_details?: string;
+    copy_scope_notes?: string;
+    pages?: string;
+    domain_type?: string;
+    vanity_domains?: string;
+    call_tracking_plan?: string;
+}
+
 interface OnboardingFormData {
     project_title: string;
     project_id: string;
@@ -43,6 +73,7 @@ interface OnboardingFormData {
         selected_template_id: string | null;
         theme_colors: Record<string, string>;
         contacts: Array<{ name: string; email: string; role: string; is_primary: boolean }>;
+        requirements?: RequirementsData;
         submitted_at?: string | null;
         missing_fields_eta_json?: Record<string, string>;
     };
@@ -103,6 +134,13 @@ export default function ClientOnboardingPage() {
         }
     };
 
+    const updateRequirements = (updates: Partial<RequirementsData>) => {
+        if (!formData) return;
+        const current = formData.data.requirements || {};
+        const next = { ...current, ...updates };
+        saveFormData({ requirements: next });
+    };
+
     const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -158,6 +196,24 @@ export default function ClientOnboardingPage() {
         const isoDate = targetDate.toISOString().slice(0, 10);
         setMissingFieldsEta(prev => ({ ...prev, [field]: isoDate }));
     };
+
+    const phaseOptions = Array.from({ length: 9 }, (_, i) => `Phase ${i + 1}`);
+    const colorOptions = [
+        'Keep from Clone',
+        'Match to live website',
+        'Color codes',
+        'Match to logo',
+        'Brand guidelines',
+        'Other'
+    ];
+    const fontOptions = ['Template default', 'Keep from clone', 'Other'];
+    const navigationOptions = ['Match to clone', 'Match to template', 'Custom'];
+    const domainTypeOptions = ['Single', 'Multi', 'Mix'];
+    const callTrackingOptions = [
+        'Unlimited 2500 (Advanced Call Tracking/call pooling) is auto-generated service',
+        'Default 0 (no call tracking or 1 client provided CTN)',
+        'Other'
+    ];
 
     const selectTemplate = (templateId: string) => {
         const template = formData?.templates.find(t => t.id === templateId);
@@ -303,6 +359,45 @@ export default function ClientOnboardingPage() {
             )}
 
             <main className="form-container">
+                {/* Project Requirements */}
+                <section className="form-section">
+                    <h2>🧾 Project Requirements</h2>
+                    <p className="section-desc">Share details to guide the project across all locations.</p>
+
+                    <div className="form-group">
+                        <label>Project Summary</label>
+                        <textarea
+                            value={formData.data.requirements?.project_summary || ''}
+                            onChange={(e) => updateRequirements({ project_summary: e.target.value })}
+                            rows={3}
+                            placeholder="Brief summary of the project requirements..."
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Project Notes (applies to all locations)</label>
+                        <textarea
+                            value={formData.data.requirements?.project_notes || ''}
+                            onChange={(e) => updateRequirements({ project_notes: e.target.value })}
+                            rows={3}
+                            placeholder="Notes that apply to all locations..."
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Phase #</label>
+                        <select
+                            value={formData.data.requirements?.phase_number || ''}
+                            onChange={(e) => updateRequirements({ phase_number: e.target.value })}
+                        >
+                            <option value="">Select phase</option>
+                            {phaseOptions.map(option => (
+                                <option key={option} value={option}>{option}</option>
+                            ))}
+                        </select>
+                    </div>
+                </section>
+
                 {/* Logo Upload Section */}
                 <section className="form-section">
                     <h2>🖼️ Company Logo</h2>
@@ -473,6 +568,40 @@ export default function ClientOnboardingPage() {
                             </div>
                         ))}
                     </div>
+
+                    <div className="form-group">
+                        <label>Template Direction</label>
+                        <div className="radio-group">
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="template_mode"
+                                    checked={formData.data.requirements?.template_mode === 'NEW'}
+                                    onChange={() => updateRequirements({ template_mode: 'NEW' })}
+                                />
+                                New design
+                            </label>
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="template_mode"
+                                    checked={formData.data.requirements?.template_mode === 'CLONE'}
+                                    onChange={() => updateRequirements({ template_mode: 'CLONE' })}
+                                />
+                                Clone from existing template
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="form-group">
+                        <label>Reference links (optional)</label>
+                        <textarea
+                            value={formData.data.requirements?.template_references || ''}
+                            onChange={(e) => updateRequirements({ template_references: e.target.value })}
+                            rows={3}
+                            placeholder="Add links or notes for reference..."
+                        />
+                    </div>
                 </section>
 
                 {/* WCAG Section */}
@@ -530,6 +659,275 @@ export default function ClientOnboardingPage() {
                             placeholder="Paste your privacy policy here..."
                             rows={4}
                         />
+                    </div>
+                </section>
+
+                <section className="form-section">
+                    <h2>🧩 Design & Content Details</h2>
+                    <p className="section-desc">Add preferences to guide the build and testing teams.</p>
+
+                    <div className="form-group">
+                        <label>Brand Guidelines</label>
+                        <div className="radio-group">
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="brand_guidelines"
+                                    checked={formData.data.requirements?.brand_guidelines_available === true}
+                                    onChange={() => updateRequirements({ brand_guidelines_available: true })}
+                                />
+                                Yes
+                            </label>
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="brand_guidelines"
+                                    checked={formData.data.requirements?.brand_guidelines_available === false}
+                                    onChange={() => updateRequirements({ brand_guidelines_available: false })}
+                                />
+                                No
+                            </label>
+                        </div>
+                        {formData.data.requirements?.brand_guidelines_available && (
+                            <textarea
+                                value={formData.data.requirements?.brand_guidelines_details || ''}
+                                onChange={(e) => updateRequirements({ brand_guidelines_details: e.target.value })}
+                                rows={3}
+                                placeholder="Add brand guidelines link or details..."
+                            />
+                        )}
+                    </div>
+
+                    <div className="select-group">
+                        <label>Color Selection</label>
+                        <select
+                            value={formData.data.requirements?.color_selection || ''}
+                            onChange={(e) => updateRequirements({ color_selection: e.target.value })}
+                        >
+                            <option value="">Select color preference</option>
+                            {colorOptions.map(option => (
+                                <option key={option} value={option}>{option}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label>Color Notes / Codes</label>
+                        <input
+                            type="text"
+                            value={formData.data.requirements?.color_notes || ''}
+                            onChange={(e) => updateRequirements({ color_notes: e.target.value })}
+                            placeholder="Hex codes or color notes"
+                        />
+                    </div>
+
+                    <div className="select-group">
+                        <label>Font Selection</label>
+                        <select
+                            value={formData.data.requirements?.font_selection || ''}
+                            onChange={(e) => updateRequirements({ font_selection: e.target.value })}
+                        >
+                            <option value="">Select font preference</option>
+                            {fontOptions.map(option => (
+                                <option key={option} value={option}>{option}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label>Font Notes</label>
+                        <input
+                            type="text"
+                            value={formData.data.requirements?.font_notes || ''}
+                            onChange={(e) => updateRequirements({ font_notes: e.target.value })}
+                            placeholder="Font details or links"
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Custom Graphic Notes</label>
+                        <div className="radio-group">
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="custom_graphics"
+                                    checked={formData.data.requirements?.custom_graphic_notes_enabled === true}
+                                    onChange={() => updateRequirements({ custom_graphic_notes_enabled: true })}
+                                />
+                                Yes
+                            </label>
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="custom_graphics"
+                                    checked={formData.data.requirements?.custom_graphic_notes_enabled === false}
+                                    onChange={() => updateRequirements({ custom_graphic_notes_enabled: false })}
+                                />
+                                No
+                            </label>
+                        </div>
+                        {formData.data.requirements?.custom_graphic_notes_enabled && (
+                            <textarea
+                                value={formData.data.requirements?.custom_graphic_notes || ''}
+                                onChange={(e) => updateRequirements({ custom_graphic_notes: e.target.value })}
+                                rows={3}
+                                placeholder="Describe custom graphic needs..."
+                            />
+                        )}
+                    </div>
+
+                    <div className="select-group">
+                        <label>Navigation Notes</label>
+                        <select
+                            value={formData.data.requirements?.navigation_notes_option || ''}
+                            onChange={(e) => updateRequirements({ navigation_notes_option: e.target.value })}
+                        >
+                            <option value="">Select navigation preference</option>
+                            {navigationOptions.map(option => (
+                                <option key={option} value={option}>{option}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label>Navigation Details</label>
+                        <textarea
+                            value={formData.data.requirements?.navigation_notes || ''}
+                            onChange={(e) => updateRequirements({ navigation_notes: e.target.value })}
+                            rows={3}
+                            placeholder="Add navigation notes..."
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Stock Images Reference</label>
+                        <textarea
+                            value={formData.data.requirements?.stock_images_reference || ''}
+                            onChange={(e) => updateRequirements({ stock_images_reference: e.target.value })}
+                            rows={2}
+                            placeholder="Links or notes for stock images..."
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Floor Plan Images</label>
+                        <textarea
+                            value={formData.data.requirements?.floor_plan_images || ''}
+                            onChange={(e) => updateRequirements({ floor_plan_images: e.target.value })}
+                            rows={2}
+                            placeholder="Links or notes for floor plan images..."
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Sitemap</label>
+                        <textarea
+                            value={formData.data.requirements?.sitemap || ''}
+                            onChange={(e) => updateRequirements({ sitemap: e.target.value })}
+                            rows={2}
+                            placeholder="Sitemap links or details..."
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Virtual Tours</label>
+                        <textarea
+                            value={formData.data.requirements?.virtual_tours || ''}
+                            onChange={(e) => updateRequirements({ virtual_tours: e.target.value })}
+                            rows={2}
+                            placeholder="Virtual tour links..."
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Point of Interest Categories & Details</label>
+                        <textarea
+                            value={formData.data.requirements?.poi_categories || ''}
+                            onChange={(e) => updateRequirements({ poi_categories: e.target.value })}
+                            rows={3}
+                            placeholder="POI categories and details..."
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Specials</label>
+                        <div className="radio-group">
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="specials"
+                                    checked={formData.data.requirements?.specials_enabled === true}
+                                    onChange={() => updateRequirements({ specials_enabled: true })}
+                                />
+                                Yes
+                            </label>
+                            <label>
+                                <input
+                                    type="radio"
+                                    name="specials"
+                                    checked={formData.data.requirements?.specials_enabled === false}
+                                    onChange={() => updateRequirements({ specials_enabled: false })}
+                                />
+                                No
+                            </label>
+                        </div>
+                        {formData.data.requirements?.specials_enabled && (
+                            <textarea
+                                value={formData.data.requirements?.specials_details || ''}
+                                onChange={(e) => updateRequirements({ specials_details: e.target.value })}
+                                rows={2}
+                                placeholder="Describe specials to add..."
+                            />
+                        )}
+                    </div>
+
+                    <div className="form-group">
+                        <label>Copy Text Scope – Additional Notes</label>
+                        <textarea
+                            value={formData.data.requirements?.copy_scope_notes || ''}
+                            onChange={(e) => updateRequirements({ copy_scope_notes: e.target.value })}
+                            rows={3}
+                            placeholder="Additional notes about copy scope..."
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Pages for the Website</label>
+                        <textarea
+                            value={formData.data.requirements?.pages || ''}
+                            onChange={(e) => updateRequirements({ pages: e.target.value })}
+                            rows={2}
+                            placeholder="List pages (comma-separated)..."
+                        />
+                    </div>
+
+                    <div className="select-group">
+                        <label>Domain Type</label>
+                        <select
+                            value={formData.data.requirements?.domain_type || ''}
+                            onChange={(e) => updateRequirements({ domain_type: e.target.value })}
+                        >
+                            <option value="">Select domain type</option>
+                            {domainTypeOptions.map(option => (
+                                <option key={option} value={option}>{option}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="form-group">
+                        <label>Vanity Domains / Redirects</label>
+                        <textarea
+                            value={formData.data.requirements?.vanity_domains || ''}
+                            onChange={(e) => updateRequirements({ vanity_domains: e.target.value })}
+                            rows={2}
+                            placeholder="Add vanity domains or redirect details..."
+                        />
+                    </div>
+
+                    <div className="select-group">
+                        <label>Call Tracking Plan</label>
+                        <select
+                            value={formData.data.requirements?.call_tracking_plan || ''}
+                            onChange={(e) => updateRequirements({ call_tracking_plan: e.target.value })}
+                        >
+                            <option value="">Select call tracking plan</option>
+                            {callTrackingOptions.map(option => (
+                                <option key={option} value={option}>{option}</option>
+                            ))}
+                        </select>
                     </div>
                 </section>
 
@@ -833,6 +1231,43 @@ export default function ClientOnboardingPage() {
 
                 .url-input, .copy-input, .select-group {
                     margin-bottom: 16px;
+                }
+                .form-group {
+                    margin-bottom: 16px;
+                }
+                .form-group label {
+                    display: block;
+                    font-size: 14px;
+                    font-weight: 500;
+                    color: #475569;
+                    margin-bottom: 6px;
+                }
+                .form-group input,
+                .form-group textarea {
+                    width: 100%;
+                    padding: 12px;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    font-size: 14px;
+                }
+                .form-group input:focus,
+                .form-group textarea:focus {
+                    outline: none;
+                    border-color: #2563eb;
+                    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+                }
+                .radio-group {
+                    display: flex;
+                    gap: 16px;
+                    flex-wrap: wrap;
+                    margin-bottom: 8px;
+                }
+                .radio-group label {
+                    display: flex;
+                    gap: 8px;
+                    align-items: center;
+                    font-size: 14px;
+                    color: #475569;
                 }
 
                 .url-input label, .copy-input label, .select-group label {

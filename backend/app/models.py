@@ -330,6 +330,7 @@ class OnboardingData(Base):
     
     # Additional custom fields
     custom_fields_json = Column(JSONB, default=list)  # [{field_name, field_value, field_type}]
+    requirements_json = Column(JSONB, default=dict)  # Structured project requirements
     
     # Completion tracking
     completion_percentage = Column(Integer, default=0)

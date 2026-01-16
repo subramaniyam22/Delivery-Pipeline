@@ -35,6 +35,7 @@ interface OnboardingData {
     selected_template_id: string | null;
     theme_colors_json: Record<string, string>;
     custom_fields_json: Array<{ field_name: string; field_value: string; field_type: string }>;
+    requirements_json?: Record<string, any>;
     completion_percentage: number;
     reminder_count: number;
     auto_reminder_enabled: boolean;
@@ -636,6 +637,151 @@ export default function ProjectDetailPage() {
             return `Custom copy requested${priceLabel}${wordLabel}`;
         }
         return onboardingData.copy_text || 'Not provided';
+    };
+
+    const renderReadonlyOnboardingDetails = () => {
+        const requirements = onboardingData?.requirements_json || {};
+        const hasRequirements = Object.keys(requirements).length > 0;
+
+        return (
+            <div className="form-card readonly-section">
+                <div className="section-badge">
+                    <span className="badge-readonly">👁️ Read-only (Client fills via form)</span>
+                </div>
+                
+                {/* Assets - Read Only */}
+                <div className="readonly-group">
+                    <h4>🖼️ Website Assets</h4>
+                    <div className="readonly-grid">
+                        <div className="readonly-field">
+                            <label>Company Logo</label>
+                            {(onboardingData?.logo_url || onboardingData?.logo_file_path) ? (
+                                <div className="asset-preview">
+                                    <img
+                                        src={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
+                                        alt="Company logo"
+                                        className="asset-thumb"
+                                    />
+                                    <a
+                                        className="asset-download"
+                                        href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
+                                        download
+                                    >
+                                        Download
+                                    </a>
+                                </div>
+                            ) : (
+                                <span className="empty">Not provided</span>
+                            )}
+                        </div>
+                        <div className="readonly-field">
+                            <label>Website Images</label>
+                            {getImageItems().length ? (
+                                <div className="asset-grid">
+                                    {getImageItems().map((img) => (
+                                        <div key={img.key} className="asset-card">
+                                            <img src={img.url} alt={img.name} className="asset-thumb" />
+                                            <a className="asset-download" href={img.url} download>
+                                                Download
+                                            </a>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <span className="empty">Not provided</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                
+                {/* Copy Text - Read Only */}
+                <div className="readonly-group">
+                    <h4>📝 Copy Text</h4>
+                    <div className="readonly-field full-width">
+                        <span className={onboardingData?.copy_text || onboardingData?.use_custom_copy ? 'filled' : 'empty'}>
+                            {getCopySummary()}
+                        </span>
+                    </div>
+                </div>
+                
+                {/* WCAG - Read Only */}
+                <div className="readonly-group">
+                    <h4>♿ Accessibility (WCAG)</h4>
+                    <div className="readonly-field">
+                        <span className={onboardingData?.wcag_compliance_required ? 'filled' : 'empty'}>
+                            {onboardingData?.wcag_compliance_required 
+                                ? `Required - Level ${onboardingData?.wcag_level || 'AA'}` 
+                                : 'Not required'}
+                        </span>
+                    </div>
+                </div>
+                
+                {/* Privacy Policy - Read Only */}
+                <div className="readonly-group">
+                    <h4>🔒 Privacy Policy</h4>
+                    <div className="readonly-field full-width">
+                        <span className={onboardingData?.privacy_policy_url || onboardingData?.privacy_policy_text ? 'filled' : 'empty'}>
+                            {onboardingData?.privacy_policy_url 
+                                ? `URL: ${onboardingData?.privacy_policy_url}` 
+                                : (onboardingData?.privacy_policy_text ? 'Text provided' : 'Not provided')}
+                        </span>
+                    </div>
+                </div>
+                
+                {/* Theme - Read Only */}
+                <div className="readonly-group">
+                    <h4>🎨 Theme Preferences</h4>
+                    <div className="readonly-field">
+                        <span className={(onboardingData?.theme_preference || onboardingData?.selected_template_id) ? 'filled' : 'empty'}>
+                            {getTemplateLabel()}
+                        </span>
+                        {onboardingData?.selected_template_id && templates.length > 0 && (
+                            <div className="template-preview">
+                                <img
+                                    src={templates.find(t => t.id === onboardingData?.selected_template_id)?.preview_url || ''}
+                                    alt="Selected template preview"
+                                />
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {hasRequirements && (
+                    <div className="readonly-group">
+                        <h4>🧾 Project Requirements</h4>
+                        <div className="requirements-grid">
+                            <div><label>Project Summary</label><span>{requirements.project_summary || 'Not provided'}</span></div>
+                            <div><label>Project Notes</label><span>{requirements.project_notes || 'Not provided'}</span></div>
+                            <div><label>Phase</label><span>{requirements.phase_number || 'Not provided'}</span></div>
+                            <div><label>Template Mode</label><span>{requirements.template_mode || 'Not provided'}</span></div>
+                            <div><label>Template References</label><span>{requirements.template_references || 'Not provided'}</span></div>
+                            <div><label>Brand Guidelines</label><span>{requirements.brand_guidelines_available === true ? 'Yes' : requirements.brand_guidelines_available === false ? 'No' : 'Not provided'}</span></div>
+                            <div><label>Brand Guidelines Details</label><span>{requirements.brand_guidelines_details || 'Not provided'}</span></div>
+                            <div><label>Color Selection</label><span>{requirements.color_selection || 'Not provided'}</span></div>
+                            <div><label>Color Notes</label><span>{requirements.color_notes || 'Not provided'}</span></div>
+                            <div><label>Font Selection</label><span>{requirements.font_selection || 'Not provided'}</span></div>
+                            <div><label>Font Notes</label><span>{requirements.font_notes || 'Not provided'}</span></div>
+                            <div><label>Custom Graphic Notes</label><span>{requirements.custom_graphic_notes_enabled === true ? 'Yes' : requirements.custom_graphic_notes_enabled === false ? 'No' : 'Not provided'}</span></div>
+                            <div><label>Custom Graphic Details</label><span>{requirements.custom_graphic_notes || 'Not provided'}</span></div>
+                            <div><label>Navigation Notes</label><span>{requirements.navigation_notes_option || 'Not provided'}</span></div>
+                            <div><label>Navigation Details</label><span>{requirements.navigation_notes || 'Not provided'}</span></div>
+                            <div><label>Stock Images Reference</label><span>{requirements.stock_images_reference || 'Not provided'}</span></div>
+                            <div><label>Floor Plan Images</label><span>{requirements.floor_plan_images || 'Not provided'}</span></div>
+                            <div><label>Sitemap</label><span>{requirements.sitemap || 'Not provided'}</span></div>
+                            <div><label>Virtual Tours</label><span>{requirements.virtual_tours || 'Not provided'}</span></div>
+                            <div><label>POI Categories</label><span>{requirements.poi_categories || 'Not provided'}</span></div>
+                            <div><label>Specials</label><span>{requirements.specials_enabled === true ? 'Yes' : requirements.specials_enabled === false ? 'No' : 'Not provided'}</span></div>
+                            <div><label>Specials Details</label><span>{requirements.specials_details || 'Not provided'}</span></div>
+                            <div><label>Copy Scope Notes</label><span>{requirements.copy_scope_notes || 'Not provided'}</span></div>
+                            <div><label>Pages</label><span>{requirements.pages || 'Not provided'}</span></div>
+                            <div><label>Domain Type</label><span>{requirements.domain_type || 'Not provided'}</span></div>
+                            <div><label>Vanity Domains</label><span>{requirements.vanity_domains || 'Not provided'}</span></div>
+                            <div><label>Call Tracking Plan</label><span>{requirements.call_tracking_plan || 'Not provided'}</span></div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
     };
     
     const handleAcceptSuggestion = async (suggestion: AISuggestion, role: string) => {
@@ -1722,108 +1868,7 @@ export default function ProjectDetailPage() {
                         )}
 
                         {/* READ-ONLY Onboarding Details */}
-                        <div className="form-card readonly-section">
-                            <div className="section-badge">
-                                <span className="badge-readonly">👁️ Read-only (Client fills via form)</span>
-                            </div>
-                            
-                            {/* Assets - Read Only */}
-                            <div className="readonly-group">
-                                <h4>🖼️ Website Assets</h4>
-                                <div className="readonly-grid">
-                                    <div className="readonly-field">
-                                        <label>Company Logo</label>
-                                            {(onboardingData.logo_url || onboardingData.logo_file_path) ? (
-                                                <div className="asset-preview">
-                                                    <img
-                                                        src={getAssetUrl(onboardingData.logo_url || onboardingData.logo_file_path)}
-                                                        alt="Company logo"
-                                                        className="asset-thumb"
-                                                    />
-                                                    <a
-                                                        className="asset-download"
-                                                        href={getAssetUrl(onboardingData.logo_url || onboardingData.logo_file_path)}
-                                                        download
-                                                    >
-                                                        Download
-                                                    </a>
-                                                </div>
-                                            ) : (
-                                                <span className="empty">Not provided</span>
-                                            )}
-                                    </div>
-                                    <div className="readonly-field">
-                                        <label>Website Images</label>
-                                            {getImageItems().length ? (
-                                                <div className="asset-grid">
-                                                    {getImageItems().map((img) => (
-                                                        <div key={img.key} className="asset-card">
-                                                            <img src={img.url} alt={img.name} className="asset-thumb" />
-                                                            <a className="asset-download" href={img.url} download>
-                                                                Download
-                                                            </a>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <span className="empty">Not provided</span>
-                                            )}
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            {/* Copy Text - Read Only */}
-                            <div className="readonly-group">
-                                <h4>📝 Copy Text</h4>
-                                <div className="readonly-field full-width">
-                                    <span className={onboardingData.copy_text || onboardingData.use_custom_copy ? 'filled' : 'empty'}>
-                                        {getCopySummary()}
-                                    </span>
-                                </div>
-                            </div>
-                            
-                            {/* WCAG - Read Only */}
-                            <div className="readonly-group">
-                                <h4>♿ Accessibility (WCAG)</h4>
-                                <div className="readonly-field">
-                                    <span className={onboardingData.wcag_compliance_required ? 'filled' : 'empty'}>
-                                        {onboardingData.wcag_compliance_required 
-                                            ? `Required - Level ${onboardingData.wcag_level || 'AA'}` 
-                                            : 'Not required'}
-                                    </span>
-                                </div>
-                            </div>
-                            
-                            {/* Privacy Policy - Read Only */}
-                            <div className="readonly-group">
-                                <h4>🔒 Privacy Policy</h4>
-                                <div className="readonly-field full-width">
-                                    <span className={onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'filled' : 'empty'}>
-                                        {onboardingData.privacy_policy_url 
-                                            ? `URL: ${onboardingData.privacy_policy_url}` 
-                                            : (onboardingData.privacy_policy_text ? 'Text provided' : 'Not provided')}
-                                    </span>
-                                </div>
-                            </div>
-                            
-                            {/* Theme - Read Only */}
-                            <div className="readonly-group">
-                                <h4>🎨 Theme Preferences</h4>
-                                <div className="readonly-field">
-                                    <span className={(onboardingData.theme_preference || onboardingData.selected_template_id) ? 'filled' : 'empty'}>
-                                        {getTemplateLabel()}
-                                    </span>
-                                    {onboardingData.selected_template_id && templates.length > 0 && (
-                                        <div className="template-preview">
-                                            <img
-                                                src={templates.find(t => t.id === onboardingData.selected_template_id)?.preview_url || ''}
-                                                alt="Selected template preview"
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+                        {renderReadonlyOnboardingDetails()}
 
                         {/* Missing Fields Alert - Consultant View */}
                         {completionStatus && completionStatus.missing_fields.length > 0 && (
@@ -1838,6 +1883,12 @@ export default function ProjectDetailPage() {
                         )}
                             </>
                         )}
+                    </div>
+                )}
+
+                {(user?.role === 'BUILDER' || user?.role === 'TESTER') && isAssignedToProject && project.current_stage === 'ONBOARDING' && onboardingData && (
+                    <div className="onboarding-readonly-view">
+                        {renderReadonlyOnboardingDetails()}
                     </div>
                 )}
 
@@ -3905,6 +3956,23 @@ export default function ProjectDetailPage() {
                     max-width: 100%;
                     border-radius: 10px;
                     border: 1px solid var(--border-light);
+                }
+                .requirements-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                    gap: 12px;
+                }
+                .requirements-grid label {
+                    display: block;
+                    font-size: 12px;
+                    color: #64748b;
+                    margin-bottom: 4px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+                .requirements-grid span {
+                    font-size: 13px;
+                    color: #1e293b;
                 }
 
                 .readonly-grid {

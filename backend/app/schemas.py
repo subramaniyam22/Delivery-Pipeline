@@ -279,6 +279,7 @@ class OnboardingDataCreate(BaseModel):
     theme_preference: Optional[str] = None
     theme_colors: Optional[Dict[str, str]] = None
     custom_fields: List[Dict[str, Any]] = []
+    requirements: Optional[Dict[str, Any]] = None
 
 
 class OnboardingDataUpdate(BaseModel):
@@ -301,6 +302,7 @@ class OnboardingDataUpdate(BaseModel):
     theme_colors: Optional[Dict[str, str]] = None
     custom_fields: Optional[List[Dict[str, Any]]] = None
     auto_reminder_enabled: Optional[bool] = None
+    requirements: Optional[Dict[str, Any]] = None
 
 
 class OnboardingDataResponse(BaseModel):
@@ -327,6 +329,7 @@ class OnboardingDataResponse(BaseModel):
     selected_template_id: Optional[str]
     theme_colors_json: Dict[str, Any]
     custom_fields_json: List[Dict[str, Any]]
+    requirements_json: Dict[str, Any]
     completion_percentage: int
     last_reminder_sent: Optional[datetime]
     next_reminder_at: Optional[datetime]
