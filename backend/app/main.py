@@ -95,8 +95,8 @@ app.include_router(project_management.router)
 app.include_router(config_admin.router)
 
 # Serve uploaded files
-if os.path.isdir(settings.UPLOAD_DIR):
-    app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
 @app.get("/")
