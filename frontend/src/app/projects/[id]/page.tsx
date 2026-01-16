@@ -6335,20 +6335,7 @@ export default function ProjectDetailPage() {
             margin-bottom: 16px;
             letter-spacing: 0.05em;
         }
-      `}</style>
-            {/* Lightbox Modal */}
-            {previewImage && (
-                <div className="lightbox-overlay" onClick={() => setPreviewImage(null)}>
-                    <div className="lightbox-content" onClick={e => e.stopPropagation()}>
-                        <button className="lightbox-close" onClick={() => setPreviewImage(null)}>×</button>
-                        <img src={previewImage} alt="Full size preview" />
-                    </div>
-                </div>
-            )}
 
-            <style jsx>{`
-                /* Previously existing styles... */
-             
                 /* Assets Styling */
                 .logo-preview-card {
                     display: flex;
@@ -6507,6 +6494,17 @@ export default function ProjectDetailPage() {
                     to { opacity: 1; }
                 }
             `}</style>
+            {/* Lightbox Modal */}
+            {previewImage && (
+                <div className="lightbox-overlay" onClick={() => setPreviewImage(null)}>
+                    <div className="lightbox-content" onClick={e => e.stopPropagation()}>
+                        <button className="lightbox-close" onClick={() => setPreviewImage(null)}>×</button>
+                        <img src={previewImage} alt="Full size preview" />
+                    </div>
+                </div>
+            )}
+
+
         </div>
     );
 }
