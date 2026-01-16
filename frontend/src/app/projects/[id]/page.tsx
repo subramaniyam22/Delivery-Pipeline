@@ -690,9 +690,33 @@ export default function ProjectDetailPage() {
     const renderReadonlyOnboardingDetails = () => {
         const requirements = onboardingData?.requirements_json || {};
         const hasRequirements = Object.keys(requirements).length > 0;
+        const readonlyCardStyle: React.CSSProperties = {
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-light)',
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-lg)',
+            boxShadow: 'var(--shadow-sm)',
+        };
+        const fieldStyle: React.CSSProperties = {
+            background: 'var(--bg-tertiary)',
+            border: '1px solid var(--border-light)',
+            borderRadius: 'var(--radius-md)',
+            padding: 'var(--space-md)',
+        };
+        const assetGridStyle: React.CSSProperties = {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+            gap: '12px',
+        };
+        const assetCardStyle: React.CSSProperties = {
+            background: 'var(--bg-card)',
+            border: '1px solid var(--border-light)',
+            borderRadius: 'var(--radius-md)',
+            padding: '10px',
+        };
 
         return (
-            <div className="form-card readonly-section">
+            <div className="form-card readonly-section requirements-panel" style={readonlyCardStyle}>
                 <div className="section-badge">
                     <span className="badge-readonly">👁️ Read-only (Client fills via form)</span>
                 </div>
@@ -701,10 +725,10 @@ export default function ProjectDetailPage() {
                 <div className="readonly-group">
                     <h4>🖼️ Website Assets</h4>
                     <div className="readonly-grid">
-                        <div className="readonly-field">
+                        <div className="readonly-field" style={fieldStyle}>
                             <label>Company Logo</label>
                             {(onboardingData?.logo_url || onboardingData?.logo_file_path) ? (
-                                    <div className="asset-card">
+                                <div className="asset-card" style={assetCardStyle}>
                                         <div className="asset-thumb">
                                         <img
                                             src={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
@@ -734,12 +758,12 @@ export default function ProjectDetailPage() {
                                 <span className="empty">Not provided</span>
                             )}
                         </div>
-                        <div className="readonly-field">
+                        <div className="readonly-field" style={fieldStyle}>
                             <label>Website Images</label>
                             {getImageItems().length ? (
-                                <div className="asset-grid">
+                                <div className="asset-grid" style={assetGridStyle}>
                                     {getImageItems().map((img) => (
-                                        <div key={img.key} className="asset-card">
+                                        <div key={img.key} className="asset-card" style={assetCardStyle}>
                                             <div className="asset-thumb">
                                                 <img
                                                     src={img.url}
@@ -773,7 +797,7 @@ export default function ProjectDetailPage() {
                 {/* Copy Text - Read Only */}
                 <div className="readonly-group">
                     <h4>📝 Copy Text</h4>
-                    <div className="readonly-field full-width">
+                    <div className="readonly-field full-width" style={fieldStyle}>
                         <span className={onboardingData?.copy_text || onboardingData?.use_custom_copy ? 'filled' : 'empty'}>
                             {getCopySummary()}
                         </span>
@@ -783,7 +807,7 @@ export default function ProjectDetailPage() {
                 {/* WCAG - Read Only */}
                 <div className="readonly-group">
                     <h4>♿ Accessibility (WCAG)</h4>
-                    <div className="readonly-field">
+                    <div className="readonly-field" style={fieldStyle}>
                         <span className={onboardingData?.wcag_compliance_required ? 'filled' : 'empty'}>
                             {onboardingData?.wcag_compliance_required 
                                 ? `Required - Level ${onboardingData?.wcag_level || 'AA'}` 
@@ -795,7 +819,7 @@ export default function ProjectDetailPage() {
                 {/* Privacy Policy - Read Only */}
                 <div className="readonly-group">
                     <h4>🔒 Privacy Policy</h4>
-                    <div className="readonly-field full-width">
+                    <div className="readonly-field full-width" style={fieldStyle}>
                         <span className={onboardingData?.privacy_policy_url || onboardingData?.privacy_policy_text ? 'filled' : 'empty'}>
                             {onboardingData?.privacy_policy_url 
                                 ? `URL: ${onboardingData?.privacy_policy_url}` 
@@ -807,7 +831,7 @@ export default function ProjectDetailPage() {
                 {/* Theme - Read Only */}
                 <div className="readonly-group">
                     <h4>🎨 Theme Preferences</h4>
-                    <div className="readonly-field">
+                    <div className="readonly-field" style={fieldStyle}>
                         <span className={(onboardingData?.theme_preference || onboardingData?.selected_template_id) ? 'filled' : 'empty'}>
                             {getTemplateLabel()}
                         </span>
