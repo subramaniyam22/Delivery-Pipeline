@@ -296,6 +296,7 @@ export default function ProjectDetailPage() {
     const [showTaskModal, setShowTaskModal] = useState(false);
     const [showReminderModal, setShowReminderModal] = useState(false);
     const [showCustomFieldModal, setShowCustomFieldModal] = useState(false);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
 
     // Form states
     const [newContact, setNewContact] = useState<Contact>({ name: '', email: '', role: '', is_primary: false });
@@ -745,78 +746,60 @@ export default function ProjectDetailPage() {
 
                 {/* Assets - Read Only */}
                 <div className="readonly-group">
-                    <h4>ðŸ–¼ï¸ Website Assets</h4>
-                    <div className="readonly-grid">
-                        <div className="readonly-field" style={fieldStyle}>
-                            <label>Company Logo</label>
-                            {(onboardingData?.logo_url || onboardingData?.logo_file_path) ? (
-                                <div className="asset-card" style={assetCardStyle}>
-                                    <div className="asset-thumb">
-                                        <img
-                                            src={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
-                                            alt="Company logo"
-                                            onError={(e) => {
-                                                console.error('Logo failed to load:', e.currentTarget.src);
-                                                const parent = e.currentTarget.parentElement;
-                                                if (parent) parent.classList.add('is-empty');
-                                                e.currentTarget.style.display = 'none';
-                                            }}
-                                            onLoad={(e) => {
-                                                console.log('Logo loaded successfully:', e.currentTarget.src);
-                                                const parent = e.currentTarget.parentElement;
-                                                if (parent) parent.classList.remove('is-empty');
-                                            }}
-                                        />
-                                        <span className="asset-fallback">No preview</span>
-                                    </div>
-                                    <span className="asset-name">Company Logo</span>
+                    <h4>🖼️ Website Assets</h4>
+
+                    {/* Company Logo */}
+                    <div className="readonly-field" style={fieldStyle}>
+                        <label>Company Logo</label>
+                        {(onboardingData?.logo_url || onboardingData?.logo_file_path) ? (
+                            <div className="logo-preview-card">
+                                <img
+                                    src={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
+                                    alt="Company logo"
+                                    className="logo-thumbnail"
+                                    onClick={() => setPreviewImage(getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path))}
+                                    title="Click to preview"
+                                />
+                                <div className="logo-actions">
                                     <a
-                                        className="asset-download"
+                                        className="btn-download"
                                         href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
                                         download
                                     >
-                                        Download
+                                        ⬇ Download Logo
                                     </a>
                                 </div>
-                            ) : (
-                                <span className="empty">Not provided</span>
-                            )}
-                        </div>
-                        <div className="readonly-field" style={fieldStyle}>
-                            <label>Website Images</label>
-                            {getImageItems().length ? (
-                                <div className="asset-grid" style={assetGridStyle}>
-                                    {getImageItems().map((img) => (
-                                        <div key={img.key} className="asset-card" style={assetCardStyle}>
-                                            <div className="asset-thumb">
-                                                <img
-                                                    src={img.url}
-                                                    alt={img.name}
-                                                    onError={(e) => {
-                                                        console.error('Image failed to load:', img.name, img.url);
-                                                        const parent = e.currentTarget.parentElement;
-                                                        if (parent) parent.classList.add('is-empty');
-                                                        e.currentTarget.style.display = 'none';
-                                                    }}
-                                                    onLoad={(e) => {
-                                                        console.log('Image loaded successfully:', img.name, img.url);
-                                                        const parent = e.currentTarget.parentElement;
-                                                        if (parent) parent.classList.remove('is-empty');
-                                                    }}
-                                                />
-                                                <span className="asset-fallback">No preview</span>
-                                            </div>
-                                            <span className="asset-name">{img.name}</span>
-                                            <a className="asset-download" href={img.url} download>
-                                                Download
-                                            </a>
+                            </div>
+                        ) : (
+                            <span className="empty">Not provided</span>
+                        )}
+                    </div>
+
+                    {/* Website Images */}
+                    <div className="readonly-field" style={fieldStyle}>
+                        <label>Website Images</label>
+                        {getImageItems().length ? (
+                            <div className="images-grid">
+                                {getImageItems().map((img) => (
+                                    <div key={img.key} className="image-card">
+                                        <div className="image-preview">
+                                            <img
+                                                src={img.url}
+                                                alt={img.name}
+                                                onClick={() => setPreviewImage(img.url)}
+                                                title="Click to preview"
+                                            />
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <span className="empty">Not provided</span>
-                            )}
-                        </div>
+                                        <div className="image-info">
+                                            <span className="image-name">{img.name}</span>
+                                            <a className="link-download" href={img.url} download>⬇</a>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <span className="empty">Not provided</span>
+                        )}
                     </div>
                 </div>
 
@@ -6353,6 +6336,177 @@ export default function ProjectDetailPage() {
             letter-spacing: 0.05em;
         }
       `}</style>
+            {/* Lightbox Modal */}
+            {previewImage && (
+                <div className="lightbox-overlay" onClick={() => setPreviewImage(null)}>
+                    <div className="lightbox-content" onClick={e => e.stopPropagation()}>
+                        <button className="lightbox-close" onClick={() => setPreviewImage(null)}>×</button>
+                        <img src={previewImage} alt="Full size preview" />
+                    </div>
+                </div>
+            )}
+
+            <style jsx>{`
+                /* Previously existing styles... */
+             
+                /* Assets Styling */
+                .logo-preview-card {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-start;
+                    background: white;
+                    padding: 16px;
+                    border-radius: 8px;
+                    border: 1px solid #e2e8f0;
+                    width: fit-content;
+                }
+
+                .logo-thumbnail {
+                    height: 120px;
+                    width: auto;
+                    object-fit: contain;
+                    margin-bottom: 12px;
+                    cursor: pointer;
+                    transition: transform 0.2s;
+                    border-radius: 4px;
+                }
+
+                .logo-thumbnail:hover {
+                    transform: scale(1.02);
+                }
+
+                .btn-download {
+                    font-size: 13px;
+                    color: #2563eb;
+                    text-decoration: none;
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                }
+
+                .btn-download:hover {
+                    text-decoration: underline;
+                }
+
+                .images-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                    gap: 16px;
+                    margin-top: 8px;
+                }
+
+                .image-card {
+                    background: white;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    border: 1px solid #e2e8f0;
+                    transition: transform 0.2s;
+                }
+
+                .image-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+                }
+
+                .image-preview {
+                    position: relative;
+                    aspect-ratio: 16 / 9;
+                    background: #f1f5f9;
+                    overflow: hidden;
+                    cursor: pointer;
+                }
+
+                .image-preview img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    transition: transform 0.3s;
+                }
+
+                .image-preview:hover img {
+                    transform: scale(1.05);
+                }
+
+                .image-info {
+                    padding: 8px 10px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 12px;
+                    color: #475569;
+                }
+
+                .image-name {
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    max-width: 80%;
+                }
+
+                .link-download {
+                    color: #64748b;
+                    text-decoration: none;
+                }
+
+                .link-download:hover {
+                    color: #2563eb;
+                }
+
+                /* Lightbox */
+                .lightbox-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.9);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 2000;
+                    padding: 24px;
+                    animation: fadeIn 0.2s ease-out;
+                }
+
+                .lightbox-content {
+                    position: relative;
+                    max-width: 90vw;
+                    max-height: 90vh;
+                }
+
+                .lightbox-content img {
+                    max-width: 100%;
+                    max-height: 90vh;
+                    object-fit: contain;
+                    border-radius: 4px;
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+                }
+
+                .lightbox-close {
+                    position: absolute;
+                    top: -40px;
+                    right: -10px;
+                    background: none;
+                    border: none;
+                    color: white;
+                    font-size: 32px;
+                    cursor: pointer;
+                    padding: 8px;
+                    line-height: 1;
+                    opacity: 0.8;
+                    transition: opacity 0.2s;
+                }
+
+                .lightbox-close:hover {
+                    opacity: 1;
+                }
+
+                @keyframes fadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+            `}</style>
         </div>
     );
 }
