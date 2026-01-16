@@ -135,11 +135,28 @@ export default function ClientOnboardingPage() {
         }
     };
 
+
+    // Helper to update local state without triggering API save (for controlled inputs)
+    const updateLocalData = (updates: Partial<OnboardingFormData['data']>) => {
+        setFormData(prev => prev ? {
+            ...prev,
+            data: { ...prev.data, ...updates }
+        } : null);
+    };
+
     const updateRequirements = (updates: Partial<RequirementsData>) => {
         if (!formData) return;
         const current = formData.data.requirements || {};
         const next = { ...current, ...updates };
         saveFormData({ requirements: next });
+    };
+
+    // Update requirements locally (for onChange)
+    const updateRequirementsLocal = (updates: Partial<RequirementsData>) => {
+        if (!formData) return;
+        const current = formData.data.requirements || {};
+        const next = { ...current, ...updates };
+        updateLocalData({ requirements: next });
     };
 
     const getBackendBaseUrl = () => {
@@ -385,7 +402,14 @@ export default function ClientOnboardingPage() {
                         </svg>
                         <span className="ring-value">{formData.completion_percentage}%</span>
                     </div>
-                    <span className="completion-label">Complete</span>
+                    <div className="completion-text">
+                        <span className="completion-label">Complete</span>
+                        <span className="items-count">
+                            {/* Calculate provided items based on completion math from backend logic or simple diff */}
+                            {Math.round((formData.completion_percentage / 100) * (formData.missing_fields.length + Math.round((formData.completion_percentage / 100) * formData.missing_fields.length / (100 - formData.completion_percentage) * 100))) || '0'}/{formData.missing_fields.length + Math.round((formData.completion_percentage / 100) * formData.missing_fields.length / (100 - formData.completion_percentage) * 100) || '0'} items
+                        </span>
+
+                    </div>
                 </div>
             </header>
 
@@ -433,7 +457,8 @@ export default function ClientOnboardingPage() {
                         <label>Project Summary</label>
                         <textarea
                             value={formData.data.requirements?.project_summary || ''}
-                            onChange={(e) => updateRequirements({ project_summary: e.target.value })}
+                            onChange={(e) => updateRequirementsLocal({ project_summary: e.target.value })}
+                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                             rows={3}
                             placeholder="Brief summary of the project requirements..."
                         />
@@ -443,7 +468,8 @@ export default function ClientOnboardingPage() {
                         <label>Project Notes (applies to all locations)</label>
                         <textarea
                             value={formData.data.requirements?.project_notes || ''}
-                            onChange={(e) => updateRequirements({ project_notes: e.target.value })}
+                            onChange={(e) => updateRequirementsLocal({ project_notes: e.target.value })}
+                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                             rows={3}
                             placeholder="Notes that apply to all locations..."
                         />
@@ -514,7 +540,8 @@ export default function ClientOnboardingPage() {
                         <input
                             type="url"
                             value={formData.data.logo_url || ''}
-                            onChange={(e) => saveFormData({ logo_url: e.target.value })}
+                            onChange={(e) => updateLocalData({ logo_url: e.target.value })}
+                            onBlur={() => saveFormData({ logo_url: formData.data.logo_url })}
                             placeholder="https://example.com/logo.png"
                         />
                     </div>
@@ -604,7 +631,8 @@ export default function ClientOnboardingPage() {
                             <label>Your Website Copy</label>
                             <textarea
                                 value={formData.data.copy_text || ''}
-                                onChange={(e) => saveFormData({ copy_text: e.target.value })}
+                                onChange={(e) => updateLocalData({ copy_text: e.target.value })}
+                                onBlur={() => saveFormData({ copy_text: formData.data.copy_text })}
                                 placeholder="Enter all your website text content here..."
                                 rows={6}
                             />
@@ -697,7 +725,8 @@ export default function ClientOnboardingPage() {
                         <label>Reference links (optional)</label>
                         <textarea
                             value={formData.data.requirements?.template_references || ''}
-                            onChange={(e) => updateRequirements({ template_references: e.target.value })}
+                            onChange={(e) => updateRequirementsLocal({ template_references: e.target.value })}
+                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                             rows={3}
                             placeholder="Add links or notes for reference..."
                         />
@@ -746,7 +775,8 @@ export default function ClientOnboardingPage() {
                         <input
                             type="url"
                             value={formData.data.privacy_policy_url || ''}
-                            onChange={(e) => saveFormData({ privacy_policy_url: e.target.value })}
+                            onChange={(e) => updateLocalData({ privacy_policy_url: e.target.value })}
+                            onBlur={() => saveFormData({ privacy_policy_url: formData.data.privacy_policy_url })}
                             placeholder="https://example.com/privacy"
                         />
                     </div>
@@ -755,7 +785,8 @@ export default function ClientOnboardingPage() {
                         <label>Privacy Policy Text</label>
                         <textarea
                             value={formData.data.privacy_policy_text || ''}
-                            onChange={(e) => saveFormData({ privacy_policy_text: e.target.value })}
+                            onChange={(e) => updateLocalData({ privacy_policy_text: e.target.value })}
+                            onBlur={() => saveFormData({ privacy_policy_text: formData.data.privacy_policy_text })}
                             placeholder="Paste your privacy policy here..."
                             rows={4}
                         />
@@ -791,7 +822,8 @@ export default function ClientOnboardingPage() {
                         {formData.data.requirements?.brand_guidelines_available && (
                             <textarea
                                 value={formData.data.requirements?.brand_guidelines_details || ''}
-                                onChange={(e) => updateRequirements({ brand_guidelines_details: e.target.value })}
+                                onChange={(e) => updateRequirementsLocal({ brand_guidelines_details: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                                 rows={3}
                                 placeholder="Add brand guidelines link or details..."
                             />
@@ -815,7 +847,8 @@ export default function ClientOnboardingPage() {
                         <input
                             type="text"
                             value={formData.data.requirements?.color_notes || ''}
-                            onChange={(e) => updateRequirements({ color_notes: e.target.value })}
+                            onChange={(e) => updateRequirementsLocal({ color_notes: e.target.value })}
+                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                             placeholder="Hex codes or color notes"
                         />
                     </div>
@@ -837,7 +870,8 @@ export default function ClientOnboardingPage() {
                         <input
                             type="text"
                             value={formData.data.requirements?.font_notes || ''}
-                            onChange={(e) => updateRequirements({ font_notes: e.target.value })}
+                            onChange={(e) => updateRequirementsLocal({ font_notes: e.target.value })}
+                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                             placeholder="Font details or links"
                         />
                     </div>
@@ -867,7 +901,8 @@ export default function ClientOnboardingPage() {
                         {formData.data.requirements?.custom_graphic_notes_enabled && (
                             <textarea
                                 value={formData.data.requirements?.custom_graphic_notes || ''}
-                                onChange={(e) => updateRequirements({ custom_graphic_notes: e.target.value })}
+                                onChange={(e) => updateRequirementsLocal({ custom_graphic_notes: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                                 rows={3}
                                 placeholder="Describe custom graphic needs..."
                             />
@@ -890,7 +925,8 @@ export default function ClientOnboardingPage() {
                         <label>Navigation Details</label>
                         <textarea
                             value={formData.data.requirements?.navigation_notes || ''}
-                            onChange={(e) => updateRequirements({ navigation_notes: e.target.value })}
+                            onChange={(e) => updateRequirementsLocal({ navigation_notes: e.target.value })}
+                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                             rows={3}
                             placeholder="Add navigation notes..."
                         />
@@ -900,7 +936,8 @@ export default function ClientOnboardingPage() {
                         <label>Stock Images Reference</label>
                         <textarea
                             value={formData.data.requirements?.stock_images_reference || ''}
-                            onChange={(e) => updateRequirements({ stock_images_reference: e.target.value })}
+                            onChange={(e) => updateRequirementsLocal({ stock_images_reference: e.target.value })}
+                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                             rows={2}
                             placeholder="Links or notes for stock images..."
                         />

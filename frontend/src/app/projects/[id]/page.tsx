@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -252,12 +252,12 @@ interface SuggestionsResponse {
 }
 
 const STAGES = [
-    { key: 'ONBOARDING', label: 'Onboarding', icon: '📋' },
-    { key: 'ASSIGNMENT', label: 'Assignment', icon: '📤' },
-    { key: 'BUILD', label: 'Build', icon: '🔨' },
-    { key: 'TEST', label: 'Test', icon: '🧪' },
-    { key: 'DEFECT_VALIDATION', label: 'Defect Validation', icon: '🔍' },
-    { key: 'COMPLETE', label: 'Complete', icon: '✅' },
+    { key: 'ONBOARDING', label: 'Onboarding', icon: 'ðŸ“‹' },
+    { key: 'ASSIGNMENT', label: 'Assignment', icon: 'ðŸ“¤' },
+    { key: 'BUILD', label: 'Build', icon: 'ðŸ”¨' },
+    { key: 'TEST', label: 'Test', icon: 'ðŸ§ª' },
+    { key: 'DEFECT_VALIDATION', label: 'Defect Validation', icon: 'ðŸ”' },
+    { key: 'COMPLETE', label: 'Complete', icon: 'âœ…' },
 ];
 
 const THEME_OPTIONS = [
@@ -740,12 +740,12 @@ export default function ProjectDetailPage() {
         return (
             <div className="form-card readonly-section requirements-panel" style={readonlyCardStyle}>
                 <div className="section-badge">
-                    <span className="badge-readonly">👁️ Read-only (Client fills via form)</span>
+                    <span className="badge-readonly">ðŸ‘ï¸ Read-only (Client fills via form)</span>
                 </div>
 
                 {/* Assets - Read Only */}
                 <div className="readonly-group">
-                    <h4>🖼️ Website Assets</h4>
+                    <h4>ðŸ–¼ï¸ Website Assets</h4>
                     <div className="readonly-grid">
                         <div className="readonly-field" style={fieldStyle}>
                             <label>Company Logo</label>
@@ -822,7 +822,7 @@ export default function ProjectDetailPage() {
 
                 {/* Copy Text - Read Only */}
                 <div className="readonly-group">
-                    <h4>📝 Copy Text</h4>
+                    <h4>ðŸ“ Copy Text</h4>
                     <div className="readonly-field full-width" style={fieldStyle}>
                         <span className={onboardingData?.copy_text || onboardingData?.use_custom_copy ? 'filled' : 'empty'}>
                             {getCopySummary()}
@@ -832,7 +832,7 @@ export default function ProjectDetailPage() {
 
                 {/* WCAG - Read Only */}
                 <div className="readonly-group">
-                    <h4>♿ Accessibility (WCAG)</h4>
+                    <h4>â™¿ Accessibility (WCAG)</h4>
                     <div className="readonly-field" style={fieldStyle}>
                         <span className={onboardingData?.wcag_compliance_required ? 'filled' : 'empty'}>
                             {onboardingData?.wcag_compliance_required
@@ -844,7 +844,7 @@ export default function ProjectDetailPage() {
 
                 {/* Privacy Policy - Read Only */}
                 <div className="readonly-group">
-                    <h4>🔒 Privacy Policy</h4>
+                    <h4>ðŸ”’ Privacy Policy</h4>
                     <div className="readonly-field full-width" style={fieldStyle}>
                         <span className={onboardingData?.privacy_policy_url || onboardingData?.privacy_policy_text ? 'filled' : 'empty'}>
                             {onboardingData?.privacy_policy_url
@@ -856,7 +856,7 @@ export default function ProjectDetailPage() {
 
                 {/* Theme - Read Only */}
                 <div className="readonly-group">
-                    <h4>🎨 Theme Preferences</h4>
+                    <h4>ðŸŽ¨ Theme Preferences</h4>
                     <div className="readonly-field" style={fieldStyle}>
                         <span className={(onboardingData?.theme_preference || onboardingData?.selected_template_id) ? 'filled' : 'empty'}>
                             {getTemplateLabel()}
@@ -873,13 +873,13 @@ export default function ProjectDetailPage() {
                 </div>
 
                 <div className="readonly-group">
-                    <h4>🧾 Project Requirements Checklist</h4>
+                    <h4>ðŸ§¾ Project Requirements Checklist</h4>
                     <details className="requirements-collapsible">
                         <summary>View checklist</summary>
                         <div className="checklist-grid">
                             {getRequirementsChecklistItems().map((item) => (
                                 <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
+                                    <span className="checklist-icon">{item.filled ? 'âœ…' : 'â³'}</span>
                                     <span>{item.label}</span>
                                 </div>
                             ))}
@@ -889,7 +889,7 @@ export default function ProjectDetailPage() {
 
                 {hasRequirements && (
                     <div className="readonly-group">
-                        <h4>🧾 Project Requirements</h4>
+                        <h4>ðŸ§¾ Project Requirements</h4>
                         <div className="requirements-grid">
                             <div className="readonly-item"><label>Project Summary</label><span>{requirements.project_summary || 'Not provided'}</span></div>
                             <div className="readonly-item"><label>Project Notes</label><span>{requirements.project_notes || 'Not provided'}</span></div>
@@ -1377,7 +1377,7 @@ export default function ProjectDetailPage() {
             <main className="project-detail">
                 {/* Back Button */}
                 <button className="btn-back" onClick={() => router.push('/projects')}>
-                    ← Back to Projects
+                    â† Back to Projects
                 </button>
 
                 {/* Project Header */}
@@ -1421,7 +1421,7 @@ export default function ProjectDetailPage() {
                                 key={stage.key}
                                 className={`stage-item ${isComplete ? 'complete' : ''} ${isCurrent ? 'current' : ''}`}
                             >
-                                <div className="stage-icon">{isComplete ? '✓' : index + 1}</div>
+                                <div className="stage-icon">{isComplete ? 'âœ“' : index + 1}</div>
                                 <span className="stage-label">{stage.label}</span>
                             </div>
                         );
@@ -1452,17 +1452,17 @@ export default function ProjectDetailPage() {
                 {/* My Capacity on this Project - Visible to all assigned team members */}
                 {isAssignedToProject && (
                     <div className="my-capacity-section">
-                        <h2>📊 My Capacity on this Project</h2>
+                        <h2>ðŸ“Š My Capacity on this Project</h2>
                         <div className="capacity-cards">
                             <div className="capacity-card">
-                                <div className="capacity-icon">🎯</div>
+                                <div className="capacity-icon">ðŸŽ¯</div>
                                 <div className="capacity-info">
                                     <span className="capacity-label">This Project</span>
                                     <span className="capacity-value">{projectWorkload?.by_role?.[user?.role] || 0}h estimated</span>
                                 </div>
                             </div>
                             <div className="capacity-card">
-                                <div className="capacity-icon">📋</div>
+                                <div className="capacity-icon">ðŸ“‹</div>
                                 <div className="capacity-info">
                                     <span className="capacity-label">Other Projects</span>
                                     <span className="capacity-value">
@@ -1471,7 +1471,7 @@ export default function ProjectDetailPage() {
                                 </div>
                             </div>
                             <div className="capacity-card available">
-                                <div className="capacity-icon">✅</div>
+                                <div className="capacity-icon">âœ…</div>
                                 <div className="capacity-info">
                                     <span className="capacity-label">Available</span>
                                     <span className="capacity-value">
@@ -1487,7 +1487,7 @@ export default function ProjectDetailPage() {
                 {user?.role && ['ADMIN', 'MANAGER'].includes(user.role) && phaseSummaries.length > 0 && (
                     <div className="phase-summary-section">
                         <div className="section-header">
-                            <h2>📌 Phase Task Summary</h2>
+                            <h2>ðŸ“Œ Phase Task Summary</h2>
                             {healthSummary && (
                                 <span className={`health-pill health-${healthSummary.status?.toLowerCase()}`}>
                                     {healthSummary.status.replace('_', ' ')}
@@ -1531,31 +1531,31 @@ export default function ProjectDetailPage() {
                 {/* Executive Summary for Admin */}
                 {isExecutiveView && (
                     <div className="executive-summary">
-                        <h2>📈 Executive Summary</h2>
+                        <h2>ðŸ“ˆ Executive Summary</h2>
                         <div className="summary-grid">
                             <div className="summary-card">
-                                <span className="summary-icon">📊</span>
+                                <span className="summary-icon">ðŸ“Š</span>
                                 <div className="summary-content">
                                     <span className="summary-label">Progress</span>
                                     <span className="summary-value">{completionStatus?.completion_percentage || 0}%</span>
                                 </div>
                             </div>
                             <div className="summary-card">
-                                <span className="summary-icon">📋</span>
+                                <span className="summary-icon">ðŸ“‹</span>
                                 <div className="summary-content">
                                     <span className="summary-label">Tasks</span>
                                     <span className="summary-value">{completionStatus?.completed_tasks || 0}/{completionStatus?.total_required_tasks || 0}</span>
                                 </div>
                             </div>
                             <div className="summary-card">
-                                <span className="summary-icon">🎯</span>
+                                <span className="summary-icon">ðŸŽ¯</span>
                                 <div className="summary-content">
                                     <span className="summary-label">Stage</span>
                                     <span className="summary-value">{project.current_stage?.replace('_', ' ')}</span>
                                 </div>
                             </div>
                             <div className="summary-card">
-                                <span className="summary-icon">⚡</span>
+                                <span className="summary-icon">âš¡</span>
                                 <div className="summary-content">
                                     <span className="summary-label">Status</span>
                                     <span className="summary-value">{project.status}</span>
@@ -1563,7 +1563,7 @@ export default function ProjectDetailPage() {
                             </div>
                         </div>
                         <div className="executive-note">
-                            <p>💡 As an executive, you see the high-level overview. Detailed operational data is managed by Consultants and Managers.</p>
+                            <p>ðŸ’¡ As an executive, you see the high-level overview. Detailed operational data is managed by Consultants and Managers.</p>
                         </div>
                     </div>
                 )}
@@ -1572,10 +1572,10 @@ export default function ProjectDetailPage() {
                 {canViewTeam && (
                     <div className="team-section">
                         <div className="section-header">
-                            <h2>👥 Team Assignment</h2>
+                            <h2>ðŸ‘¥ Team Assignment</h2>
                             {canAssignTeam && (
                                 <button className="btn-add" onClick={() => setShowTeamModal(true)}>
-                                    ✏️ Manage Team
+                                    âœï¸ Manage Team
                                 </button>
                             )}
                             {user?.role === 'MANAGER' && user?.region && (
@@ -1584,7 +1584,7 @@ export default function ProjectDetailPage() {
                         </div>
                         <div className="team-grid">
                             <div className={`team-card ${teamAssignments.consultant ? 'assigned' : 'unassigned'}`}>
-                                <div className="team-role-icon">💼</div>
+                                <div className="team-role-icon">ðŸ’¼</div>
                                 <div className="team-role-label">Consultant</div>
                                 {teamAssignments.consultant ? (
                                     <div className="team-member-info">
@@ -1596,7 +1596,7 @@ export default function ProjectDetailPage() {
                                 )}
                             </div>
                             <div className={`team-card ${teamAssignments.pc ? 'assigned' : 'unassigned'}`}>
-                                <div className="team-role-icon">🎯</div>
+                                <div className="team-role-icon">ðŸŽ¯</div>
                                 <div className="team-role-label">Project Coordinator (PC)</div>
                                 {teamAssignments.pc ? (
                                     <div className="team-member-info">
@@ -1608,7 +1608,7 @@ export default function ProjectDetailPage() {
                                 )}
                             </div>
                             <div className={`team-card ${teamAssignments.builder ? 'assigned' : 'unassigned'}`}>
-                                <div className="team-role-icon">🔨</div>
+                                <div className="team-role-icon">ðŸ”¨</div>
                                 <div className="team-role-label">Builder</div>
                                 {teamAssignments.builder ? (
                                     <div className="team-member-info">
@@ -1620,7 +1620,7 @@ export default function ProjectDetailPage() {
                                 )}
                             </div>
                             <div className={`team-card ${teamAssignments.tester ? 'assigned' : 'unassigned'}`}>
-                                <div className="team-role-icon">🧪</div>
+                                <div className="team-role-icon">ðŸ§ª</div>
                                 <div className="team-role-label">Tester</div>
                                 {teamAssignments.tester ? (
                                     <div className="team-member-info">
@@ -1641,514 +1641,227 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
-                {/* Onboarding Section - Role-based views */}
+                {/* Onboarding Section - Unified View for All Roles */}
                 {project.current_stage === 'ONBOARDING' && onboardingData && (
                     <div className="onboarding-section">
                         <div className="section-header">
-                            <h2>📋 Onboarding Details</h2>
-                            {hasFullEditAccess && completionStatus?.can_auto_advance && (
+                            <h2>ðŸ“‹ Onboarding Requirements</h2>
+                            {completionStatus?.can_auto_advance && hasFullEditAccess && (
                                 <button className="btn-auto-advance" onClick={handleAutoAdvance} disabled={advancing}>
-                                    🚀 Auto-Advance (90%+ Complete)
+                                    ðŸš€ Auto-Advance
                                 </button>
                             )}
                         </div>
 
-                        {/* ADMIN or Non-Assigned Consultant VIEW - Summary Only */}
-                        {(user?.role === 'ADMIN' || (user?.role === 'CONSULTANT' && !isAssignedToProject)) && (
-                            <div className="onboarding-summary-view">
-                                <div className="summary-card">
-                                    <div className="summary-progress">
-                                        <div className="progress-ring" style={{ '--progress': completionStatus?.completion_percentage || 0 } as React.CSSProperties}>
-                                            <span className="progress-value">{completionStatus?.completion_percentage || 0}%</span>
-                                        </div>
-                                        <div className="progress-label">
-                                            <h4>Onboarding Progress</h4>
-                                            <p>{completionStatus?.completed_tasks || 0} of {completionStatus?.total_required_tasks || 0} items complete</p>
+                        {/* Requirements Summary Dashboard - Visible to Everyone */}
+                        <div className="summary-card">
+                            <div className="summary-header">
+                                <div className="summary-progress">
+                                    <div className="progress-ring-large" style={{ '--progress': completionStatus?.completion_percentage || 0 } as React.CSSProperties}>
+                                        <span className="progress-value-large">{completionStatus?.completion_percentage || 0}%</span>
+                                    </div>
+                                    <div className="progress-details">
+                                        <h4>{completionStatus?.completed_tasks || 0} of {completionStatus?.total_required_tasks || 0} Items Provided</h4>
+                                        <p className="progress-subtitle">{(completionStatus?.total_required_tasks || 0) - (completionStatus?.completed_tasks || 0)} items pending</p>
+                                    </div>
+                                </div>
+                                {isAssignedToProject && user?.role === 'CONSULTANT' && (
+                                    <div className="share-box">
+                                        {completionStatus?.client_form_url && (
+                                            <>
+                                                <span>Share with client:</span>
+                                                <button
+                                                    className="btn-copy-link"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
+                                                        setSuccess('Link copied!');
+                                                        setTimeout(() => setSuccess(''), 2000);
+                                                    }}
+                                                >
+                                                    ðŸ”— Copy Link
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="checklist-summary">
+                                <div className="checklist-grid">
+                                    {/* Essential Items */}
+                                    <div className={`checklist-item ${onboardingData.contacts_json?.some((c: any) => c.is_primary) ? 'provided' : 'pending'}`}>
+                                        <span className="checklist-icon">{onboardingData.contacts_json?.some((c: any) => c.is_primary) ? 'âœ…' : 'âŒ'}</span>
+                                        <div className="checklist-content">
+                                            <span className="checklist-label">Primary Contact</span>
+                                            {!onboardingData.contacts_json?.some((c: any) => c.is_primary) && onboardingData.missing_fields_eta_json?.['Primary Contact'] && (
+                                                <span className="checklist-eta">ETA: {new Date(onboardingData.missing_fields_eta_json['Primary Contact']).toLocaleDateString()}</span>
+                                            )}
                                         </div>
                                     </div>
 
-                                    <div className="checklist-summary">
-                                        <h4>📋 Requirements Checklist</h4>
-                                        <div className="checklist-grid">
-                                            <div className={`checklist-item ${onboardingData.contacts_json?.some((c: any) => c.is_primary) ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{onboardingData.contacts_json?.some((c: any) => c.is_primary) ? '✅' : '⏳'}</span>
-                                                <span>Primary Contact</span>
-                                            </div>
-                                            <div className={`checklist-item ${onboardingData.logo_url || onboardingData.logo_file_path ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{onboardingData.logo_url || onboardingData.logo_file_path ? '✅' : '⏳'}</span>
-                                                <span>Company Logo</span>
-                                            </div>
-                                            <div className={`checklist-item ${(onboardingData.images_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{(onboardingData.images_json?.length || 0) > 0 ? '✅' : '⏳'}</span>
-                                                <span>Website Images</span>
-                                            </div>
-                                            <div className={`checklist-item ${onboardingData.copy_text || onboardingData.use_custom_copy ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? '✅' : '⏳'}</span>
-                                                <span>Copy Text</span>
-                                            </div>
-                                            <div className={`checklist-item ${onboardingData.wcag_confirmed ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{onboardingData.wcag_confirmed ? '✅' : '⏳'}</span>
-                                                <span>WCAG Compliance</span>
-                                            </div>
-                                            <div className={`checklist-item ${onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? '✅' : '⏳'}</span>
-                                                <span>Privacy Policy</span>
-                                            </div>
-                                            <div className={`checklist-item ${onboardingData.theme_preference || onboardingData.selected_template_id ? 'provided' : 'pending'}`}>
-                                                <span className="checklist-icon">{onboardingData.theme_preference || onboardingData.selected_template_id ? '✅' : '⏳'}</span>
-                                                <span>Theme Preferences</span>
-                                            </div>
+                                    <div className={`checklist-item ${onboardingData.logo_url || onboardingData.logo_file_path ? 'provided' : 'pending'}`}>
+                                        <span className="checklist-icon">{onboardingData.logo_url || onboardingData.logo_file_path ? 'âœ…' : 'âŒ'}</span>
+                                        <div className="checklist-content">
+                                            <span className="checklist-label">Company Logo</span>
+                                            {(!onboardingData.logo_url && !onboardingData.logo_file_path) && onboardingData.missing_fields_eta_json?.['Company Logo'] && (
+                                                <span className="checklist-eta">ETA: {new Date(onboardingData.missing_fields_eta_json['Company Logo']).toLocaleDateString()}</span>
+                                            )}
                                         </div>
                                     </div>
 
-                                    <div className="checklist-summary">
-                                        <h4>🧾 Project Requirements Checklist</h4>
-                                        <div className="checklist-grid">
-                                            {getRequirementsChecklistItems().map((item) => (
-                                                <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
-                                                    <span>{item.label}</span>
+                                    <div className={`checklist-item ${(onboardingData.images_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
+                                        <span className="checklist-icon">{(onboardingData.images_json?.length || 0) > 0 ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-label">Website Images</span>
+                                    </div>
+
+                                    <div className={`checklist-item ${onboardingData.copy_text || onboardingData.use_custom_copy ? 'provided' : 'pending'}`}>
+                                        <span className="checklist-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-label">Copy Text</span>
+                                    </div>
+
+                                    <div className={`checklist-item ${onboardingData.wcag_confirmed ? 'provided' : 'pending'}`}>
+                                        <span className="checklist-icon">{onboardingData.wcag_confirmed ? 'âœ…' : 'âŒ'}</span>
+                                        <div className="checklist-content">
+                                            <span className="checklist-label">WCAG Requirements</span>
+                                            {!onboardingData.wcag_confirmed && onboardingData.missing_fields_eta_json?.['WCAG Requirements'] && (
+                                                <span className="checklist-eta">ETA: {new Date(onboardingData.missing_fields_eta_json['WCAG Requirements']).toLocaleDateString()}</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className={`checklist-item ${onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'provided' : 'pending'}`}>
+                                        <span className="checklist-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-label">Privacy Policy</span>
+                                    </div>
+
+                                    <div className={`checklist-item ${onboardingData.theme_preference || onboardingData.selected_template_id ? 'provided' : 'pending'}`}>
+                                        <span className="checklist-icon">{onboardingData.theme_preference || onboardingData.selected_template_id ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-label">Theme / Template</span>
+                                    </div>
+
+                                    {/* Detailed Requirements */}
+                                    {getRequirementsChecklistItems().map((item) => (
+                                        <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
+                                            <span className="checklist-icon">{item.filled ? 'âœ…' : 'âŒ'}</span>
+                                            <div className="checklist-content">
+                                                <span className="checklist-label">{item.label}</span>
+                                                {!item.filled && onboardingData.missing_fields_eta_json?.[item.label] && (
+                                                    <span className="checklist-eta">ETA: {new Date(onboardingData.missing_fields_eta_json[item.label]).toLocaleDateString()}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Consultant: Actionable Sections (Contacts, Auto-Reminder) */}
+                        {user?.role === 'CONSULTANT' && isAssignedToProject && (
+                            <div className="consultant-actions-grid">
+                                {/* Contacts Management */}
+                                <div className="form-card editable-section">
+                                    <div className="card-header">
+                                        <h3>ðŸ‘¥ Client Contacts</h3>
+                                        <button className="btn-add-sm" onClick={() => setShowContactModal(true)}>+ Add</button>
+                                    </div>
+                                    <div className="contacts-list-compact">
+                                        {onboardingData.contacts_json?.length === 0 ? (
+                                            <p className="empty-message">No contacts.</p>
+                                        ) : (
+                                            onboardingData.contacts_json?.map((contact, index) => (
+                                                <div key={index} className="contact-item-compact">
+                                                    <div className="contact-info">
+                                                        <span className="contact-name">{contact.name}</span>
+                                                        <span className="contact-email-sm">{contact.email}</span>
+                                                    </div>
+                                                    <button className="btn-icon-remove" onClick={() => removeContact(index)}>Ã—</button>
                                                 </div>
-                                            ))}
-                                        </div>
+                                            ))
+                                        )}
                                     </div>
+                                    {/* Email Trigger */}
+                                    {onboardingData.contacts_json && onboardingData.contacts_json.length > 0 && (
+                                        <div className="email-action-row">
+                                            <button
+                                                className="btn-send-email-sm"
+                                                disabled={sendingEmail}
+                                                onClick={async () => {
+                                                    setSendingEmail(true);
+                                                    try {
+                                                        const primary = onboardingData.contacts_json?.find(c => c.is_primary) || onboardingData.contacts_json?.[0];
+                                                        if (primary) {
+                                                            await onboardingAPI.sendReminder(projectId, {
+                                                                recipient_email: primary.email,
+                                                                recipient_name: primary.name,
+                                                                message: `Please complete the onboarding form.`
+                                                            });
+                                                            setSuccess('Reminder sent!');
+                                                        }
+                                                    } catch { setError('Failed to send'); }
+                                                    finally { setSendingEmail(false); }
+                                                }}
+                                            >
+                                                {sendingEmail ? 'Sending...' : 'ðŸ“§ Send Reminder'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
 
-                                    {completionStatus && completionStatus.missing_fields.length > 0 && (
-                                        <div className="pending-items-summary">
-                                            <h4>⏳ Pending Items ({completionStatus.missing_fields.length})</h4>
-                                            <ul>
-                                                {completionStatus.missing_fields.map((field, index) => (
-                                                    <li key={index}>{field}</li>
-                                                ))}
-                                            </ul>
+                                {/* Auto-Reminder Settings */}
+                                <div className="form-card highlight-section">
+                                    <h3>ðŸ”” Auto-Reminders</h3>
+                                    <label className="toggle-row">
+                                        <span>Enable auto-reminders</span>
+                                        <input
+                                            type="checkbox"
+                                            checked={onboardingData.auto_reminder_enabled}
+                                            onChange={(e) => {
+                                                onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval)
+                                                    .then(() => loadOnboardingData())
+                                                    .catch(() => setError('Failed to update'));
+                                            }}
+                                        />
+                                    </label>
+                                    {onboardingData.auto_reminder_enabled && (
+                                        <div className="reminder-info-sm">
+                                            <span>Current interval: {onboardingData.reminder_interval_hours || 24}h</span>
+                                            <span>Next: {onboardingData.next_reminder_at ? new Date(onboardingData.next_reminder_at).toLocaleDateString() : 'Pending'}</span>
                                         </div>
                                     )}
                                 </div>
                             </div>
                         )}
 
-                        {/* MANAGER VIEW - Read-Only Details */}
-                        {user?.role === 'MANAGER' && (
+                        {/* Read-Only Details for Managers/Admins/Others */}
+                        {(user?.role !== 'CONSULTANT' || !isAssignedToProject) && (
                             <div className="onboarding-readonly-view">
-                                {/* Client Contacts - Read Only */}
-                                <div className="form-card readonly">
-                                    <h3>👥 Client Contacts</h3>
-                                    <div className="contacts-list">
-                                        {onboardingData.contacts_json?.length === 0 ? (
-                                            <p className="empty-message">No contacts added yet</p>
-                                        ) : (
-                                            onboardingData.contacts_json?.map((contact, index) => (
-                                                <div key={index} className="contact-item">
-                                                    <div className="contact-info">
-                                                        <span className="contact-name">{contact.name}</span>
-                                                        <span className="contact-email">{contact.email}</span>
-                                                        {contact.role && <span className="contact-role">{contact.role}</span>}
-                                                        {contact.is_primary && <span className="badge-primary">Primary</span>}
-                                                    </div>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Assets - Read Only */}
-                                <div className="form-card readonly">
-                                    <h3>🖼️ Website Assets</h3>
-                                    <div className="readonly-grid">
-                                        <div className="readonly-item">
-                                            <label>Company Logo</label>
-                                            <span>{onboardingData.logo_url || onboardingData.logo_file_path || 'Not provided'}</span>
-                                        </div>
-                                        <div className="readonly-item">
-                                            <label>Website Images</label>
-                                            <span>{onboardingData.images_json?.length || 0} images provided</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Copy Text - Read Only */}
-                                <div className="form-card readonly">
-                                    <h3>📝 Copy Text</h3>
-                                    <div className="readonly-item">
-                                        <span>{getCopySummary()}</span>
-                                    </div>
-                                </div>
-
-                                {/* WCAG - Read Only */}
-                                <div className="form-card readonly">
-                                    <h3>♿ Accessibility</h3>
-                                    <div className="readonly-item">
-                                        <span>{onboardingData.wcag_compliance_required ? `WCAG ${onboardingData.wcag_level} Required` : 'Not required'}</span>
-                                    </div>
-                                </div>
-
-                                {/* Privacy Policy - Read Only */}
-                                <div className="form-card readonly">
-                                    <h3>🔒 Privacy Policy</h3>
-                                    <div className="readonly-item">
-                                        <span>{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'Provided' : 'Not provided'}</span>
-                                    </div>
-                                </div>
-
-                                {/* Theme - Read Only */}
-                                <div className="form-card readonly">
-                                    <h3>🎨 Theme Preferences</h3>
-                                    <div className="readonly-item">
-                                        <span>{getTemplateLabel()}</span>
-                                    </div>
-                                </div>
-
-                                <div className="form-card readonly">
-                                    <h3>🧾 Project Requirements Checklist</h3>
-                                    <details className="requirements-collapsible">
-                                        <summary>View checklist</summary>
-                                        <div className="checklist-grid">
-                                            {getRequirementsChecklistItems().map((item) => (
-                                                <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
-                                                    <span>{item.label}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </details>
-                                </div>
-
-                                {/* Missing Fields */}
-                                {completionStatus && completionStatus.missing_fields.length > 0 && (
-                                    <div className="missing-fields-alert">
-                                        <h4>⚠️ Missing Information</h4>
-                                        <ul>
-                                            {completionStatus.missing_fields.map((field, index) => (
-                                                <li key={index}>{field}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
+                                {renderReadonlyOnboardingDetails()}
                             </div>
                         )}
 
-                        {/* CONSULTANT VIEW - Editable Contacts + Read-only Details (Only for Assigned Consultant) */}
+                        {/* Also show read-only details for Consultant below actions */}
                         {user?.role === 'CONSULTANT' && isAssignedToProject && (
-                            <>
-                                {/* Client Contacts - EDITABLE */}
-                                <div className="form-card editable-section">
-                                    <div className="card-header">
-                                        <h3>👥 Client Contacts</h3>
-                                        <button className="btn-add" onClick={() => setShowContactModal(true)}>+ Add Contact</button>
-                                    </div>
-                                    <div className="contacts-list">
-                                        {onboardingData.contacts_json?.length === 0 ? (
-                                            <p className="empty-message">No contacts added yet. Add contacts to send onboarding form.</p>
-                                        ) : (
-                                            onboardingData.contacts_json?.map((contact, index) => (
-                                                <div key={index} className="contact-item">
-                                                    <div className="contact-info">
-                                                        <span className="contact-name">{contact.name}</span>
-                                                        <span className="contact-email">{contact.email}</span>
-                                                        {contact.role && <span className="contact-role">{contact.role}</span>}
-                                                        {contact.is_primary && <span className="badge-primary">Primary</span>}
-                                                    </div>
-                                                    <button className="btn-remove" onClick={() => removeContact(index)}>×</button>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-
-                                {(onboardingData.submitted_at || (onboardingData.missing_fields_eta_json && Object.keys(onboardingData.missing_fields_eta_json).length > 0)) && (
-                                    <div className="form-card highlight-section">
-                                        <h3>📬 Client Submission</h3>
-                                        {onboardingData.submitted_at && (
-                                            <div className="readonly-item">
-                                                <span>Submitted at: {new Date(onboardingData.submitted_at).toLocaleString()}</span>
-                                            </div>
-                                        )}
-                                        {onboardingData.missing_fields_eta_json && Object.keys(onboardingData.missing_fields_eta_json).length > 0 && (
-                                            <div className="readonly-item">
-                                                <p className="section-desc">Client provided ETA for missing items:</p>
-                                                <ul className="eta-list">
-                                                    {Object.entries(onboardingData.missing_fields_eta_json).map(([field, eta]) => (
-                                                        <li key={field}>{field}: {eta}</li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Client Onboarding Form Section */}
-                                {completionStatus?.client_form_url && (
-                                    <div className="form-card highlight-section">
-                                        <h3>📤 Client Onboarding Form</h3>
-                                        <p className="section-desc">Share this link with clients to collect required information</p>
-
-                                        <div className="form-link-box">
-                                            <input
-                                                type="text"
-                                                readOnly
-                                                value={`${typeof window !== 'undefined' ? window.location.origin : ''}${completionStatus.client_form_url}`}
-                                                onClick={(e) => (e.target as HTMLInputElement).select()}
-                                            />
-                                            <button
-                                                className="btn-copy"
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
-                                                    setSuccess('Link copied to clipboard!');
-                                                    setTimeout(() => setSuccess(''), 3000);
-                                                }}
-                                            >
-                                                📋 Copy
-                                            </button>
-                                        </div>
-
-                                        {/* Send Email to Contacts */}
-                                        {onboardingData.contacts_json && onboardingData.contacts_json.length > 0 && (
-                                            <div className="email-trigger-section">
-                                                <h4>📧 Send form to contacts</h4>
-                                                <p>Select contacts to receive the onboarding form link:</p>
-                                                <div className="contact-checkboxes">
-                                                    {onboardingData.contacts_json.map((contact, index) => (
-                                                        <label key={index} className="contact-checkbox">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={selectedEmailContacts.includes(index)}
-                                                                onChange={(e) => {
-                                                                    if (e.target.checked) {
-                                                                        setSelectedEmailContacts([...selectedEmailContacts, index]);
-                                                                    } else {
-                                                                        setSelectedEmailContacts(selectedEmailContacts.filter(i => i !== index));
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <span className="contact-label">
-                                                                {contact.name} ({contact.email}){contact.role ? ` - ${contact.role}` : ''}
-                                                            </span>
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                                <label className="send-label">
-                                                    <input
-                                                        type="checkbox"
-                                                        disabled={selectedEmailContacts.length === 0 || sendingEmail}
-                                                        onChange={async (e) => {
-                                                            if (!e.target.checked) return;
-                                                            setSendingEmail(true);
-                                                            try {
-                                                                const selectedContacts = selectedEmailContacts.map(i => onboardingData.contacts_json![i]);
-                                                                for (const contact of selectedContacts) {
-                                                                    await onboardingAPI.sendReminder(projectId, {
-                                                                        recipient_email: contact.email,
-                                                                        recipient_name: contact.name,
-                                                                        message: `Please complete the onboarding form for ${project.title}`
-                                                                    });
-                                                                }
-                                                                setSuccess(`Onboarding form sent to ${selectedContacts.length} contact(s)!`);
-                                                                setSelectedEmailContacts([]);
-                                                            } catch (err) {
-                                                                setError('Failed to send email');
-                                                            } finally {
-                                                                setSendingEmail(false);
-                                                                e.currentTarget.checked = false;
-                                                            }
-                                                        }}
-                                                    />
-                                                    <span>{sendingEmail ? 'Sending...' : `Send to ${selectedEmailContacts.length} contact(s)`}</span>
-                                                </label>
-                                            </div>
-                                        )}
-
-                                        {/* Auto Reminder Settings */}
-                                        <div className="auto-reminder-section">
-                                            <h4>🔔 Auto Reminder Settings</h4>
-                                            <div className="reminder-options">
-                                                <label className="reminder-toggle">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={onboardingData?.auto_reminder_enabled ?? false}
-                                                        onChange={async (e) => {
-                                                            try {
-                                                                await onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval);
-                                                                await loadOnboardingData();
-                                                                setSuccess(`Auto-reminders ${e.target.checked ? 'enabled' : 'disabled'}`);
-                                                            } catch (err) {
-                                                                setError('Failed to update reminder settings');
-                                                            }
-                                                        }}
-                                                    />
-                                                    Enable auto-reminders for missing information
-                                                </label>
-
-                                                {onboardingData?.auto_reminder_enabled ? (
-                                                    <>
-                                                        <div className="interval-selector">
-                                                            <label>Reminder interval:</label>
-                                                            <div className="interval-buttons">
-                                                                {[
-                                                                    { value: 6, label: '6 hours' },
-                                                                    { value: 12, label: '12 hours' },
-                                                                    { value: 24, label: '24 hours' }
-                                                                ].map(opt => (
-                                                                    <button
-                                                                        key={opt.value}
-                                                                        className={`interval-btn ${reminderInterval === opt.value ? 'active' : ''}`}
-                                                                        onClick={async () => {
-                                                                            setReminderInterval(opt.value);
-                                                                            try {
-                                                                                await onboardingAPI.toggleAutoReminder(projectId, true, opt.value);
-                                                                                await loadOnboardingData();
-                                                                                setSuccess(`Reminder interval set to ${opt.value} hours`);
-                                                                            } catch (err) {
-                                                                                setError('Failed to update interval');
-                                                                            }
-                                                                        }}
-                                                                    >
-                                                                        {opt.label}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="next-reminder-display">
-                                                            <p className="next-reminder">
-                                                                📅 Next reminder: {onboardingData?.next_reminder_at
-                                                                    ? new Date(onboardingData.next_reminder_at).toLocaleString()
-                                                                    : `In ${reminderInterval} hours from now`}
-                                                            </p>
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <div className="manual-reminder-section">
-                                                        <p className="reminder-disabled-note">Auto-reminders are disabled. You can send a reminder manually.</p>
-                                                        <button
-                                                            className="btn-send-now"
-                                                            disabled={sendingEmail || !onboardingData?.contacts_json?.length}
-                                                            onClick={async () => {
-                                                                if (!onboardingData?.contacts_json?.length) {
-                                                                    setError('No contacts to send reminder to');
-                                                                    return;
-                                                                }
-                                                                setSendingEmail(true);
-                                                                try {
-                                                                    const primaryContact = onboardingData.contacts_json.find(c => c.is_primary) || onboardingData.contacts_json[0];
-                                                                    await onboardingAPI.sendReminder(projectId, {
-                                                                        recipient_email: primaryContact.email,
-                                                                        recipient_name: primaryContact.name,
-                                                                        message: `Please complete the onboarding form for ${project.title}`
-                                                                    });
-                                                                    setSuccess('Reminder sent successfully!');
-                                                                } catch (err) {
-                                                                    setError('Failed to send reminder');
-                                                                } finally {
-                                                                    setSendingEmail(false);
-                                                                }
-                                                            }}
-                                                        >
-                                                            {sendingEmail ? 'Sending...' : '📧 Send Reminder Now'}
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* READ-ONLY Onboarding Details */}
+                            <div className="onboarding-details-ref">
                                 {renderReadonlyOnboardingDetails()}
-
-                                {/* Missing Fields Alert - Consultant View */}
-                                {completionStatus && completionStatus.missing_fields.length > 0 && (
-                                    <div className="missing-fields-alert">
-                                        <h4>⚠️ Pending from Client ({completionStatus.missing_fields.length} items)</h4>
-                                        <ul>
-                                            {completionStatus.missing_fields.map((field, index) => (
-                                                <li key={index}>{field}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-                            </>
+                            </div>
                         )}
-                    </div>
-                )}
 
-                {(user?.role === 'BUILDER' || user?.role === 'TESTER') && isAssignedToProject && project.current_stage === 'ONBOARDING' && onboardingData && (
-                    <div className="onboarding-readonly-view">
-                        {renderReadonlyOnboardingDetails()}
                     </div>
                 )}
 
                 {project.current_stage !== 'ONBOARDING' && onboardingData && hasDetailedViewAccess && !isExecutiveView && (
                     <div className="requirements-section">
                         <div className="section-header">
-                            <h2>📄 Project Requirements</h2>
+                            <h2>ðŸ“„ Project Requirements</h2>
                         </div>
                         {renderReadonlyOnboardingDetails()}
-                    </div>
-                )}
-
-                {/* Tasks Section - Auto-updated based on client inputs - Hidden from Executive Admin */}
-                {!isExecutiveView && (
-                    <div className="tasks-section">
-                        <div className="section-header">
-                            <h2>✅ Tasks ({tasks.length})</h2>
-                            <div className="section-header-right">
-                                {project.current_stage === 'ONBOARDING' && (
-                                    <span className="auto-update-badge">🔄 Auto-updates from client inputs</span>
-                                )}
-                                {hasFullEditAccess && !project.current_stage.includes('ONBOARDING') && (
-                                    <button className="btn-add" onClick={() => setShowTaskModal(true)}>+ Add Task</button>
-                                )}
-                            </div>
-                        </div>
-                        <div className="tasks-list">
-                            {tasks.map((task) => (
-                                <div key={task.id} className={`task-item ${task.status === 'DONE' ? 'completed' : ''} ${task.is_auto_completed ? 'auto-completed' : ''}`}>
-                                    <div className="task-status-indicator">
-                                        {task.status === 'DONE' ? (
-                                            <span className="status-done">✓</span>
-                                        ) : (
-                                            <span className="status-pending">○</span>
-                                        )}
-                                    </div>
-                                    <div className="task-content">
-                                        <span className="task-title">{task.title}</span>
-                                        {task.description && <span className="task-description">{task.description}</span>}
-                                        <div className="task-meta">
-                                            {task.is_auto_completed && <span className="badge-auto">Auto-completed</span>}
-                                            {task.linked_field && <span className="badge-linked">Linked: {task.linked_field}</span>}
-                                            {task.is_required && <span className="badge-required">Required</span>}
-                                        </div>
-                                    </div>
-                                    <div className="task-status-badge">
-                                        {task.status === 'DONE' ? (
-                                            <span className="status-badge done">Complete</span>
-                                        ) : (
-                                            <span className="status-badge pending">Pending</span>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        {completionStatus && (
-                            <div className="task-progress">
-                                <div className="progress-bar">
-                                    <div
-                                        className="progress-fill"
-                                        style={{ width: `${completionStatus.task_completion_percentage}%` }}
-                                    />
-                                </div>
-                                <span className="progress-text">
-                                    {completionStatus.completed_tasks} of {completionStatus.total_required_tasks} tasks complete
-                                </span>
-                            </div>
-                        )}
                     </div>
                 )}
 
                 {/* Artifacts Section - Hidden from Executive Admin */}
                 {!isExecutiveView && (
                     <div className="artifacts-section">
-                        <h2>📎 Artifacts ({artifacts.length})</h2>
+                        <h2>ðŸ“Ž Artifacts ({artifacts.length})</h2>
                         {artifacts.length === 0 ? (
                             <p className="empty-message">No artifacts uploaded yet</p>
                         ) : (
@@ -2169,7 +1882,7 @@ export default function ProjectDetailPage() {
                 {!isExecutiveView && (project.current_stage === 'TEST' || project.current_stage === 'DEFECT_VALIDATION') && (
                     <div className="test-phase-section">
                         <div className="section-header">
-                            <h2>🧪 Test & Quality Assurance</h2>
+                            <h2>ðŸ§ª Test & Quality Assurance</h2>
                         </div>
 
                         {/* Test Phase Tabs */}
@@ -2178,19 +1891,19 @@ export default function ProjectDetailPage() {
                                 className={`tab-btn ${activeTestTab === 'scenarios' ? 'active' : ''}`}
                                 onClick={() => setActiveTestTab('scenarios')}
                             >
-                                📋 Test Scenarios
+                                ðŸ“‹ Test Scenarios
                             </button>
                             <button
                                 className={`tab-btn ${activeTestTab === 'executions' ? 'active' : ''}`}
                                 onClick={() => setActiveTestTab('executions')}
                             >
-                                ▶️ Executions
+                                â–¶ï¸ Executions
                             </button>
                             <button
                                 className={`tab-btn ${activeTestTab === 'defects' ? 'active' : ''}`}
                                 onClick={() => setActiveTestTab('defects')}
                             >
-                                🐛 Defects {defects.length > 0 && <span className="badge-count">{defects.length}</span>}
+                                ðŸ› Defects {defects.length > 0 && <span className="badge-count">{defects.length}</span>}
                             </button>
                         </div>
 
@@ -2219,7 +1932,7 @@ export default function ProjectDetailPage() {
                                                 onClick={() => handleGenerateScenario('Auto-Generated Scenarios')}
                                                 disabled={testLoading}
                                             >
-                                                🤖 Generate with AI
+                                                ðŸ¤– Generate with AI
                                             </button>
                                         )}
                                     </div>
@@ -2227,7 +1940,7 @@ export default function ProjectDetailPage() {
 
                                 {testScenarios.length === 0 ? (
                                     <div className="empty-state">
-                                        <span className="empty-icon">📋</span>
+                                        <span className="empty-icon">ðŸ“‹</span>
                                         <p>No test scenarios created yet</p>
                                         <p className="empty-hint">Create test scenarios to define what needs to be tested</p>
                                     </div>
@@ -2242,7 +1955,7 @@ export default function ProjectDetailPage() {
                                                 <div className="scenario-header">
                                                     <h4>{scenario.name}</h4>
                                                     {scenario.is_generated && (
-                                                        <span className="badge-ai">🤖 AI</span>
+                                                        <span className="badge-ai">ðŸ¤– AI</span>
                                                     )}
                                                 </div>
                                                 {scenario.description && (
@@ -2265,7 +1978,7 @@ export default function ProjectDetailPage() {
                                 {selectedScenario && (
                                     <div className="scenario-details">
                                         <div className="details-header">
-                                            <h4>📋 {selectedScenario.name} - Test Cases</h4>
+                                            <h4>ðŸ“‹ {selectedScenario.name} - Test Cases</h4>
                                             <button
                                                 className="btn-add small"
                                                 onClick={() => setShowCreateTestCaseModal(true)}
@@ -2293,7 +2006,7 @@ export default function ProjectDetailPage() {
                                                             )}
                                                         </div>
                                                         {tc.is_automated && (
-                                                            <span className="badge-automated">⚡ Auto</span>
+                                                            <span className="badge-automated">âš¡ Auto</span>
                                                         )}
                                                     </div>
                                                 ))}
@@ -2314,13 +2027,13 @@ export default function ProjectDetailPage() {
                                         onClick={() => setShowRunExecutionModal(true)}
                                         disabled={testScenarios.length === 0}
                                     >
-                                        ▶️ Run New Execution
+                                        â–¶ï¸ Run New Execution
                                     </button>
                                 </div>
 
                                 {testExecutions.length === 0 ? (
                                     <div className="empty-state">
-                                        <span className="empty-icon">▶️</span>
+                                        <span className="empty-icon">â–¶ï¸</span>
                                         <p>No test executions yet</p>
                                         <p className="empty-hint">Run an execution to test your scenarios</p>
                                     </div>
@@ -2335,9 +2048,9 @@ export default function ProjectDetailPage() {
                                                     <div className="execution-info">
                                                         <h4>{execution.execution_name}</h4>
                                                         <div className="execution-stats">
-                                                            <span className="stat passed">✓ {execution.passed_tests} passed</span>
-                                                            <span className="stat failed">✗ {execution.failed_tests} failed</span>
-                                                            <span className="stat total">📊 {execution.total_tests} total</span>
+                                                            <span className="stat passed">âœ“ {execution.passed_tests} passed</span>
+                                                            <span className="stat failed">âœ— {execution.failed_tests} failed</span>
+                                                            <span className="stat total">ðŸ“Š {execution.total_tests} total</span>
                                                         </div>
                                                     </div>
                                                     <div className="execution-status-badge" data-status={execution.status.toLowerCase()}>
@@ -2366,7 +2079,7 @@ export default function ProjectDetailPage() {
                                                         className="btn-view-results"
                                                         onClick={() => handleViewExecutionResults(execution)}
                                                     >
-                                                        View Results →
+                                                        View Results â†’
                                                     </button>
                                                 </div>
                                             </div>
@@ -2378,7 +2091,7 @@ export default function ProjectDetailPage() {
                                 {selectedExecution && (
                                     <div className="results-panel">
                                         <div className="panel-header">
-                                            <h4>📊 Results: {selectedExecution.execution_name}</h4>
+                                            <h4>ðŸ“Š Results: {selectedExecution.execution_name}</h4>
                                             <button
                                                 className="btn-close"
                                                 onClick={() => {
@@ -2386,7 +2099,7 @@ export default function ProjectDetailPage() {
                                                     setTestResults([]);
                                                 }}
                                             >
-                                                ×
+                                                Ã—
                                             </button>
                                         </div>
                                         <div className="results-list">
@@ -2399,9 +2112,9 @@ export default function ProjectDetailPage() {
                                                         className={`result-item ${result.status.toLowerCase()}`}
                                                     >
                                                         <div className="result-status-icon">
-                                                            {result.status === 'PASSED' && '✓'}
-                                                            {result.status === 'FAILED' && '✗'}
-                                                            {result.status === 'SKIPPED' && '○'}
+                                                            {result.status === 'PASSED' && 'âœ“'}
+                                                            {result.status === 'FAILED' && 'âœ—'}
+                                                            {result.status === 'SKIPPED' && 'â—‹'}
                                                             {result.status === 'ERROR' && '!'}
                                                         </div>
                                                         <div className="result-content">
@@ -2474,7 +2187,7 @@ export default function ProjectDetailPage() {
                                                 className="btn-validate-all"
                                                 onClick={handleValidateAllDefects}
                                             >
-                                                ✓ Validate All Fixed
+                                                âœ“ Validate All Fixed
                                             </button>
                                         )}
                                     </div>
@@ -2482,7 +2195,7 @@ export default function ProjectDetailPage() {
 
                                 {defects.length === 0 ? (
                                     <div className="empty-state success">
-                                        <span className="empty-icon">🎉</span>
+                                        <span className="empty-icon">ðŸŽ‰</span>
                                         <p>No defects found</p>
                                         <p className="empty-hint">Great! Your project has no recorded defects</p>
                                     </div>
@@ -2512,7 +2225,7 @@ export default function ProjectDetailPage() {
                                                 )}
                                                 <div className="defect-meta">
                                                     <span className="assigned-to">
-                                                        👤 {defect.assigned_to_user_name || 'Unassigned'}
+                                                        ðŸ‘¤ {defect.assigned_to_user_name || 'Unassigned'}
                                                     </span>
                                                     <span className="defect-date">
                                                         {new Date(defect.created_at).toLocaleDateString()}
@@ -2533,7 +2246,7 @@ export default function ProjectDetailPage() {
                                                                     setShowReassignDefectModal(true);
                                                                 }}
                                                             >
-                                                                🔄 Reassign
+                                                                ðŸ”„ Reassign
                                                             </button>
                                                             <button
                                                                 className="btn-action fix"
@@ -2542,7 +2255,7 @@ export default function ProjectDetailPage() {
                                                                     setShowFixDefectModal(true);
                                                                 }}
                                                             >
-                                                                🔧 Mark Fixed
+                                                                ðŸ”§ Mark Fixed
                                                             </button>
                                                         </>
                                                     )}
@@ -2551,7 +2264,7 @@ export default function ProjectDetailPage() {
                                                             className="btn-action validate"
                                                             onClick={() => handleValidateDefect(defect.id)}
                                                         >
-                                                            ✓ Validate Fix
+                                                            âœ“ Validate Fix
                                                         </button>
                                                     )}
                                                 </div>
@@ -2575,14 +2288,14 @@ export default function ProjectDetailPage() {
                                 onClick={handleAdvanceWorkflow}
                                 disabled={advancing || project.current_stage === 'COMPLETE'}
                             >
-                                {advancing ? 'Processing...' : '➡️ Advance Workflow'}
+                                {advancing ? 'Processing...' : 'âž¡ï¸ Advance Workflow'}
                             </button>
                             <button
                                 className="btn-send-back"
                                 onClick={handleSendBack}
                                 disabled={advancing || project.current_stage === 'ONBOARDING'}
                             >
-                                ⬅️ Send Back
+                                â¬…ï¸ Send Back
                             </button>
                         </div>
                     </div>
@@ -2865,8 +2578,8 @@ export default function ProjectDetailPage() {
                                 />
                             </div>
                             <div className="execution-summary">
-                                <span>📋 {testScenarios.length} scenarios</span>
-                                <span>📝 {testScenarios.reduce((acc, s) => acc + (s.test_cases?.length || 0), 0)} test cases</span>
+                                <span>ðŸ“‹ {testScenarios.length} scenarios</span>
+                                <span>ðŸ“ {testScenarios.reduce((acc, s) => acc + (s.test_cases?.length || 0), 0)} test cases</span>
                             </div>
                             <div className="modal-actions">
                                 <button className="btn-cancel" onClick={() => setShowRunExecutionModal(false)}>Cancel</button>
@@ -2875,7 +2588,7 @@ export default function ProjectDetailPage() {
                                     onClick={handleRunExecution}
                                     disabled={testLoading}
                                 >
-                                    {testLoading ? 'Running...' : '▶️ Start Execution'}
+                                    {testLoading ? 'Running...' : 'â–¶ï¸ Start Execution'}
                                 </button>
                             </div>
                         </div>
@@ -2962,11 +2675,11 @@ export default function ProjectDetailPage() {
                 {showTeamModal && (
                     <div className="modal-overlay" onClick={() => setShowTeamModal(false)}>
                         <div className="modal modal-xl" onClick={(e) => e.stopPropagation()}>
-                            <h2>👥 Assign Team Members</h2>
+                            <h2>ðŸ‘¥ Assign Team Members</h2>
                             <p className="modal-description">
-                                Assign team members in sequence: Consultant → PC → Builder → Tester
-                                {user?.role === 'MANAGER' && <><br /><span className="region-note">📍 As a Manager, you can only assign from your region: <strong>{user?.region}</strong></span></>}
-                                {user?.role === 'PC' && user?.region === 'INDIA' && <><br /><span className="region-note">📍 As a PC, you can assign Builder and Tester from India region</span></>}
+                                Assign team members in sequence: Consultant â†’ PC â†’ Builder â†’ Tester
+                                {user?.role === 'MANAGER' && <><br /><span className="region-note">ðŸ“ As a Manager, you can only assign from your region: <strong>{user?.region}</strong></span></>}
+                                {user?.role === 'PC' && user?.region === 'INDIA' && <><br /><span className="region-note">ðŸ“ As a PC, you can assign Builder and Tester from India region</span></>}
                             </p>
 
                             {/* Assignment Progress */}
@@ -2995,7 +2708,7 @@ export default function ProjectDetailPage() {
                             {/* Project Workload Estimate */}
                             {projectWorkload && (
                                 <div className="workload-estimate">
-                                    <h4>📊 Estimated Project Workload</h4>
+                                    <h4>ðŸ“Š Estimated Project Workload</h4>
                                     <div className="workload-badges">
                                         <span className="workload-badge">Total: {projectWorkload.total_hours}h</span>
                                         {Object.entries(projectWorkload.by_role || {}).map(([role, hours]) => (
@@ -3029,7 +2742,7 @@ export default function ProjectDetailPage() {
                                     (role === 'TESTER' && assignmentSequence.tester_assigned);
                                 const capacityList = capacityByRole[role] || [];
                                 const suggestions = aiSuggestions[role];
-                                const roleIcon = role === 'PC' ? '🎯' : role === 'CONSULTANT' ? '💼' : role === 'BUILDER' ? '🔨' : '🧪';
+                                const roleIcon = role === 'PC' ? 'ðŸŽ¯' : role === 'CONSULTANT' ? 'ðŸ’¼' : role === 'BUILDER' ? 'ðŸ”¨' : 'ðŸ§ª';
                                 const roleKey = role.toLowerCase() + '_user_id';
                                 const selectedValue = teamFormData[roleKey as keyof typeof teamFormData];
                                 const requiredHours = projectWorkload?.by_role?.[role] || 0;
@@ -3041,10 +2754,10 @@ export default function ProjectDetailPage() {
                                             <h4>
                                                 <span className="role-step">Step {stepNumber}</span>
                                                 {roleIcon} {role}
-                                                {isAlreadyAssigned && <span className="assigned-badge">✓ Assigned</span>}
+                                                {isAlreadyAssigned && <span className="assigned-badge">âœ“ Assigned</span>}
                                                 {isDisabled && !isAlreadyAssigned && (
                                                     <span className="locked-badge">
-                                                        {!canAssignThisRole ? '🔒 No Permission' : '⏳ Complete previous step'}
+                                                        {!canAssignThisRole ? 'ðŸ”’ No Permission' : 'â³ Complete previous step'}
                                                     </span>
                                                 )}
                                             </h4>
@@ -3055,7 +2768,7 @@ export default function ProjectDetailPage() {
                                                         onClick={() => loadAiSuggestions(role)}
                                                         disabled={loadingSuggestions && selectedRoleForSuggestion === role}
                                                     >
-                                                        {loadingSuggestions && selectedRoleForSuggestion === role ? '⏳' : '🤖'} AI Suggest
+                                                        {loadingSuggestions && selectedRoleForSuggestion === role ? 'â³' : 'ðŸ¤–'} AI Suggest
                                                     </button>
                                                 )}
                                                 {requiredHours > 0 && (
@@ -3069,7 +2782,7 @@ export default function ProjectDetailPage() {
                                             <div className={`ai-suggestions-panel ${suggestions.capacity_crunch ? 'crunch' : ''}`}>
                                                 {suggestions.capacity_crunch ? (
                                                     <div className="capacity-crunch-alert">
-                                                        <h5>⚠️ Capacity Crunch Detected</h5>
+                                                        <h5>âš ï¸ Capacity Crunch Detected</h5>
                                                         {(suggestions.suggestions[0] as CapacityCrunchSuggestion)?.suggestions?.map((s, i) => (
                                                             <p key={i}>{s}</p>
                                                         ))}
@@ -3111,7 +2824,7 @@ export default function ProjectDetailPage() {
                                                                         className="btn-accept-suggestion"
                                                                         onClick={() => handleAcceptSuggestion(s, role)}
                                                                     >
-                                                                        ✓ Select
+                                                                        âœ“ Select
                                                                     </button>
                                                                 </div>
                                                             ))}
@@ -3154,8 +2867,8 @@ export default function ProjectDetailPage() {
                                                         <div className="capacity-status" style={{ color: getCapacityStatusColor(user.capacity_status) }}>
                                                             {user.capacity_status}
                                                         </div>
-                                                        {user.is_recommended && <span className="recommended-badge">✓ Recommended</span>}
-                                                        {selectedValue === user.user_id && <span className="selected-indicator">✓</span>}
+                                                        {user.is_recommended && <span className="recommended-badge">âœ“ Recommended</span>}
+                                                        {selectedValue === user.user_id && <span className="selected-indicator">âœ“</span>}
                                                     </div>
                                                 ))
                                             )}
@@ -3710,7 +3423,7 @@ export default function ProjectDetailPage() {
                     transition: all var(--transition-fast);
                 }
                 :global(.requirements-collapsible summary::before) {
-                    content: '📂';
+                    content: 'ðŸ“‚';
                     font-size: 14px;
                 }
                 :global(.requirements-collapsible[open] summary) {
@@ -6345,6 +6058,299 @@ export default function ProjectDetailPage() {
                     .summary-grid {
                         grid-template-columns: repeat(2, 1fr);
                     }
+        }
+
+        /* Requirements Summary Dashboard Styles */
+        .summary-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            margin-bottom: 24px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .summary-progress {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .progress-ring-large {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: conic-gradient(
+                #2563eb calc(var(--progress) * 1%), 
+                #f1f5f9 0
+            );
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .progress-ring-large::before {
+            content: '';
+            position: absolute;
+            width: 64px;
+            height: 64px;
+            background: white;
+            border-radius: 50%;
+        }
+
+        .progress-value-large {
+            position: relative;
+            font-size: 18px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+
+        .progress-details h4 {
+            margin: 0;
+            font-size: 18px;
+            color: #0f172a;
+            font-weight: 600;
+        }
+
+        .progress-subtitle {
+            margin: 4px 0 0;
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        .share-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #f8fafc;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .share-box span {
+            font-size: 14px;
+            color: #64748b;
+        }
+
+        .btn-copy-link {
+            background: white;
+            border: 1px solid #cbd5e1;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .btn-copy-link:hover {
+            border-color: #2563eb;
+            color: #2563eb;
+            background: #eff6ff;
+        }
+
+        /* Checklist Styles */
+        .checklist-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 12px;
+        }
+
+        .checklist-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            background: #f8fafc;
+            border: 1px solid #f1f5f9;
+            transition: all 0.2s;
+        }
+
+        .checklist-item.provided {
+            background: #f0fdf4;
+            border-color: #dcfce7;
+        }
+
+        .checklist-item.pending {
+            background: #fffafa; /* Very light red/pink */
+            border-color: #ffe4e6;
+        }
+
+        .checklist-icon {
+            font-size: 18px;
+            margin-top: 1px;
+        }
+
+        .checklist-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .checklist-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #334155;
+        }
+
+        .checklist-item.provided .checklist-label {
+            color: #166534;
+        }
+
+        .checklist-item.pending .checklist-label {
+            color: #991b1b;
+        }
+
+        .checklist-eta {
+            font-size: 12px;
+            color: #ef4444; /* Red for visibility */
+            font-weight: 600;
+            margin-top: 2px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .checklist-eta::before {
+            content: '⏰';
+            font-size: 10px;
+        }
+
+        /* Consultant Actions Grid */
+        .consultant-actions-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 768px) {
+            .consultant-actions-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .contacts-list-compact {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 180px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+
+        .contact-item-compact {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .contact-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .contact-email-sm {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .btn-add-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+            background: #eff6ff;
+            color: #2563eb;
+            border: 1px solid #bfdbfe;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .btn-icon-remove {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            padding: 4px;
+        }
+
+        .btn-icon-remove:hover {
+            color: #ef4444;
+        }
+
+        .email-action-row {
+            border-top: 1px solid #f1f5f9;
+            padding-top: 12px;
+            text-align: right;
+        }
+
+        .btn-send-email-sm {
+            background: #f0f9ff;
+            color: #0284c7;
+            border: 1px solid #bae6fd;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .btn-send-email-sm:hover {
+            background: #e0f2fe;
+        }
+
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+
+        .reminder-info-sm {
+            font-size: 13px;
+            color: #64748b;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 0 12px;
+        }
+
+        .onboarding-details-ref {
+            opacity: 0.8;
+            margin-top: 32px;
+            border-top: 2px dashed #e2e8f0;
+            padding-top: 24px;
+        }
+
+        .onboarding-details-ref::before {
+            content: 'All Details (Reference)';
+            display: block;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            font-weight: 700;
+            margin-bottom: 16px;
+            letter-spacing: 0.05em;
         }
       `}</style>
         </div>
