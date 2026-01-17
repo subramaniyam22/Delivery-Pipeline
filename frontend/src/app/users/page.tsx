@@ -29,8 +29,8 @@ const FlagIcon = ({ region, size = 20 }: { region: string; size?: number }) => {
     const regionData = REGIONS.find(r => r.value === region);
     if (!regionData) return <span>{region}</span>;
     return (
-        <img 
-            src={regionData.flagUrl} 
+        <img
+            src={regionData.flagUrl}
             alt={`${regionData.label} flag`}
             width={size}
             height={Math.round(size * 0.75)}
@@ -104,11 +104,11 @@ export default function UsersPage() {
 
     const openEditModal = (user: User) => {
         setSelectedUser(user);
-        setFormData({ 
-            name: user.name, 
-            email: user.email, 
-            password: '', 
-            role: user.role, 
+        setFormData({
+            name: user.name,
+            email: user.email,
+            password: '',
+            role: user.role,
             region: user.region || 'INDIA',
             date_of_joining: user.date_of_joining || ''
         });
@@ -140,11 +140,16 @@ export default function UsersPage() {
         setProcessing(true);
 
         try {
-            await usersAPI.create(formData);
+            const payload = {
+                ...formData,
+                date_of_joining: formData.date_of_joining || null
+            };
+            await usersAPI.create(payload);
             closeModal();
             loadUsers();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to create user');
+            const detail = err.response?.data?.detail;
+            setError(typeof detail === 'object' ? JSON.stringify(detail) : detail || 'Failed to create user');
         } finally {
             setProcessing(false);
         }
@@ -167,7 +172,8 @@ export default function UsersPage() {
             closeModal();
             loadUsers();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to update user');
+            const detail = err.response?.data?.detail;
+            setError(typeof detail === 'object' ? JSON.stringify(detail) : detail || 'Failed to update user');
         } finally {
             setProcessing(false);
         }
@@ -290,8 +296,8 @@ export default function UsersPage() {
                         </thead>
                         <tbody>
                             {users.map((user, index) => (
-                                <tr 
-                                    key={user.id} 
+                                <tr
+                                    key={user.id}
                                     className={user.id === currentUser.id ? 'current-user' : ''}
                                     style={{ animationDelay: `${index * 30}ms` }}
                                 >
@@ -317,7 +323,7 @@ export default function UsersPage() {
                                         </span>
                                     </td>
                                     <td className="cell-date">
-                                        {user.date_of_joining 
+                                        {user.date_of_joining
                                             ? new Date(user.date_of_joining).toLocaleDateString()
                                             : <span className="not-set">Not set</span>
                                         }
@@ -329,8 +335,8 @@ export default function UsersPage() {
                                     </td>
                                     <td className="cell-actions">
                                         {canEditUser(user) && (
-                                            <button 
-                                                onClick={() => openEditModal(user)} 
+                                            <button
+                                                onClick={() => openEditModal(user)}
                                                 className="btn-icon btn-edit"
                                                 title="Edit"
                                             >
@@ -360,8 +366,8 @@ export default function UsersPage() {
                                             </button>
                                         )}
                                         {canDeleteUser(user) && (
-                                            <button 
-                                                onClick={() => openDeleteModal(user)} 
+                                            <button
+                                                onClick={() => openDeleteModal(user)}
                                                 className="btn-icon btn-delete"
                                                 title="Delete"
                                             >
@@ -386,8 +392,8 @@ export default function UsersPage() {
                 {/* Archived Users Section */}
                 {isAdmin && archivedUsers.length > 0 && (
                     <section className="archived-section">
-                        <button 
-                            className="archived-header" 
+                        <button
+                            className="archived-header"
                             onClick={() => setShowArchived(!showArchived)}
                             aria-expanded={showArchived}
                         >
@@ -399,14 +405,14 @@ export default function UsersPage() {
                                 </svg>
                                 <span>Archived Users ({archivedUsers.length})</span>
                             </div>
-                            <svg 
+                            <svg
                                 className={`chevron ${showArchived ? 'open' : ''}`}
                                 width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
                             >
                                 <polyline points="6 9 12 15 18 9" />
                             </svg>
                         </button>
-                        
+
                         {showArchived && (
                             <div className="archived-content">
                                 <table className="archived-table">

@@ -125,7 +125,7 @@ export const artifactsAPI = {
         api.post(`/projects/${projectId}/artifacts/upload`, formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
         }),
-    delete: (artifactId: string) => api.delete(`/artifacts/${artifactId}`),
+    delete: (artifactId: string) => api.delete(`/projects/artifacts/${artifactId}`),
 };
 
 export const tasksAPI = {

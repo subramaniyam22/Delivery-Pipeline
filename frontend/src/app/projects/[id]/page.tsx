@@ -310,6 +310,8 @@ export default function ProjectDetailPage() {
     const [reminderInterval, setReminderInterval] = useState<number>(24);
     const [showEmailModal, setShowEmailModal] = useState(false);
     const [sendingEmail, setSendingEmail] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [artifactNotes, setArtifactNotes] = useState('');
 
     // Test Phase State
     const [testScenarios, setTestScenarios] = useState<TestScenario[]>([]);
@@ -454,6 +456,48 @@ export default function ProjectDetailPage() {
             setError('Failed to load project data');
         } finally {
             setLoading(false);
+        }
+
+
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files?.length) return;
+        const file = e.target.files[0];
+        setUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('stage', project?.current_stage || 'ONBOARDING');
+            formData.append('artifact_type', 'DOCUMENT'); // Default type
+            if (artifactNotes) {
+                formData.append('notes', artifactNotes);
+            }
+            await artifactsAPI.upload(projectId, formData);
+            setSuccess('Artifact uploaded successfully');
+            setArtifactNotes('');
+            // Refresh artifacts list
+            const res = await artifactsAPI.list(projectId);
+            setArtifacts(res.data);
+        } catch (err) {
+            console.error('Upload failed:', err);
+            setError('Failed to upload artifact');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const handleDeleteArtifact = async (artifactId: string) => {
+        if (!confirm('Are you sure you want to delete this artifact?')) return;
+        try {
+            await artifactsAPI.delete(artifactId);
+            setSuccess('Artifact deleted');
+            // Refresh list
+            const res = await artifactsAPI.list(projectId);
+            setArtifacts(res.data);
+        } catch (err) {
+            console.error('Failed to delete artifact:', err);
+            setError('Failed to delete artifact');
         }
     };
 
@@ -848,50 +892,68 @@ export default function ProjectDetailPage() {
                 <div className="readonly-group">
                     <h4>🔒 Privacy Policy</h4>
                     <div className="readonly-field full-width" style={fieldStyle}>
-                        <span className={onboardingData?.privacy_policy_url || onboardingData?.privacy_policy_text ? 'filled' : 'empty'}>
-                            {onboardingData?.privacy_policy_url
-                                ? `URL: ${onboardingData?.privacy_policy_url}`
-                                : (onboardingData?.privacy_policy_text ? 'Text provided' : 'Not provided')}
-                        </span>
+                        {onboardingData?.privacy_policy_text ? (
+                            <textarea
+                                className="privacy-policy-text"
+                                readOnly
+                                value={onboardingData.privacy_policy_text}
+                            />
+                        ) : onboardingData?.privacy_policy_url ? (
+                            <div className="privacy-link-container">
+                                <span className="filled">URL Provided: </span>
+                                <a href={onboardingData.privacy_policy_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                    {onboardingData.privacy_policy_url}
+                                </a>
+                            </div>
+                        ) : (
+                            <span className="empty">Not provided</span>
+                        )}
                     </div>
                 </div>
 
                 {/* Theme - Read Only */}
                 <div className="readonly-group">
                     <h4>🎨 Theme Preferences</h4>
-                    <div className="readonly-field" style={fieldStyle}>
-                        <span className={(onboardingData?.theme_preference || onboardingData?.selected_template_id) ? 'filled' : 'empty'}>
-                            {getTemplateLabel()}
-                        </span>
-                        {onboardingData?.selected_template_id && templates.length > 0 && (
-                            <div className="template-preview">
-                                <img
-                                    src={templates.find(t => t.id === onboardingData?.selected_template_id)?.preview_url || ''}
-                                    alt="Selected template preview"
-                                />
+                    <div className="readonly-field full-width" style={fieldStyle}>
+                        <div className="theme-display-container" style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+                            {onboardingData?.selected_template_id && (
+                                <div className="theme-preview">
+                                    {templates.find(t => t.id === onboardingData?.selected_template_id)?.preview_url ? (
+                                        <img
+                                            src={templates.find(t => t.id === onboardingData?.selected_template_id)?.preview_url}
+                                            alt="Theme Preview"
+                                            onClick={() => setPreviewImage(templates.find(t => t.id === onboardingData?.selected_template_id)?.preview_url || '')}
+                                            style={{ cursor: 'pointer' }}
+                                        />
+                                    ) : (
+                                        <div className="theme-preview-placeholder">
+                                            Preview Not Available
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            <div className="theme-info">
+                                <div className="info-row">
+                                    <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem' }}>Preference:</label>
+                                    <span className={onboardingData?.theme_preference ? 'filled' : 'empty'}>
+                                        {onboardingData?.theme_preference || 'None'}
+                                    </span>
+                                </div>
+                                <div className="info-row" style={{ marginTop: '8px' }}>
+                                    <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem' }}>Selected Template:</label>
+                                    <span className={onboardingData?.selected_template_id ? 'filled' : 'empty'}>
+                                        {onboardingData?.selected_template_id || 'None'}
+                                    </span>
+                                </div>
                             </div>
-                        )}
+                        </div>
                     </div>
                 </div>
 
-                <div className="readonly-group">
-                    <h4>🧮 Project Requirements Checklist</h4>
-                    <details className="requirements-collapsible">
-                        <summary>View checklist</summary>
-                        <div className="checklist-grid">
-                            {getRequirementsChecklistItems().map((item) => (
-                                <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
-                                    <span>{item.label}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </details>
-                </div>
-
+                {/* Project Requirements Details (Consolidated) */}
                 {hasRequirements && (
                     <div className="readonly-group">
-                        <h4>🧮 Project Requirements</h4>
+                        {/* Header removed for consolidation */}
                         <div className="requirements-grid">
                             <div className="readonly-item"><label>Project Summary</label><span>{requirements.project_summary || 'Not provided'}</span></div>
                             <div className="readonly-item"><label>Project Notes</label><span>{requirements.project_notes || 'Not provided'}</span></div>
@@ -1473,104 +1535,111 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
-                {/* Consultant Onboarding Actions - Moved from bottom */}
+                {/* Consultant Onboarding Actions (New 2-Step Logic) */}
                 {user?.role === 'CONSULTANT' && isAssignedToProject && project.current_stage === 'ONBOARDING' && onboardingData && (
                     <div className="consultant-actions-section">
-                        <h2>⚡ Quick Actions</h2>
-                        <div className="consultant-actions-grid">
+                        <h2>Client Onboarding</h2>
+                        <div className="onboarding-actions-container">
 
-                            {/* Card 1: Invite Client */}
-                            <div className="form-card highlight-section">
-                                <h3>🔗 Invite Client</h3>
-                                {completionStatus?.client_form_url ? (
-                                    <div className="invite-action">
-                                        <p className="invite-text">Share this secure link with the client:</p>
-                                        <button
-                                            className="btn-copy-link full-width"
-                                            onClick={() => {
-                                                navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
-                                                setSuccess('Link copied!');
-                                                setTimeout(() => setSuccess(''), 2000);
-                                            }}
-                                        >
-                                            🔗 Copy Link
-                                        </button>
-                                    </div>
-                                ) : <p>Link not available</p>}
-                            </div>
-
-                            {/* Card 2: Contacts */}
-                            <div className="form-card editable-section">
-                                <div className="card-header">
-                                    <h3>👥 Client Contacts</h3>
-                                    <button className="btn-add-sm" onClick={() => setShowContactModal(true)}>+ Add</button>
+                            {/* Step 1: Add Clients (Contacts) */}
+                            <div className="onboarding-step-card">
+                                <span className="step-label">Step 1</span>
+                                <div className="step-header">
+                                    <h3>Add Clients</h3>
                                 </div>
-                                <div className="contacts-list-compact">
-                                    {onboardingData.contacts_json?.length === 0 ? (
-                                        <p className="empty-message">No contacts.</p>
-                                    ) : (
-                                        onboardingData.contacts_json?.map((contact, index) => (
-                                            <div key={index} className="contact-item-compact">
-                                                <div className="contact-info">
-                                                    <span className="contact-name">{contact.name}</span>
-                                                    <span className="contact-email-sm">{contact.email}</span>
+                                <div className="step-content">
+                                    <div className="contacts-list-compact">
+                                        {onboardingData.contacts_json?.length === 0 ? (
+                                            <p className="empty-message">No contacts added yet.</p>
+                                        ) : (
+                                            onboardingData.contacts_json?.map((contact: any, index: number) => (
+                                                <div key={index} className="contact-item-compact">
+                                                    <div className="contact-info">
+                                                        <span className="contact-name">{contact.name}</span>
+                                                        <span className="contact-email-sm">{contact.email}</span>
+                                                    </div>
+                                                    <button className="btn-icon-remove" onClick={() => removeContact(index)}>×</button>
                                                 </div>
-                                                <button className="btn-icon-remove" onClick={() => removeContact(index)}>×</button>
-                                            </div>
-                                        ))
-                                    )}
+                                            ))
+                                        )}
+                                    </div>
+                                    <button className="btn-add-sm full-width" onClick={() => setShowContactModal(true)}>+ Add Contact</button>
                                 </div>
-                                {/* Email Trigger */}
-                                {onboardingData.contacts_json && onboardingData.contacts_json.length > 0 && (
-                                    <div className="email-action-row">
-                                        <button
-                                            className="btn-send-email-sm"
-                                            disabled={sendingEmail}
-                                            onClick={async () => {
-                                                setSendingEmail(true);
-                                                try {
-                                                    const primary = onboardingData.contacts_json?.find(c => c.is_primary) || onboardingData.contacts_json?.[0];
-                                                    if (primary) {
-                                                        await onboardingAPI.sendReminder(projectId, {
-                                                            recipient_email: primary.email,
-                                                            recipient_name: primary.name,
-                                                            message: `Please complete the onboarding form.`
-                                                        });
-                                                        setSuccess('Reminder sent!');
-                                                    }
-                                                } catch { setError('Failed to send'); }
-                                                finally { setSendingEmail(false); }
-                                            }}
-                                        >
-                                            {sendingEmail ? 'Sending...' : '📧 Send Reminder'}
-                                        </button>
-                                    </div>
-                                )}
                             </div>
 
-                            {/* Card 3: Auto-Reminders */}
-                            <div className="form-card highlight-section">
-                                <h3>🔔 Auto-Reminders</h3>
-                                <label className="toggle-row">
-                                    <span>Enable auto-reminders</span>
-                                    <input
-                                        type="checkbox"
-                                        checked={onboardingData.auto_reminder_enabled}
-                                        onChange={(e) => {
-                                            onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval)
-                                                .then(() => loadOnboardingData())
-                                                .catch(() => setError('Failed to update'));
-                                        }}
-                                    />
-                                </label>
-                                {onboardingData.auto_reminder_enabled && (
-                                    <div className="reminder-info-sm">
-                                        <span>Current interval: {onboardingData.reminder_interval_hours || 24}h</span>
-                                        <span>Next: {onboardingData.next_reminder_at ? new Date(onboardingData.next_reminder_at).toLocaleDateString() : 'Pending'}</span>
-                                    </div>
-                                )}
-                            </div>
+                            {/* Step 2: Invite Client */}
+                            <div className={`onboarding-step-card ${onboardingData.contacts_json?.length > 0 ? 'active' : ''}`}>
+                                <span className="step-label">Step 2</span>
+                                <div className="step-header">
+                                    <h3>Invite Client</h3>
+                                </div>
+                                <div className="step-content">
+                                    <div className="invite-section">
+                                        {/* Copy Link */}
+                                        <div className="invite-share-box">
+                                            {completionStatus?.client_form_url ? (
+                                                <button
+                                                    className="btn-copy-link full-width"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
+                                                        setSuccess('Link copied!');
+                                                        setTimeout(() => setSuccess(''), 2000);
+                                                    }}
+                                                >
+                                                    🔗 Copy Onboarding Link
+                                                </button>
+                                            ) : <p>Link not ready</p>}
+                                        </div>
 
+                                        {/* Auto Reminder Toggle */}
+                                        <div className="auto-reminder-toggle">
+                                            <div className="auto-reminder-label">
+                                                <span className="auto-reminder-title">Auto-Reminders</span>
+                                                <span className="auto-reminder-status">{onboardingData.auto_reminder_enabled ? 'Enabled' : 'Disabled'}</span>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={onboardingData.auto_reminder_enabled}
+                                                onChange={(e) => {
+                                                    onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval)
+                                                        .then(() => loadOnboardingData())
+                                                        .catch(() => setError('Failed to update'));
+                                                }}
+                                            />
+                                        </div>
+
+                                        {/* Send Reminder - Only if Auto-Reminder is OFF */}
+                                        {!onboardingData.auto_reminder_enabled && (
+                                            <button
+                                                className="btn-send-email-sm"
+                                                disabled={sendingEmail || !onboardingData.contacts_json?.length}
+                                                onClick={async () => {
+                                                    setSendingEmail(true);
+                                                    try {
+                                                        const primary = onboardingData.contacts_json?.find((c: any) => c.is_primary) || onboardingData.contacts_json?.[0];
+                                                        if (primary) {
+                                                            await onboardingAPI.sendReminder(projectId, {
+                                                                recipient_email: primary.email,
+                                                                recipient_name: primary.name,
+                                                                message: `Please complete the onboarding form.`
+                                                            });
+                                                            setSuccess('Reminder sent!');
+                                                        } else {
+                                                            setError('No contacts to send to');
+                                                        }
+                                                    } catch { setError('Failed to send'); }
+                                                    finally { setSendingEmail(false); }
+                                                }}
+                                            >
+                                                {sendingEmail ? 'Sending...' : '📧 Send Manual Reminder'}
+                                            </button>
+                                        )}
+                                        {onboardingData.auto_reminder_enabled && (
+                                            <p className="description-text sm">Manual reminders disabled when auto-reminders are on.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1737,7 +1806,7 @@ export default function ProjectDetailPage() {
                 {project.current_stage === 'ONBOARDING' && onboardingData && (
                     <div className="onboarding-section">
                         <div className="section-header">
-                            <h2>📋 Onboarding Requirements</h2>
+                            <h2>📋 Project Onboarding Details</h2>
                             {completionStatus?.can_auto_advance && hasFullEditAccess && (
                                 <button className="btn-auto-advance" onClick={handleAutoAdvance} disabled={advancing}>
                                     🚀 Auto-Advance
@@ -1747,89 +1816,65 @@ export default function ProjectDetailPage() {
 
                         {/* Requirements Summary Dashboard - Visible to Everyone */}
                         <div className="summary-card">
-                            <div className="summary-header">
-                                <div className="summary-progress">
-                                    <div className="progress-ring-large" style={{ '--progress': Math.round((getAllOnboardingItems().filter(i => i.filled).length / getAllOnboardingItems().length) * 100) || 0 } as React.CSSProperties}>
-                                        <span className="progress-value-large">{Math.round((getAllOnboardingItems().filter(i => i.filled).length / getAllOnboardingItems().length) * 100) || 0}%</span>
+                            <div className="summary-header-row">
+                                <h3>Onboarding Checklist</h3>
+                                <div className="linear-progress-wrapper">
+                                    <div className="progress-text">
+                                        <span className="progress-label">{getAllOnboardingItems().filter(i => i.filled).length} of {getAllOnboardingItems().length} Items Provided</span>
+                                        <span className="progress-percent">({Math.round((getAllOnboardingItems().filter(i => i.filled).length / getAllOnboardingItems().length) * 100) || 0}%)</span>
                                     </div>
-                                    <div className="progress-details">
-                                        <h4>{getAllOnboardingItems().filter(i => i.filled).length} of {getAllOnboardingItems().length} Items Provided</h4>
-                                        <p className="progress-subtitle">{getAllOnboardingItems().length - getAllOnboardingItems().filter(i => i.filled).length} items pending</p>
+                                    <div className="progress-bar-bg">
+                                        <div className="progress-bar-fill" style={{ width: `${Math.round((getAllOnboardingItems().filter(i => i.filled).length / getAllOnboardingItems().length) * 100) || 0}%` }}></div>
                                     </div>
                                 </div>
-
                             </div>
 
-                            <div className="checklist-summary">
-                                <div className="checklist-grid">
-                                    {/* Essential Items */}
-                                    <div className={`checklist-item ${onboardingData.contacts_json?.some((c: any) => c.is_primary) ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.contacts_json?.some((c: any) => c.is_primary) ? '✅' : '❌'}</span>
-                                        <div className="checklist-content">
-                                            <span className="checklist-label">Primary Contact</span>
-                                            {!onboardingData.contacts_json?.some((c: any) => c.is_primary) && onboardingData.missing_fields_eta_json?.['Primary Contact'] && (
-                                                <span className="checklist-eta">ETA: {new Date(onboardingData.missing_fields_eta_json['Primary Contact']).toLocaleDateString()}</span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className={`checklist-item ${onboardingData.logo_url || onboardingData.logo_file_path ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.logo_url || onboardingData.logo_file_path ? '✅' : '❌'}</span>
-                                        <div className="checklist-content">
-                                            <span className="checklist-label">Company Logo</span>
-                                            {(!onboardingData.logo_url && !onboardingData.logo_file_path) && onboardingData.missing_fields_eta_json?.['Company Logo'] && (
-                                                <span className="checklist-eta">ETA: {new Date(onboardingData.missing_fields_eta_json['Company Logo']).toLocaleDateString()}</span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className={`checklist-item ${(onboardingData.images_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{(onboardingData.images_json?.length || 0) > 0 ? '✅' : '❌'}</span>
-                                        <span className="checklist-label">Website Images</span>
-                                    </div>
-
-                                    <div className={`checklist-item ${onboardingData.copy_text || onboardingData.use_custom_copy ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? '✅' : '❌'}</span>
-                                        <span className="checklist-label">Copy Text</span>
-                                    </div>
-
-                                    <div className={`checklist-item ${onboardingData.wcag_confirmed ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.wcag_confirmed ? '✅' : '❌'}</span>
-                                        <div className="checklist-content">
-                                            <span className="checklist-label">WCAG Requirements</span>
-                                            {!onboardingData.wcag_confirmed && onboardingData.missing_fields_eta_json?.['WCAG Requirements'] && (
-                                                <span className="checklist-eta">ETA: {new Date(onboardingData.missing_fields_eta_json['WCAG Requirements']).toLocaleDateString()}</span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className={`checklist-item ${onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? '✅' : '❌'}</span>
-                                        <span className="checklist-label">Privacy Policy</span>
-                                    </div>
-
-                                    <div className={`checklist-item ${onboardingData.theme_preference || onboardingData.selected_template_id ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.theme_preference || onboardingData.selected_template_id ? '✅' : '❌'}</span>
-                                        <span className="checklist-label">Theme / Template</span>
-                                    </div>
-
-                                    {/* Detailed Requirements */}
-                                    {getRequirementsChecklistItems().map((item) => (
-                                        <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                            <span className="checklist-icon">{item.filled ? '✅' : '❌'}</span>
-                                            <div className="checklist-content">
-                                                <span className="checklist-label">{item.label}</span>
-                                                {!item.filled && onboardingData.missing_fields_eta_json?.[item.label] && (
-                                                    <span className="checklist-eta">ETA: {new Date(onboardingData.missing_fields_eta_json[item.label]).toLocaleDateString()}</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                            <div className="checklist-compact-grid">
+                                {/* Essential Items */}
+                                <div className={`checklist-compact-item ${onboardingData.contacts_json?.some((c: any) => c.is_primary) ? 'provided' : 'pending'}`}>
+                                    <span className="checklist-compact-icon">{onboardingData.contacts_json?.some((c: any) => c.is_primary) ? '✅' : '❌'}</span>
+                                    <span className="checklist-label">Primary Contact</span>
                                 </div>
+
+                                <div className={`checklist-compact-item ${onboardingData.logo_url || onboardingData.logo_file_path ? 'provided' : 'pending'}`}>
+                                    <span className="checklist-compact-icon">{onboardingData.logo_url || onboardingData.logo_file_path ? '✅' : '❌'}</span>
+                                    <span className="checklist-label">Company Logo</span>
+                                </div>
+
+                                <div className={`checklist-compact-item ${(onboardingData.images_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
+                                    <span className="checklist-compact-icon">{(onboardingData.images_json?.length || 0) > 0 ? '✅' : '❌'}</span>
+                                    <span className="checklist-label">Website Images</span>
+                                </div>
+
+                                <div className={`checklist-compact-item ${onboardingData.copy_text || onboardingData.use_custom_copy ? 'provided' : 'pending'}`}>
+                                    <span className="checklist-compact-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? '✅' : '❌'}</span>
+                                    <span className="checklist-label">Copy Text</span>
+                                </div>
+
+                                <div className={`checklist-compact-item ${onboardingData.wcag_confirmed ? 'provided' : 'pending'}`}>
+                                    <span className="checklist-compact-icon">{onboardingData.wcag_confirmed ? '✅' : '❌'}</span>
+                                    <span className="checklist-label">WCAG Requirements</span>
+                                </div>
+
+                                <div className={`checklist-compact-item ${onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'provided' : 'pending'}`}>
+                                    <span className="checklist-compact-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? '✅' : '❌'}</span>
+                                    <span className="checklist-label">Privacy Policy</span>
+                                </div>
+
+                                <div className={`checklist-compact-item ${onboardingData.theme_preference || onboardingData.selected_template_id ? 'provided' : 'pending'}`}>
+                                    <span className="checklist-compact-icon">{onboardingData.theme_preference || onboardingData.selected_template_id ? '✅' : '❌'}</span>
+                                    <span className="checklist-label">Theme / Template</span>
+                                </div>
+
+                                {/* Detailed Requirements */}
+                                {getRequirementsChecklistItems().map((item) => (
+                                    <div key={item.label} className={`checklist-compact-item ${item.filled ? 'provided' : 'pending'}`}>
+                                        <span className="checklist-compact-icon">{item.filled ? '✅' : '❌'}</span>
+                                        <span className="checklist-label">{item.label}</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
-
-
 
                         {/* Read-Only Details for Managers/Admins/Others */}
                         {(user?.role !== 'CONSULTANT' || !isAssignedToProject) && (
@@ -1838,9 +1883,10 @@ export default function ProjectDetailPage() {
                             </div>
                         )}
 
-                        {/* Also show read-only details for Consultant below actions */}
+                        {/* Restored Details for Consultant (Edit View is done via actions, this is reference) */}
                         {user?.role === 'CONSULTANT' && isAssignedToProject && (
-                            <div className="onboarding-details-ref">
+                            <div className="restored-details-section">
+                                <h3>Onboarding Details</h3>
                                 {renderReadonlyOnboardingDetails()}
                             </div>
                         )}
@@ -1851,29 +1897,81 @@ export default function ProjectDetailPage() {
                 {project.current_stage !== 'ONBOARDING' && onboardingData && hasDetailedViewAccess && !isExecutiveView && (
                     <div className="requirements-section">
                         <div className="section-header">
-                            <h2>📄 Project Requirements</h2>
+                            <h2>📋 Project Onboarding Details</h2>
                         </div>
                         {renderReadonlyOnboardingDetails()}
                     </div>
                 )}
 
-                {/* Artifacts Section - Hidden from Executive Admin */}
+                {/* Artifacts Section */}
                 {!isExecutiveView && (
                     <div className="artifacts-section">
-                        <h2>📎 Artifacts ({artifacts.length})</h2>
-                        {artifacts.length === 0 ? (
-                            <p className="empty-message">No artifacts uploaded yet</p>
-                        ) : (
-                            <ul className="artifacts-list">
-                                {artifacts.map((artifact) => (
-                                    <li key={artifact.id} className="artifact-item">
-                                        <span className="artifact-name">{artifact.filename}</span>
-                                        <span className="artifact-stage">{artifact.stage}</span>
-                                        <span className="artifact-type">{artifact.type}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                        <div className="artifacts-header">
+                            <h2>📎 Artifacts ({artifacts.length})</h2>
+                        </div>
+
+                        {/* Upload Area */}
+                        {hasFullEditAccess && (
+                            <div className="artifact-upload-form">
+                                <label className="artifact-upload-area">
+                                    <input
+                                        type="file"
+                                        style={{ display: 'none' }}
+                                        onChange={handleFileUpload}
+                                        disabled={uploading}
+                                    />
+                                    <span className="upload-icon">☁️</span>
+                                    <span className="upload-text">
+                                        {uploading ? 'Uploading...' : 'Click to upload project files'}
+                                    </span>
+                                    <span className="upload-hint">Supported: PDF, DOCX, ZIP, IMAGES</span>
+                                </label>
+                                <div className="artifact-notes">
+                                    <label>Notes (optional):</label>
+                                    <textarea
+                                        placeholder="Add description..."
+                                        value={artifactNotes}
+                                        onChange={(e) => setArtifactNotes(e.target.value)}
+                                        rows={2}
+                                    />
+                                </div>
+                            </div>
                         )}
+
+
+                        <div className="artifact-list">
+                            {artifacts.length === 0 ? (
+                                <p className="empty-message">No artifacts uploaded yet.</p>
+                            ) : (
+                                artifacts.map((artifact: any) => (
+                                    <div key={artifact.id} className="artifact-card">
+                                        <div className="artifact-icon">📄</div>
+                                        <div className="artifact-info">
+                                            <a
+                                                href={artifact.url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="artifact-name"
+                                                download
+                                            >
+                                                {artifact.filename}
+                                            </a>
+                                            <span className="artifact-date">Uploaded on {new Date(artifact.created_at).toLocaleDateString()}</span>
+                                            {artifact.notes && <p className="artifact-notes-text">{artifact.notes}</p>}
+                                        </div>
+                                        {(user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.id === artifact.uploaded_by_user_id) && (
+                                            <button
+                                                className="btn-delete-artifact"
+                                                onClick={() => handleDeleteArtifact(artifact.id)}
+                                                title="Delete Artifact"
+                                            >
+                                                🗑️
+                                            </button>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
                 )}
 

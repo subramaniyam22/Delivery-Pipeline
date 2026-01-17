@@ -24,6 +24,7 @@ ROLE_PERMISSIONS = {
         "create_project": True,
         "view_all": True,
         "update_onboarding": True,
+        "allowed_stages": [Stage.ONBOARDING],
     },
     Role.PC: {
         "view_all": True,

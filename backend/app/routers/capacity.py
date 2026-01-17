@@ -167,11 +167,16 @@ def get_available_users_for_role(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
     
+    # Manager can only see users from their own region
+    region_filter = None
+    if current_user.role == Role.MANAGER and current_user.region:
+        region_filter = current_user.region
+    
     service = get_capacity_service(db)
     today = date.today()
     end_date = today + timedelta(weeks=2)
     
-    return service.get_available_users_by_role(role_enum, today, end_date, min_hours)
+    return service.get_available_users_by_role(role_enum, today, end_date, min_hours, region=region_filter)
 
 
 @router.get("/team-overview")
@@ -302,9 +307,18 @@ def get_assignment_suggestions(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid role: {role}")
     
+    # Manager can only see suggestions from their own region
+    region_filter = None
+    if current_user.role == Role.MANAGER and current_user.region:
+        region_filter = current_user.region
+    
     service = get_suggestion_service(db)
     try:
-        return service.generate_assignment_suggestions(project_id, role_enum)
+        return service.generate_assignment_suggestions(
+            project_id=project_id, 
+            role=role_enum,
+            region_filter=region_filter
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

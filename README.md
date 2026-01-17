@@ -104,7 +104,7 @@ curl -X POST http://localhost:8000/users/seed
 Open http://localhost:3000/login
 
 **Default credentials:**
-- Email: `admin@delivery.com`
+- Email: `subramaniyam.webdesigner@gmail.com`
 - Password: `admin123`
 
 ⚠️ **Change password after first login!**

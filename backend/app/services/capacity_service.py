@@ -377,14 +377,20 @@ class CapacityService:
         role: Role, 
         start_date: date, 
         end_date: date,
-        min_hours: float = 0
+        min_hours: float = 0,
+        region: Optional[Region] = None
     ) -> List[Dict[str, Any]]:
-        """Get users with available capacity for a role"""
-        users = self.db.query(User).filter(
+        """Get users with available capacity for a role, optionally filtered by region"""
+        query = self.db.query(User).filter(
             User.role == role,
             User.is_active == True,
             User.is_archived == False
-        ).all()
+        )
+        
+        if region:
+            query = query.filter(User.region == region)
+            
+        users = query.all()
         
         result = []
         for user in users:
@@ -484,9 +490,10 @@ class CapacitySuggestionService:
     def generate_assignment_suggestions(
         self, 
         project_id: UUID, 
-        role: Role
+        role: Role,
+        region_filter: Optional[Region] = None
     ) -> Dict[str, Any]:
-        """Generate AI suggestions for team assignment"""
+        """Generate AI suggestions for team assignment, optionally filtered by region"""
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
             raise ValueError("Project not found")
@@ -495,8 +502,9 @@ class CapacitySuggestionService:
         today = date.today()
         end_date = today + timedelta(weeks=2)
         available_users = self.capacity_service.get_available_users_by_role(
-            role, today, end_date
+            role, today, end_date, region=region_filter
         )
+
         
         # Get workload estimate
         workload_estimate = self.capacity_service.estimate_project_workload(project)
