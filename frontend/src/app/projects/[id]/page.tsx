@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -1349,7 +1349,7 @@ export default function ProjectDetailPage() {
             <main className="project-detail">
                 {/* Back Button */}
                 <button className="btn-back" onClick={() => router.push('/projects')}>
-                    â† Back to Projects
+                    ← Back to Projects
                 </button>
 
                 {/* Project Header */}
@@ -1393,7 +1393,7 @@ export default function ProjectDetailPage() {
                                 key={stage.key}
                                 className={`stage-item ${isComplete ? 'complete' : ''} ${isCurrent ? 'current' : ''}`}
                             >
-                                <div className="stage-icon">{isComplete ? 'âœ“' : index + 1}</div>
+                                <div className="stage-icon">{isComplete ? '✓' : index + 1}</div>
                                 <span className="stage-label">{stage.label}</span>
                             </div>
                         );
@@ -1424,17 +1424,17 @@ export default function ProjectDetailPage() {
                 {/* My Capacity on this Project - Visible to all assigned team members */}
                 {isAssignedToProject && (
                     <div className="my-capacity-section">
-                        <h2>ðŸ“Š My Capacity on this Project</h2>
+                        <h2>📊 My Capacity on this Project</h2>
                         <div className="capacity-cards">
                             <div className="capacity-card">
-                                <div className="capacity-icon">ðŸŽ¯</div>
+                                <div className="capacity-icon">🎯</div>
                                 <div className="capacity-info">
                                     <span className="capacity-label">This Project</span>
                                     <span className="capacity-value">{projectWorkload?.by_role?.[user?.role] || 0}h estimated</span>
                                 </div>
                             </div>
                             <div className="capacity-card">
-                                <div className="capacity-icon">ðŸ“‹</div>
+                                <div className="capacity-icon">📋</div>
                                 <div className="capacity-info">
                                     <span className="capacity-label">Other Projects</span>
                                     <span className="capacity-value">
@@ -1443,7 +1443,7 @@ export default function ProjectDetailPage() {
                                 </div>
                             </div>
                             <div className="capacity-card available">
-                                <div className="capacity-icon">âœ…</div>
+                                <div className="capacity-icon">✅</div>
                                 <div className="capacity-info">
                                     <span className="capacity-label">Available</span>
                                     <span className="capacity-value">
@@ -1459,7 +1459,7 @@ export default function ProjectDetailPage() {
                 {user?.role && ['ADMIN', 'MANAGER'].includes(user.role) && phaseSummaries.length > 0 && (
                     <div className="phase-summary-section">
                         <div className="section-header">
-                            <h2>ðŸ“Œ Phase Task Summary</h2>
+                            <h2>📌 Phase Task Summary</h2>
                             {healthSummary && (
                                 <span className={`health-pill health-${healthSummary.status?.toLowerCase()}`}>
                                     {healthSummary.status.replace('_', ' ')}
@@ -1503,31 +1503,31 @@ export default function ProjectDetailPage() {
                 {/* Executive Summary for Admin */}
                 {isExecutiveView && (
                     <div className="executive-summary">
-                        <h2>ðŸ“ˆ Executive Summary</h2>
+                        <h2>📈 Executive Summary</h2>
                         <div className="summary-grid">
                             <div className="summary-card">
-                                <span className="summary-icon">ðŸ“Š</span>
+                                <span className="summary-icon">📊</span>
                                 <div className="summary-content">
                                     <span className="summary-label">Progress</span>
                                     <span className="summary-value">{completionStatus?.completion_percentage || 0}%</span>
                                 </div>
                             </div>
                             <div className="summary-card">
-                                <span className="summary-icon">ðŸ“‹</span>
+                                <span className="summary-icon">📋</span>
                                 <div className="summary-content">
                                     <span className="summary-label">Tasks</span>
                                     <span className="summary-value">{completionStatus?.completed_tasks || 0}/{completionStatus?.total_required_tasks || 0}</span>
                                 </div>
                             </div>
                             <div className="summary-card">
-                                <span className="summary-icon">ðŸŽ¯</span>
+                                <span className="summary-icon">🎯</span>
                                 <div className="summary-content">
                                     <span className="summary-label">Stage</span>
                                     <span className="summary-value">{project.current_stage?.replace('_', ' ')}</span>
                                 </div>
                             </div>
                             <div className="summary-card">
-                                <span className="summary-icon">âš¡</span>
+                                <span className="summary-icon">⚡</span>
                                 <div className="summary-content">
                                     <span className="summary-label">Status</span>
                                     <span className="summary-value">{project.status}</span>
@@ -1535,7 +1535,7 @@ export default function ProjectDetailPage() {
                             </div>
                         </div>
                         <div className="executive-note">
-                            <p>ðŸ’¡ As an executive, you see the high-level overview. Detailed operational data is managed by Consultants and Managers.</p>
+                            <p>💡 As an executive, you see the high-level overview. Detailed operational data is managed by Consultants and Managers.</p>
                         </div>
                     </div>
                 )}
@@ -1544,7 +1544,7 @@ export default function ProjectDetailPage() {
                 {canViewTeam && (
                     <div className="team-section">
                         <div className="section-header">
-                            <h2>ðŸ‘¥ Team Assignment</h2>
+                            <h2>👥 Team Assignment</h2>
                             {canAssignTeam && (
                                 <button className="btn-add" onClick={() => setShowTeamModal(true)}>
                                     âœï¸ Manage Team
@@ -1556,7 +1556,7 @@ export default function ProjectDetailPage() {
                         </div>
                         <div className="team-grid">
                             <div className={`team-card ${teamAssignments.consultant ? 'assigned' : 'unassigned'}`}>
-                                <div className="team-role-icon">ðŸ’¼</div>
+                                <div className="team-role-icon">💼</div>
                                 <div className="team-role-label">Consultant</div>
                                 {teamAssignments.consultant ? (
                                     <div className="team-member-info">
@@ -1568,7 +1568,7 @@ export default function ProjectDetailPage() {
                                 )}
                             </div>
                             <div className={`team-card ${teamAssignments.pc ? 'assigned' : 'unassigned'}`}>
-                                <div className="team-role-icon">ðŸŽ¯</div>
+                                <div className="team-role-icon">🎯</div>
                                 <div className="team-role-label">Project Coordinator (PC)</div>
                                 {teamAssignments.pc ? (
                                     <div className="team-member-info">
@@ -1580,7 +1580,7 @@ export default function ProjectDetailPage() {
                                 )}
                             </div>
                             <div className={`team-card ${teamAssignments.builder ? 'assigned' : 'unassigned'}`}>
-                                <div className="team-role-icon">ðŸ”¨</div>
+                                <div className="team-role-icon">🔨</div>
                                 <div className="team-role-label">Builder</div>
                                 {teamAssignments.builder ? (
                                     <div className="team-member-info">
@@ -1592,7 +1592,7 @@ export default function ProjectDetailPage() {
                                 )}
                             </div>
                             <div className={`team-card ${teamAssignments.tester ? 'assigned' : 'unassigned'}`}>
-                                <div className="team-role-icon">ðŸ§ª</div>
+                                <div className="team-role-icon">🧪</div>
                                 <div className="team-role-label">Tester</div>
                                 {teamAssignments.tester ? (
                                     <div className="team-member-info">
@@ -1617,10 +1617,10 @@ export default function ProjectDetailPage() {
                 {project.current_stage === 'ONBOARDING' && onboardingData && (
                     <div className="onboarding-section">
                         <div className="section-header">
-                            <h2>ðŸ“‹ Onboarding Requirements</h2>
+                            <h2>📋 Onboarding Requirements</h2>
                             {completionStatus?.can_auto_advance && hasFullEditAccess && (
                                 <button className="btn-auto-advance" onClick={handleAutoAdvance} disabled={advancing}>
-                                    ðŸš€ Auto-Advance
+                                    🚀 Auto-Advance
                                 </button>
                             )}
                         </div>
@@ -1650,7 +1650,7 @@ export default function ProjectDetailPage() {
                                                         setTimeout(() => setSuccess(''), 2000);
                                                     }}
                                                 >
-                                                    ðŸ”— Copy Link
+                                                    🔗 Copy Link
                                                 </button>
                                             </>
                                         )}
@@ -1662,7 +1662,7 @@ export default function ProjectDetailPage() {
                                 <div className="checklist-grid">
                                     {/* Essential Items */}
                                     <div className={`checklist-item ${onboardingData.contacts_json?.some((c: any) => c.is_primary) ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.contacts_json?.some((c: any) => c.is_primary) ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.contacts_json?.some((c: any) => c.is_primary) ? '✅' : 'âŒ'}</span>
                                         <div className="checklist-content">
                                             <span className="checklist-label">Primary Contact</span>
                                             {!onboardingData.contacts_json?.some((c: any) => c.is_primary) && onboardingData.missing_fields_eta_json?.['Primary Contact'] && (
@@ -1672,7 +1672,7 @@ export default function ProjectDetailPage() {
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.logo_url || onboardingData.logo_file_path ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.logo_url || onboardingData.logo_file_path ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.logo_url || onboardingData.logo_file_path ? '✅' : 'âŒ'}</span>
                                         <div className="checklist-content">
                                             <span className="checklist-label">Company Logo</span>
                                             {(!onboardingData.logo_url && !onboardingData.logo_file_path) && onboardingData.missing_fields_eta_json?.['Company Logo'] && (
@@ -1682,17 +1682,17 @@ export default function ProjectDetailPage() {
                                     </div>
 
                                     <div className={`checklist-item ${(onboardingData.images_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{(onboardingData.images_json?.length || 0) > 0 ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{(onboardingData.images_json?.length || 0) > 0 ? '✅' : 'âŒ'}</span>
                                         <span className="checklist-label">Website Images</span>
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.copy_text || onboardingData.use_custom_copy ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? '✅' : 'âŒ'}</span>
                                         <span className="checklist-label">Copy Text</span>
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.wcag_confirmed ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.wcag_confirmed ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.wcag_confirmed ? '✅' : 'âŒ'}</span>
                                         <div className="checklist-content">
                                             <span className="checklist-label">WCAG Requirements</span>
                                             {!onboardingData.wcag_confirmed && onboardingData.missing_fields_eta_json?.['WCAG Requirements'] && (
@@ -1702,19 +1702,19 @@ export default function ProjectDetailPage() {
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? '✅' : 'âŒ'}</span>
                                         <span className="checklist-label">Privacy Policy</span>
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.theme_preference || onboardingData.selected_template_id ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.theme_preference || onboardingData.selected_template_id ? 'âœ…' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.theme_preference || onboardingData.selected_template_id ? '✅' : 'âŒ'}</span>
                                         <span className="checklist-label">Theme / Template</span>
                                     </div>
 
                                     {/* Detailed Requirements */}
                                     {getRequirementsChecklistItems().map((item) => (
                                         <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                            <span className="checklist-icon">{item.filled ? 'âœ…' : 'âŒ'}</span>
+                                            <span className="checklist-icon">{item.filled ? '✅' : 'âŒ'}</span>
                                             <div className="checklist-content">
                                                 <span className="checklist-label">{item.label}</span>
                                                 {!item.filled && onboardingData.missing_fields_eta_json?.[item.label] && (
@@ -1733,7 +1733,7 @@ export default function ProjectDetailPage() {
                                 {/* Contacts Management */}
                                 <div className="form-card editable-section">
                                     <div className="card-header">
-                                        <h3>ðŸ‘¥ Client Contacts</h3>
+                                        <h3>👥 Client Contacts</h3>
                                         <button className="btn-add-sm" onClick={() => setShowContactModal(true)}>+ Add</button>
                                     </div>
                                     <div className="contacts-list-compact">
@@ -1746,7 +1746,7 @@ export default function ProjectDetailPage() {
                                                         <span className="contact-name">{contact.name}</span>
                                                         <span className="contact-email-sm">{contact.email}</span>
                                                     </div>
-                                                    <button className="btn-icon-remove" onClick={() => removeContact(index)}>Ã—</button>
+                                                    <button className="btn-icon-remove" onClick={() => removeContact(index)}>×</button>
                                                 </div>
                                             ))
                                         )}
@@ -1773,7 +1773,7 @@ export default function ProjectDetailPage() {
                                                     finally { setSendingEmail(false); }
                                                 }}
                                             >
-                                                {sendingEmail ? 'Sending...' : 'ðŸ“§ Send Reminder'}
+                                                {sendingEmail ? 'Sending...' : '📧 Send Reminder'}
                                             </button>
                                         </div>
                                     )}
@@ -1781,7 +1781,7 @@ export default function ProjectDetailPage() {
 
                                 {/* Auto-Reminder Settings */}
                                 <div className="form-card highlight-section">
-                                    <h3>ðŸ”” Auto-Reminders</h3>
+                                    <h3>🔔 Auto-Reminders</h3>
                                     <label className="toggle-row">
                                         <span>Enable auto-reminders</span>
                                         <input
@@ -1824,7 +1824,7 @@ export default function ProjectDetailPage() {
                 {project.current_stage !== 'ONBOARDING' && onboardingData && hasDetailedViewAccess && !isExecutiveView && (
                     <div className="requirements-section">
                         <div className="section-header">
-                            <h2>ðŸ“„ Project Requirements</h2>
+                            <h2>📄 Project Requirements</h2>
                         </div>
                         {renderReadonlyOnboardingDetails()}
                     </div>
@@ -1833,7 +1833,7 @@ export default function ProjectDetailPage() {
                 {/* Artifacts Section - Hidden from Executive Admin */}
                 {!isExecutiveView && (
                     <div className="artifacts-section">
-                        <h2>ðŸ“Ž Artifacts ({artifacts.length})</h2>
+                        <h2>📎 Artifacts ({artifacts.length})</h2>
                         {artifacts.length === 0 ? (
                             <p className="empty-message">No artifacts uploaded yet</p>
                         ) : (
@@ -1854,7 +1854,7 @@ export default function ProjectDetailPage() {
                 {!isExecutiveView && (project.current_stage === 'TEST' || project.current_stage === 'DEFECT_VALIDATION') && (
                     <div className="test-phase-section">
                         <div className="section-header">
-                            <h2>ðŸ§ª Test & Quality Assurance</h2>
+                            <h2>🧪 Test & Quality Assurance</h2>
                         </div>
 
                         {/* Test Phase Tabs */}
@@ -1863,13 +1863,13 @@ export default function ProjectDetailPage() {
                                 className={`tab-btn ${activeTestTab === 'scenarios' ? 'active' : ''}`}
                                 onClick={() => setActiveTestTab('scenarios')}
                             >
-                                ðŸ“‹ Test Scenarios
+                                📋 Test Scenarios
                             </button>
                             <button
                                 className={`tab-btn ${activeTestTab === 'executions' ? 'active' : ''}`}
                                 onClick={() => setActiveTestTab('executions')}
                             >
-                                â–¶ï¸ Executions
+                                ▶️ Executions
                             </button>
                             <button
                                 className={`tab-btn ${activeTestTab === 'defects' ? 'active' : ''}`}
@@ -1904,7 +1904,7 @@ export default function ProjectDetailPage() {
                                                 onClick={() => handleGenerateScenario('Auto-Generated Scenarios')}
                                                 disabled={testLoading}
                                             >
-                                                ðŸ¤– Generate with AI
+                                                🤖 Generate with AI
                                             </button>
                                         )}
                                     </div>
@@ -1912,7 +1912,7 @@ export default function ProjectDetailPage() {
 
                                 {testScenarios.length === 0 ? (
                                     <div className="empty-state">
-                                        <span className="empty-icon">ðŸ“‹</span>
+                                        <span className="empty-icon">📋</span>
                                         <p>No test scenarios created yet</p>
                                         <p className="empty-hint">Create test scenarios to define what needs to be tested</p>
                                     </div>
@@ -1927,7 +1927,7 @@ export default function ProjectDetailPage() {
                                                 <div className="scenario-header">
                                                     <h4>{scenario.name}</h4>
                                                     {scenario.is_generated && (
-                                                        <span className="badge-ai">ðŸ¤– AI</span>
+                                                        <span className="badge-ai">🤖 AI</span>
                                                     )}
                                                 </div>
                                                 {scenario.description && (
@@ -1950,7 +1950,7 @@ export default function ProjectDetailPage() {
                                 {selectedScenario && (
                                     <div className="scenario-details">
                                         <div className="details-header">
-                                            <h4>ðŸ“‹ {selectedScenario.name} - Test Cases</h4>
+                                            <h4>📋 {selectedScenario.name} - Test Cases</h4>
                                             <button
                                                 className="btn-add small"
                                                 onClick={() => setShowCreateTestCaseModal(true)}
@@ -1978,7 +1978,7 @@ export default function ProjectDetailPage() {
                                                             )}
                                                         </div>
                                                         {tc.is_automated && (
-                                                            <span className="badge-automated">âš¡ Auto</span>
+                                                            <span className="badge-automated">⚡ Auto</span>
                                                         )}
                                                     </div>
                                                 ))}
@@ -1999,13 +1999,13 @@ export default function ProjectDetailPage() {
                                         onClick={() => setShowRunExecutionModal(true)}
                                         disabled={testScenarios.length === 0}
                                     >
-                                        â–¶ï¸ Run New Execution
+                                        ▶️ Run New Execution
                                     </button>
                                 </div>
 
                                 {testExecutions.length === 0 ? (
                                     <div className="empty-state">
-                                        <span className="empty-icon">â–¶ï¸</span>
+                                        <span className="empty-icon">▶️</span>
                                         <p>No test executions yet</p>
                                         <p className="empty-hint">Run an execution to test your scenarios</p>
                                     </div>
@@ -2020,9 +2020,9 @@ export default function ProjectDetailPage() {
                                                     <div className="execution-info">
                                                         <h4>{execution.execution_name}</h4>
                                                         <div className="execution-stats">
-                                                            <span className="stat passed">âœ“ {execution.passed_tests} passed</span>
-                                                            <span className="stat failed">âœ— {execution.failed_tests} failed</span>
-                                                            <span className="stat total">ðŸ“Š {execution.total_tests} total</span>
+                                                            <span className="stat passed">✓ {execution.passed_tests} passed</span>
+                                                            <span className="stat failed">✗ {execution.failed_tests} failed</span>
+                                                            <span className="stat total">📊 {execution.total_tests} total</span>
                                                         </div>
                                                     </div>
                                                     <div className="execution-status-badge" data-status={execution.status.toLowerCase()}>
@@ -2051,7 +2051,7 @@ export default function ProjectDetailPage() {
                                                         className="btn-view-results"
                                                         onClick={() => handleViewExecutionResults(execution)}
                                                     >
-                                                        View Results â†’
+                                                        View Results →
                                                     </button>
                                                 </div>
                                             </div>
@@ -2063,7 +2063,7 @@ export default function ProjectDetailPage() {
                                 {selectedExecution && (
                                     <div className="results-panel">
                                         <div className="panel-header">
-                                            <h4>ðŸ“Š Results: {selectedExecution.execution_name}</h4>
+                                            <h4>📊 Results: {selectedExecution.execution_name}</h4>
                                             <button
                                                 className="btn-close"
                                                 onClick={() => {
@@ -2071,7 +2071,7 @@ export default function ProjectDetailPage() {
                                                     setTestResults([]);
                                                 }}
                                             >
-                                                Ã—
+                                                ×
                                             </button>
                                         </div>
                                         <div className="results-list">
@@ -2084,9 +2084,9 @@ export default function ProjectDetailPage() {
                                                         className={`result-item ${result.status.toLowerCase()}`}
                                                     >
                                                         <div className="result-status-icon">
-                                                            {result.status === 'PASSED' && 'âœ“'}
-                                                            {result.status === 'FAILED' && 'âœ—'}
-                                                            {result.status === 'SKIPPED' && 'â—‹'}
+                                                            {result.status === 'PASSED' && '✓'}
+                                                            {result.status === 'FAILED' && '✗'}
+                                                            {result.status === 'SKIPPED' && '○'}
                                                             {result.status === 'ERROR' && '!'}
                                                         </div>
                                                         <div className="result-content">
@@ -2159,7 +2159,7 @@ export default function ProjectDetailPage() {
                                                 className="btn-validate-all"
                                                 onClick={handleValidateAllDefects}
                                             >
-                                                âœ“ Validate All Fixed
+                                                ✓ Validate All Fixed
                                             </button>
                                         )}
                                     </div>
@@ -2167,7 +2167,7 @@ export default function ProjectDetailPage() {
 
                                 {defects.length === 0 ? (
                                     <div className="empty-state success">
-                                        <span className="empty-icon">ðŸŽ‰</span>
+                                        <span className="empty-icon">🎉</span>
                                         <p>No defects found</p>
                                         <p className="empty-hint">Great! Your project has no recorded defects</p>
                                     </div>
@@ -2197,7 +2197,7 @@ export default function ProjectDetailPage() {
                                                 )}
                                                 <div className="defect-meta">
                                                     <span className="assigned-to">
-                                                        ðŸ‘¤ {defect.assigned_to_user_name || 'Unassigned'}
+                                                        👤 {defect.assigned_to_user_name || 'Unassigned'}
                                                     </span>
                                                     <span className="defect-date">
                                                         {new Date(defect.created_at).toLocaleDateString()}
@@ -2218,7 +2218,7 @@ export default function ProjectDetailPage() {
                                                                     setShowReassignDefectModal(true);
                                                                 }}
                                                             >
-                                                                ðŸ”„ Reassign
+                                                                🔄 Reassign
                                                             </button>
                                                             <button
                                                                 className="btn-action fix"
@@ -2227,7 +2227,7 @@ export default function ProjectDetailPage() {
                                                                     setShowFixDefectModal(true);
                                                                 }}
                                                             >
-                                                                ðŸ”§ Mark Fixed
+                                                                🔧 Mark Fixed
                                                             </button>
                                                         </>
                                                     )}
@@ -2236,7 +2236,7 @@ export default function ProjectDetailPage() {
                                                             className="btn-action validate"
                                                             onClick={() => handleValidateDefect(defect.id)}
                                                         >
-                                                            âœ“ Validate Fix
+                                                            ✓ Validate Fix
                                                         </button>
                                                     )}
                                                 </div>
@@ -2260,14 +2260,14 @@ export default function ProjectDetailPage() {
                                 onClick={handleAdvanceWorkflow}
                                 disabled={advancing || project.current_stage === 'COMPLETE'}
                             >
-                                {advancing ? 'Processing...' : 'âž¡ï¸ Advance Workflow'}
+                                {advancing ? 'Processing...' : '➡️ Advance Workflow'}
                             </button>
                             <button
                                 className="btn-send-back"
                                 onClick={handleSendBack}
                                 disabled={advancing || project.current_stage === 'ONBOARDING'}
                             >
-                                â¬…ï¸ Send Back
+                                ⬅️ Send Back
                             </button>
                         </div>
                     </div>
@@ -2550,8 +2550,8 @@ export default function ProjectDetailPage() {
                                 />
                             </div>
                             <div className="execution-summary">
-                                <span>ðŸ“‹ {testScenarios.length} scenarios</span>
-                                <span>ðŸ“ {testScenarios.reduce((acc, s) => acc + (s.test_cases?.length || 0), 0)} test cases</span>
+                                <span>📋 {testScenarios.length} scenarios</span>
+                                <span>📝 {testScenarios.reduce((acc, s) => acc + (s.test_cases?.length || 0), 0)} test cases</span>
                             </div>
                             <div className="modal-actions">
                                 <button className="btn-cancel" onClick={() => setShowRunExecutionModal(false)}>Cancel</button>
@@ -2560,7 +2560,7 @@ export default function ProjectDetailPage() {
                                     onClick={handleRunExecution}
                                     disabled={testLoading}
                                 >
-                                    {testLoading ? 'Running...' : 'â–¶ï¸ Start Execution'}
+                                    {testLoading ? 'Running...' : '▶️ Start Execution'}
                                 </button>
                             </div>
                         </div>
@@ -2647,11 +2647,11 @@ export default function ProjectDetailPage() {
                 {showTeamModal && (
                     <div className="modal-overlay" onClick={() => setShowTeamModal(false)}>
                         <div className="modal modal-xl" onClick={(e) => e.stopPropagation()}>
-                            <h2>ðŸ‘¥ Assign Team Members</h2>
+                            <h2>👥 Assign Team Members</h2>
                             <p className="modal-description">
-                                Assign team members in sequence: Consultant â†’ PC â†’ Builder â†’ Tester
-                                {user?.role === 'MANAGER' && <><br /><span className="region-note">ðŸ“ As a Manager, you can only assign from your region: <strong>{user?.region}</strong></span></>}
-                                {user?.role === 'PC' && user?.region === 'INDIA' && <><br /><span className="region-note">ðŸ“ As a PC, you can assign Builder and Tester from India region</span></>}
+                                Assign team members in sequence: Consultant → PC → Builder → Tester
+                                {user?.role === 'MANAGER' && <><br /><span className="region-note">📝 As a Manager, you can only assign from your region: <strong>{user?.region}</strong></span></>}
+                                {user?.role === 'PC' && user?.region === 'INDIA' && <><br /><span className="region-note">📝 As a PC, you can assign Builder and Tester from India region</span></>}
                             </p>
 
                             {/* Assignment Progress */}
@@ -2680,7 +2680,7 @@ export default function ProjectDetailPage() {
                             {/* Project Workload Estimate */}
                             {projectWorkload && (
                                 <div className="workload-estimate">
-                                    <h4>ðŸ“Š Estimated Project Workload</h4>
+                                    <h4>📊 Estimated Project Workload</h4>
                                     <div className="workload-badges">
                                         <span className="workload-badge">Total: {projectWorkload.total_hours}h</span>
                                         {Object.entries(projectWorkload.by_role || {}).map(([role, hours]) => (
@@ -2714,7 +2714,7 @@ export default function ProjectDetailPage() {
                                     (role === 'TESTER' && assignmentSequence.tester_assigned);
                                 const capacityList = capacityByRole[role] || [];
                                 const suggestions = aiSuggestions[role];
-                                const roleIcon = role === 'PC' ? 'ðŸŽ¯' : role === 'CONSULTANT' ? 'ðŸ’¼' : role === 'BUILDER' ? 'ðŸ”¨' : 'ðŸ§ª';
+                                const roleIcon = role === 'PC' ? '🎯' : role === 'CONSULTANT' ? '💼' : role === 'BUILDER' ? '🔨' : '🧪';
                                 const roleKey = role.toLowerCase() + '_user_id';
                                 const selectedValue = teamFormData[roleKey as keyof typeof teamFormData];
                                 const requiredHours = projectWorkload?.by_role?.[role] || 0;
@@ -2726,10 +2726,10 @@ export default function ProjectDetailPage() {
                                             <h4>
                                                 <span className="role-step">Step {stepNumber}</span>
                                                 {roleIcon} {role}
-                                                {isAlreadyAssigned && <span className="assigned-badge">âœ“ Assigned</span>}
+                                                {isAlreadyAssigned && <span className="assigned-badge">✓ Assigned</span>}
                                                 {isDisabled && !isAlreadyAssigned && (
                                                     <span className="locked-badge">
-                                                        {!canAssignThisRole ? 'ðŸ”’ No Permission' : 'â³ Complete previous step'}
+                                                        {!canAssignThisRole ? '🔒 No Permission' : 'â³ Complete previous step'}
                                                     </span>
                                                 )}
                                             </h4>
@@ -2740,7 +2740,7 @@ export default function ProjectDetailPage() {
                                                         onClick={() => loadAiSuggestions(role)}
                                                         disabled={loadingSuggestions && selectedRoleForSuggestion === role}
                                                     >
-                                                        {loadingSuggestions && selectedRoleForSuggestion === role ? 'â³' : 'ðŸ¤–'} AI Suggest
+                                                        {loadingSuggestions && selectedRoleForSuggestion === role ? 'â³' : '🤖'} AI Suggest
                                                     </button>
                                                 )}
                                                 {requiredHours > 0 && (
@@ -2754,7 +2754,7 @@ export default function ProjectDetailPage() {
                                             <div className={`ai-suggestions-panel ${suggestions.capacity_crunch ? 'crunch' : ''}`}>
                                                 {suggestions.capacity_crunch ? (
                                                     <div className="capacity-crunch-alert">
-                                                        <h5>âš ï¸ Capacity Crunch Detected</h5>
+                                                        <h5>⚠️ Capacity Crunch Detected</h5>
                                                         {(suggestions.suggestions[0] as CapacityCrunchSuggestion)?.suggestions?.map((s, i) => (
                                                             <p key={i}>{s}</p>
                                                         ))}
@@ -2796,7 +2796,7 @@ export default function ProjectDetailPage() {
                                                                         className="btn-accept-suggestion"
                                                                         onClick={() => handleAcceptSuggestion(s, role)}
                                                                     >
-                                                                        âœ“ Select
+                                                                        ✓ Select
                                                                     </button>
                                                                 </div>
                                                             ))}
@@ -2839,8 +2839,8 @@ export default function ProjectDetailPage() {
                                                         <div className="capacity-status" style={{ color: getCapacityStatusColor(user.capacity_status) }}>
                                                             {user.capacity_status}
                                                         </div>
-                                                        {user.is_recommended && <span className="recommended-badge">âœ“ Recommended</span>}
-                                                        {selectedValue === user.user_id && <span className="selected-indicator">âœ“</span>}
+                                                        {user.is_recommended && <span className="recommended-badge">✓ Recommended</span>}
+                                                        {selectedValue === user.user_id && <span className="selected-indicator">✓</span>}
                                                     </div>
                                                 ))
                                             )}

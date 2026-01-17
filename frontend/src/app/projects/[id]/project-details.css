@@ -528,7 +528,7 @@
                     transition: all var(--transition-fast);
                 }
                 :global(.requirements-collapsible summary::before) {
-                    content: 'ðŸ“‚';
+                    content: '📂';
                     font-size: 14px;
                 }
                 :global(.requirements-collapsible[open] summary) {
