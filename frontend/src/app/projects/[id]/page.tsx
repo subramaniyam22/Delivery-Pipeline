@@ -253,12 +253,12 @@ interface SuggestionsResponse {
 }
 
 const STAGES = [
-    { key: 'ONBOARDING', label: 'Onboarding', icon: 'ðŸ“‹' },
-    { key: 'ASSIGNMENT', label: 'Assignment', icon: 'ðŸ“¤' },
-    { key: 'BUILD', label: 'Build', icon: 'ðŸ”¨' },
-    { key: 'TEST', label: 'Test', icon: 'ðŸ§ª' },
-    { key: 'DEFECT_VALIDATION', label: 'Defect Validation', icon: 'ðŸ”' },
-    { key: 'COMPLETE', label: 'Complete', icon: 'âœ…' },
+    { key: 'ONBOARDING', label: 'Onboarding', icon: '📋' },
+    { key: 'ASSIGNMENT', label: 'Assignment', icon: '📥' },
+    { key: 'BUILD', label: 'Build', icon: '🔨' },
+    { key: 'TEST', label: 'Test', icon: '🧪' },
+    { key: 'DEFECT_VALIDATION', label: 'Defect Validation', icon: '🔍' },
+    { key: 'COMPLETE', label: 'Complete', icon: '✅' },
 ];
 
 const THEME_OPTIONS = [
@@ -742,7 +742,7 @@ export default function ProjectDetailPage() {
         return (
             <div className="form-card readonly-section requirements-panel" style={readonlyCardStyle}>
                 <div className="section-badge">
-                    <span className="badge-readonly">ðŸ‘ï¸ Read-only (Client fills via form)</span>
+                    <span className="badge-readonly">👀 Read-only (Client fills via form)</span>
                 </div>
 
                 {/* Assets - Read Only */}
@@ -806,7 +806,7 @@ export default function ProjectDetailPage() {
 
                 {/* Copy Text - Read Only */}
                 <div className="readonly-group">
-                    <h4>ðŸ“ Copy Text</h4>
+                    <h4>📝 Copy Text</h4>
                     <div className="readonly-field full-width" style={fieldStyle}>
                         <span className={onboardingData?.copy_text || onboardingData?.use_custom_copy ? 'filled' : 'empty'}>
                             {getCopySummary()}
@@ -816,7 +816,7 @@ export default function ProjectDetailPage() {
 
                 {/* WCAG - Read Only */}
                 <div className="readonly-group">
-                    <h4>â™¿ Accessibility (WCAG)</h4>
+                    <h4>♿ Accessibility (WCAG)</h4>
                     <div className="readonly-field" style={fieldStyle}>
                         <span className={onboardingData?.wcag_compliance_required ? 'filled' : 'empty'}>
                             {onboardingData?.wcag_compliance_required
@@ -828,7 +828,7 @@ export default function ProjectDetailPage() {
 
                 {/* Privacy Policy - Read Only */}
                 <div className="readonly-group">
-                    <h4>ðŸ”’ Privacy Policy</h4>
+                    <h4>🔒 Privacy Policy</h4>
                     <div className="readonly-field full-width" style={fieldStyle}>
                         <span className={onboardingData?.privacy_policy_url || onboardingData?.privacy_policy_text ? 'filled' : 'empty'}>
                             {onboardingData?.privacy_policy_url
@@ -840,7 +840,7 @@ export default function ProjectDetailPage() {
 
                 {/* Theme - Read Only */}
                 <div className="readonly-group">
-                    <h4>ðŸŽ¨ Theme Preferences</h4>
+                    <h4>🎨 Theme Preferences</h4>
                     <div className="readonly-field" style={fieldStyle}>
                         <span className={(onboardingData?.theme_preference || onboardingData?.selected_template_id) ? 'filled' : 'empty'}>
                             {getTemplateLabel()}
@@ -857,13 +857,13 @@ export default function ProjectDetailPage() {
                 </div>
 
                 <div className="readonly-group">
-                    <h4>ðŸ§¾ Project Requirements Checklist</h4>
+                    <h4>🧮 Project Requirements Checklist</h4>
                     <details className="requirements-collapsible">
                         <summary>View checklist</summary>
                         <div className="checklist-grid">
                             {getRequirementsChecklistItems().map((item) => (
                                 <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                    <span className="checklist-icon">{item.filled ? 'âœ…' : 'â³'}</span>
+                                    <span className="checklist-icon">{item.filled ? '✅' : '⏳'}</span>
                                     <span>{item.label}</span>
                                 </div>
                             ))}
@@ -873,7 +873,7 @@ export default function ProjectDetailPage() {
 
                 {hasRequirements && (
                     <div className="readonly-group">
-                        <h4>ðŸ§¾ Project Requirements</h4>
+                        <h4>🧮 Project Requirements</h4>
                         <div className="requirements-grid">
                             <div className="readonly-item"><label>Project Summary</label><span>{requirements.project_summary || 'Not provided'}</span></div>
                             <div className="readonly-item"><label>Project Notes</label><span>{requirements.project_notes || 'Not provided'}</span></div>

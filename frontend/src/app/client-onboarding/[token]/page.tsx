@@ -445,11 +445,11 @@ export default function ClientOnboardingPage() {
                             <path className="ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                             <path
                                 className="ring-fill"
-                                strokeDasharray={`${formData.completion_percentage}, 100`}
+                                strokeDasharray={`${Math.round((getAllRequirements().filter(i => i.provided).length / getAllRequirements().length) * 100) || 0}, 100`}
                                 d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                             />
                         </svg>
-                        <span className="ring-value">{formData.completion_percentage}%</span>
+                        <span className="ring-value">{Math.round((getAllRequirements().filter(i => i.provided).length / getAllRequirements().length) * 100) || 0}%</span>
                     </div>
                     <div className="completion-text">
                         <span className="completion-label">Complete</span>
@@ -465,7 +465,6 @@ export default function ClientOnboardingPage() {
             {success && <div className="alert alert-success">{success}</div>}
 
             {/* Missing Fields Alert */}
-            {/* Requirements Checklist Unified */}
             {getAllRequirements().filter(i => !i.provided).length > 0 ? (
                 <div className="missing-alert">
                     <h3>⚠️ Action Required</h3>
@@ -490,19 +489,25 @@ export default function ClientOnboardingPage() {
                             </div>
                         ))}
                     </div>
-                    <button className="btn-submit-form" disabled={saving} onClick={submitClientForm}>
-                        {saving ? 'Submitting...' : 'Submit Form'}
-                    </button>
                 </div>
             ) : (
                 <div className="missing-alert success-alert">
                     <h3>✅ All Set!</h3>
                     <p>You have provided all necessary information. Please review and submit.</p>
-                    <button className="btn-submit-form" disabled={saving} onClick={submitClientForm}>
-                        {saving ? 'Submitting...' : 'Submit Form'}
-                    </button>
                 </div>
             )}
+
+            <style jsx>{`
+                .missing-fields-grid {
+                    display: grid;
+                    grid-template-columns: 1fr;
+                    gap: 8px;
+                    margin-top: 16px;
+                    max-height: 300px;
+                    overflow-y: auto;
+                    padding-right: 8px; /* For scrollbar */
+                }
+            `}</style>
 
             <main className="form-container">
                 {/* Project Requirements */}
@@ -2005,14 +2010,16 @@ export default function ClientOnboardingPage() {
             `}</style>
 
             {/* Lightbox Modal */}
-            {previewImage && (
-                <div className="lightbox-overlay" onClick={() => setPreviewImage(null)}>
-                    <div className="lightbox-content" onClick={e => e.stopPropagation()}>
-                        <button className="lightbox-close" onClick={() => setPreviewImage(null)}>×</button>
-                        <img src={previewImage} alt="Full size preview" />
+            {
+                previewImage && (
+                    <div className="lightbox-overlay" onClick={() => setPreviewImage(null)}>
+                        <div className="lightbox-content" onClick={e => e.stopPropagation()}>
+                            <button className="lightbox-close" onClick={() => setPreviewImage(null)}>×</button>
+                            <img src={previewImage} alt="Full size preview" />
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
