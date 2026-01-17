@@ -1455,6 +1455,108 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
+                {/* Consultant Onboarding Actions - Moved from bottom */}
+                {user?.role === 'CONSULTANT' && isAssignedToProject && project.current_stage === 'ONBOARDING' && onboardingData && (
+                    <div className="consultant-actions-section">
+                        <h2>⚡ Quick Actions</h2>
+                        <div className="consultant-actions-grid">
+
+                            {/* Card 1: Invite Client */}
+                            <div className="form-card highlight-section">
+                                <h3>🔗 Invite Client</h3>
+                                {completionStatus?.client_form_url ? (
+                                    <div className="invite-action">
+                                        <p className="invite-text">Share this secure link with the client:</p>
+                                        <button
+                                            className="btn-copy-link full-width"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
+                                                setSuccess('Link copied!');
+                                                setTimeout(() => setSuccess(''), 2000);
+                                            }}
+                                        >
+                                            🔗 Copy Link
+                                        </button>
+                                    </div>
+                                ) : <p>Link not available</p>}
+                            </div>
+
+                            {/* Card 2: Contacts */}
+                            <div className="form-card editable-section">
+                                <div className="card-header">
+                                    <h3>👥 Client Contacts</h3>
+                                    <button className="btn-add-sm" onClick={() => setShowContactModal(true)}>+ Add</button>
+                                </div>
+                                <div className="contacts-list-compact">
+                                    {onboardingData.contacts_json?.length === 0 ? (
+                                        <p className="empty-message">No contacts.</p>
+                                    ) : (
+                                        onboardingData.contacts_json?.map((contact, index) => (
+                                            <div key={index} className="contact-item-compact">
+                                                <div className="contact-info">
+                                                    <span className="contact-name">{contact.name}</span>
+                                                    <span className="contact-email-sm">{contact.email}</span>
+                                                </div>
+                                                <button className="btn-icon-remove" onClick={() => removeContact(index)}>×</button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                {/* Email Trigger */}
+                                {onboardingData.contacts_json && onboardingData.contacts_json.length > 0 && (
+                                    <div className="email-action-row">
+                                        <button
+                                            className="btn-send-email-sm"
+                                            disabled={sendingEmail}
+                                            onClick={async () => {
+                                                setSendingEmail(true);
+                                                try {
+                                                    const primary = onboardingData.contacts_json?.find(c => c.is_primary) || onboardingData.contacts_json?.[0];
+                                                    if (primary) {
+                                                        await onboardingAPI.sendReminder(projectId, {
+                                                            recipient_email: primary.email,
+                                                            recipient_name: primary.name,
+                                                            message: `Please complete the onboarding form.`
+                                                        });
+                                                        setSuccess('Reminder sent!');
+                                                    }
+                                                } catch { setError('Failed to send'); }
+                                                finally { setSendingEmail(false); }
+                                            }}
+                                        >
+                                            {sendingEmail ? 'Sending...' : '📧 Send Reminder'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Card 3: Auto-Reminders */}
+                            <div className="form-card highlight-section">
+                                <h3>🔔 Auto-Reminders</h3>
+                                <label className="toggle-row">
+                                    <span>Enable auto-reminders</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={onboardingData.auto_reminder_enabled}
+                                        onChange={(e) => {
+                                            onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval)
+                                                .then(() => loadOnboardingData())
+                                                .catch(() => setError('Failed to update'));
+                                        }}
+                                    />
+                                </label>
+                                {onboardingData.auto_reminder_enabled && (
+                                    <div className="reminder-info-sm">
+                                        <span>Current interval: {onboardingData.reminder_interval_hours || 24}h</span>
+                                        <span>Next: {onboardingData.next_reminder_at ? new Date(onboardingData.next_reminder_at).toLocaleDateString() : 'Pending'}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                        </div>
+                    </div>
+                )}
+
                 {/* Phase Summary - Admin/Manager */}
                 {user?.role && ['ADMIN', 'MANAGER'].includes(user.role) && phaseSummaries.length > 0 && (
                     <div className="phase-summary-section">
@@ -1637,25 +1739,7 @@ export default function ProjectDetailPage() {
                                         <p className="progress-subtitle">{(completionStatus?.total_required_tasks || 0) - (completionStatus?.completed_tasks || 0)} items pending</p>
                                     </div>
                                 </div>
-                                {isAssignedToProject && user?.role === 'CONSULTANT' && (
-                                    <div className="share-box">
-                                        {completionStatus?.client_form_url && (
-                                            <>
-                                                <span>Share with client:</span>
-                                                <button
-                                                    className="btn-copy-link"
-                                                    onClick={() => {
-                                                        navigator.clipboard.writeText(`${window.location.origin}${completionStatus.client_form_url}`);
-                                                        setSuccess('Link copied!');
-                                                        setTimeout(() => setSuccess(''), 2000);
-                                                    }}
-                                                >
-                                                    🔗 Copy Link
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                )}
+
                             </div>
 
                             <div className="checklist-summary">
@@ -1727,82 +1811,7 @@ export default function ProjectDetailPage() {
                             </div>
                         </div>
 
-                        {/* Consultant: Actionable Sections (Contacts, Auto-Reminder) */}
-                        {user?.role === 'CONSULTANT' && isAssignedToProject && (
-                            <div className="consultant-actions-grid">
-                                {/* Contacts Management */}
-                                <div className="form-card editable-section">
-                                    <div className="card-header">
-                                        <h3>👥 Client Contacts</h3>
-                                        <button className="btn-add-sm" onClick={() => setShowContactModal(true)}>+ Add</button>
-                                    </div>
-                                    <div className="contacts-list-compact">
-                                        {onboardingData.contacts_json?.length === 0 ? (
-                                            <p className="empty-message">No contacts.</p>
-                                        ) : (
-                                            onboardingData.contacts_json?.map((contact, index) => (
-                                                <div key={index} className="contact-item-compact">
-                                                    <div className="contact-info">
-                                                        <span className="contact-name">{contact.name}</span>
-                                                        <span className="contact-email-sm">{contact.email}</span>
-                                                    </div>
-                                                    <button className="btn-icon-remove" onClick={() => removeContact(index)}>×</button>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                    {/* Email Trigger */}
-                                    {onboardingData.contacts_json && onboardingData.contacts_json.length > 0 && (
-                                        <div className="email-action-row">
-                                            <button
-                                                className="btn-send-email-sm"
-                                                disabled={sendingEmail}
-                                                onClick={async () => {
-                                                    setSendingEmail(true);
-                                                    try {
-                                                        const primary = onboardingData.contacts_json?.find(c => c.is_primary) || onboardingData.contacts_json?.[0];
-                                                        if (primary) {
-                                                            await onboardingAPI.sendReminder(projectId, {
-                                                                recipient_email: primary.email,
-                                                                recipient_name: primary.name,
-                                                                message: `Please complete the onboarding form.`
-                                                            });
-                                                            setSuccess('Reminder sent!');
-                                                        }
-                                                    } catch { setError('Failed to send'); }
-                                                    finally { setSendingEmail(false); }
-                                                }}
-                                            >
-                                                {sendingEmail ? 'Sending...' : '📧 Send Reminder'}
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
 
-                                {/* Auto-Reminder Settings */}
-                                <div className="form-card highlight-section">
-                                    <h3>🔔 Auto-Reminders</h3>
-                                    <label className="toggle-row">
-                                        <span>Enable auto-reminders</span>
-                                        <input
-                                            type="checkbox"
-                                            checked={onboardingData.auto_reminder_enabled}
-                                            onChange={(e) => {
-                                                onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval)
-                                                    .then(() => loadOnboardingData())
-                                                    .catch(() => setError('Failed to update'));
-                                            }}
-                                        />
-                                    </label>
-                                    {onboardingData.auto_reminder_enabled && (
-                                        <div className="reminder-info-sm">
-                                            <span>Current interval: {onboardingData.reminder_interval_hours || 24}h</span>
-                                            <span>Next: {onboardingData.next_reminder_at ? new Date(onboardingData.next_reminder_at).toLocaleDateString() : 'Pending'}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
 
                         {/* Read-Only Details for Managers/Admins/Others */}
                         {(user?.role !== 'CONSULTANT' || !isAssignedToProject) && (

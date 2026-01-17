@@ -3335,9 +3335,27 @@
         /* Consultant Actions Grid */
         .consultant-actions-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 24px;
             margin-bottom: 24px;
+        }
+
+        .consultant-actions-section h2 {
+            margin-bottom: 16px;
+            margin-top: 24px;
+            font-size: 1.25rem;
+            color: #1e293b;
+        }
+
+        .invite-action {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .invite-text {
+            font-size: 0.9rem;
+            color: #64748b;
         }
 
         @media (max-width: 768px) {
