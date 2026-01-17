@@ -838,32 +838,34 @@ export default function ProjectDetailPage() {
                         )}
                     </div>
 
-                    {/* Website Images */}
-                    <div className="readonly-field" style={fieldStyle}>
-                        <label>Website Images</label>
-                        {getImageItems().length ? (
-                            <div className="images-grid">
-                                {getImageItems().map((img) => (
-                                    <div key={img.key} className="image-card">
-                                        <div className="image-preview">
-                                            <img
-                                                src={img.url}
-                                                alt={img.name}
-                                                onClick={() => setPreviewImage(img.url)}
-                                                title="Click to preview"
-                                            />
+                    {/* Website Images - Hidden for Admin */}
+                    {user?.role !== 'ADMIN' && (
+                        <div className="readonly-field" style={fieldStyle}>
+                            <label>Website Images</label>
+                            {getImageItems().length ? (
+                                <div className="images-grid">
+                                    {getImageItems().map((img) => (
+                                        <div key={img.key} className="image-card">
+                                            <div className="image-preview">
+                                                <img
+                                                    src={img.url}
+                                                    alt={img.name}
+                                                    onClick={() => setPreviewImage(img.url)}
+                                                    title="Click to preview"
+                                                />
+                                            </div>
+                                            <div className="image-info">
+                                                <span className="image-name">{img.name}</span>
+                                                <a className="link-download" href={img.url} download>⬇</a>
+                                            </div>
                                         </div>
-                                        <div className="image-info">
-                                            <span className="image-name">{img.name}</span>
-                                            <a className="link-download" href={img.url} download>⬇</a>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <span className="empty">Not provided</span>
-                        )}
-                    </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <span className="empty">Not provided</span>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Copy Text - Read Only */}
