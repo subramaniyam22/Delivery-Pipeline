@@ -705,6 +705,24 @@ export default function ProjectDetailPage() {
         ];
     };
 
+    const getAllOnboardingItems = () => {
+        if (!onboardingData) return [];
+        const req = getRequirementsChecklistItems();
+
+        // Essential Items (matching Client Onboarding logic)
+        const essentialItems = [
+            { label: 'Primary Contact', filled: onboardingData.contacts_json?.some((c: any) => c.is_primary) },
+            { label: 'Company Logo', filled: !!(onboardingData.logo_url || onboardingData.logo_file_path) },
+            { label: 'Website Images', filled: (onboardingData.images_json?.length || 0) > 0 },
+            { label: 'Copy Text', filled: !!(onboardingData.copy_text || onboardingData.use_custom_copy) },
+            { label: 'WCAG Requirements', filled: onboardingData.wcag_confirmed },
+            { label: 'Privacy Policy', filled: !!(onboardingData.privacy_policy_url || onboardingData.privacy_policy_text) },
+            { label: 'Theme / Template', filled: !!(onboardingData.theme_preference || onboardingData.selected_template_id) }
+        ];
+
+        return [...essentialItems, ...req];
+    };
+
     const renderReadonlyOnboardingDetails = () => {
         const requirements = onboardingData?.requirements_json || {};
         const hasRequirements = Object.keys(requirements).length > 0;
@@ -1649,7 +1667,7 @@ export default function ProjectDetailPage() {
                             <h2>👥 Team Assignment</h2>
                             {canAssignTeam && (
                                 <button className="btn-add" onClick={() => setShowTeamModal(true)}>
-                                    âœï¸ Manage Team
+                                    ✏️ Manage Team
                                 </button>
                             )}
                             {user?.role === 'MANAGER' && user?.region && (
@@ -1731,12 +1749,12 @@ export default function ProjectDetailPage() {
                         <div className="summary-card">
                             <div className="summary-header">
                                 <div className="summary-progress">
-                                    <div className="progress-ring-large" style={{ '--progress': completionStatus?.completion_percentage || 0 } as React.CSSProperties}>
-                                        <span className="progress-value-large">{completionStatus?.completion_percentage || 0}%</span>
+                                    <div className="progress-ring-large" style={{ '--progress': Math.round((getAllOnboardingItems().filter(i => i.filled).length / getAllOnboardingItems().length) * 100) || 0 } as React.CSSProperties}>
+                                        <span className="progress-value-large">{Math.round((getAllOnboardingItems().filter(i => i.filled).length / getAllOnboardingItems().length) * 100) || 0}%</span>
                                     </div>
                                     <div className="progress-details">
-                                        <h4>{completionStatus?.completed_tasks || 0} of {completionStatus?.total_required_tasks || 0} Items Provided</h4>
-                                        <p className="progress-subtitle">{(completionStatus?.total_required_tasks || 0) - (completionStatus?.completed_tasks || 0)} items pending</p>
+                                        <h4>{getAllOnboardingItems().filter(i => i.filled).length} of {getAllOnboardingItems().length} Items Provided</h4>
+                                        <p className="progress-subtitle">{getAllOnboardingItems().length - getAllOnboardingItems().filter(i => i.filled).length} items pending</p>
                                     </div>
                                 </div>
 
@@ -1746,7 +1764,7 @@ export default function ProjectDetailPage() {
                                 <div className="checklist-grid">
                                     {/* Essential Items */}
                                     <div className={`checklist-item ${onboardingData.contacts_json?.some((c: any) => c.is_primary) ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.contacts_json?.some((c: any) => c.is_primary) ? '✅' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.contacts_json?.some((c: any) => c.is_primary) ? '✅' : '❌'}</span>
                                         <div className="checklist-content">
                                             <span className="checklist-label">Primary Contact</span>
                                             {!onboardingData.contacts_json?.some((c: any) => c.is_primary) && onboardingData.missing_fields_eta_json?.['Primary Contact'] && (
@@ -1756,7 +1774,7 @@ export default function ProjectDetailPage() {
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.logo_url || onboardingData.logo_file_path ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.logo_url || onboardingData.logo_file_path ? '✅' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.logo_url || onboardingData.logo_file_path ? '✅' : '❌'}</span>
                                         <div className="checklist-content">
                                             <span className="checklist-label">Company Logo</span>
                                             {(!onboardingData.logo_url && !onboardingData.logo_file_path) && onboardingData.missing_fields_eta_json?.['Company Logo'] && (
@@ -1766,17 +1784,17 @@ export default function ProjectDetailPage() {
                                     </div>
 
                                     <div className={`checklist-item ${(onboardingData.images_json?.length || 0) > 0 ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{(onboardingData.images_json?.length || 0) > 0 ? '✅' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{(onboardingData.images_json?.length || 0) > 0 ? '✅' : '❌'}</span>
                                         <span className="checklist-label">Website Images</span>
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.copy_text || onboardingData.use_custom_copy ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? '✅' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.copy_text || onboardingData.use_custom_copy ? '✅' : '❌'}</span>
                                         <span className="checklist-label">Copy Text</span>
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.wcag_confirmed ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.wcag_confirmed ? '✅' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.wcag_confirmed ? '✅' : '❌'}</span>
                                         <div className="checklist-content">
                                             <span className="checklist-label">WCAG Requirements</span>
                                             {!onboardingData.wcag_confirmed && onboardingData.missing_fields_eta_json?.['WCAG Requirements'] && (
@@ -1786,19 +1804,19 @@ export default function ProjectDetailPage() {
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? '✅' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.privacy_policy_url || onboardingData.privacy_policy_text ? '✅' : '❌'}</span>
                                         <span className="checklist-label">Privacy Policy</span>
                                     </div>
 
                                     <div className={`checklist-item ${onboardingData.theme_preference || onboardingData.selected_template_id ? 'provided' : 'pending'}`}>
-                                        <span className="checklist-icon">{onboardingData.theme_preference || onboardingData.selected_template_id ? '✅' : 'âŒ'}</span>
+                                        <span className="checklist-icon">{onboardingData.theme_preference || onboardingData.selected_template_id ? '✅' : '❌'}</span>
                                         <span className="checklist-label">Theme / Template</span>
                                     </div>
 
                                     {/* Detailed Requirements */}
                                     {getRequirementsChecklistItems().map((item) => (
                                         <div key={item.label} className={`checklist-item ${item.filled ? 'provided' : 'pending'}`}>
-                                            <span className="checklist-icon">{item.filled ? '✅' : 'âŒ'}</span>
+                                            <span className="checklist-icon">{item.filled ? '✅' : '❌'}</span>
                                             <div className="checklist-content">
                                                 <span className="checklist-label">{item.label}</span>
                                                 {!item.filled && onboardingData.missing_fields_eta_json?.[item.label] && (
