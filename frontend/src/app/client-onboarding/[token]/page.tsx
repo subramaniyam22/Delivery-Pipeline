@@ -81,6 +81,211 @@ interface OnboardingFormData {
     copy_pricing: PricingTier[];
 }
 
+const ReviewModal = ({ onClose, onConfirm, phases, requirements }: any) => {
+    return (
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-content review-modal" onClick={e => e.stopPropagation()}>
+                <div className="review-header">
+                    <h2 style={{ margin: 0, fontSize: '20px' }}>Review & Submit</h2>
+                    <p style={{ margin: '4px 0 0', color: '#64748b' }}>Please check your progress before final submission.</p>
+                </div>
+                <div className="review-body">
+                    <div style={{ marginBottom: '24px' }}>
+                        <h4 style={{ margin: '0 0 12px', fontSize: '14px', textTransform: 'uppercase', color: '#94a3b8' }}>Completion Summary</h4>
+                        <div className="phase-summary-list">
+                            {phases.map((phase: any) => {
+                                const phaseFields = requirements.filter((r: any) => phase.fields.includes(r.id));
+                                const completed = phaseFields.filter((r: any) => r.provided).length;
+                                const total = phaseFields.length;
+                                const isComplete = completed === total && total > 0;
+
+                                return (
+                                    <div key={phase.id} className={`review-phase-item ${isComplete ? 'complete' : 'incomplete'}`}>
+                                        <span style={{ fontWeight: 500 }}>{phase.title.split(':')[0]}</span>
+                                        <span className="status">
+                                            {isComplete ? '✓ Complete' : `${completed}/${total} steps`}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="timeline-info" style={{ background: '#f0f9ff', padding: '16px', borderRadius: '8px', border: '1px solid #bae6fd' }}>
+                        <h4 style={{ margin: '0 0 8px', color: '#0369a1' }}>What happens next?</h4>
+                        <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '14px', color: '#0c4a6e' }}>
+                            <li>Our team will review your submission within 24 hours.</li>
+                            <li>We'll schedule a kickoff call if we have any questions.</li>
+                            <li>Development begins immediately after approval.</li>
+                        </ul>
+                    </div>
+                </div>
+                <div className="review-footer">
+                    <button className="btn-secondary" onClick={onClose}>Keep Editing</button>
+                    <button className="btn-primary" onClick={onConfirm}>Confirm & Submit Project</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const PHASE_DEFINITIONS = [
+    { id: 'phase-1', title: 'Phase 1: Project Basics', fields: ['project_summary', 'project_notes', 'phase_number'] },
+    { id: 'phase-2', title: 'Phase 2: Brand & Visual Assets', fields: ['logo', 'images', 'copy', 'theme'] },
+    { id: 'phase-3', title: 'Phase 3: Design Preferences', fields: ['brand_guidelines', 'color_selection', 'font_selection', 'custom_graphics', 'navigation'] },
+    { id: 'phase-4', title: 'Phase 4: Property Content', fields: ['floor_plans', 'virtual_tours', 'poi', 'stock_images', 'sitemap', 'specials'] },
+    { id: 'phase-5', title: 'Phase 5: Compliance & Legal', fields: ['wcag', 'privacy'] },
+    { id: 'phase-6', title: 'Phase 6: Technical & Launch Setup', fields: ['pages', 'domain', 'vanity', 'call_tracking'] }
+];
+
+const PhaseSection = ({
+    id,
+    title,
+    isExpanded,
+    onToggle,
+    completion,
+    children
+}: {
+    id: string;
+    title: string;
+    isExpanded: boolean;
+    onToggle: () => void;
+    completion: number;
+    children: React.ReactNode;
+}) => {
+    return (
+        <div
+            id={id}
+            className={`phase-section ${isExpanded ? 'active' : ''}`}
+            style={{
+                background: 'white',
+                border: isExpanded ? '1px solid #bfdbfe' : '1px solid #cbd5e1',
+                borderLeft: isExpanded ? '4px solid #2563eb' : '1px solid #cbd5e1',
+                borderRadius: '12px',
+                marginBottom: '16px',
+                overflow: 'hidden',
+                boxShadow: isExpanded ? '0 10px 15px -3px rgba(0, 0, 0, 0.1)' : '0 2px 4px rgba(0,0,0,0.05)',
+                transition: 'all 0.2s'
+            }}
+        >
+            <div
+                className="phase-header"
+                onClick={onToggle}
+                style={{
+                    padding: '16px 24px',
+                    cursor: 'pointer',
+                    background: isExpanded ? '#eff6ff' : '#f8fafc',
+                    borderBottom: '1px solid transparent'
+                }}
+            >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                    <div className="phase-title">
+                        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>{title}</h3>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <div className="phase-progress" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div className="progress-bar-small" style={{ width: '100px', height: '6px', background: '#e2e8f0', borderRadius: '3px' }}>
+                                <div className="fill" style={{ width: `${completion}%`, height: '100%', background: '#10b981', transition: 'width 0.3s' }} />
+                            </div>
+                            <span className="percentage" style={{ fontSize: '13px', color: '#64748b' }}>{Math.round(completion)}%</span>
+                        </div>
+                        <div className={`toggle-icon ${isExpanded ? 'expanded' : ''}`} style={{ fontSize: '18px', color: '#64748b' }}>
+                            {isExpanded ? '−' : '+'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {isExpanded && (
+                <div className="phase-content" style={{ padding: '24px' }}>
+                    {children}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const ChecklistPanel = ({
+    requirements,
+    onScrollTo
+}: {
+    requirements: any[];
+    onScrollTo: (phaseId: string) => void;
+}) => {
+    const getPhaseStatus = (phaseId: string) => {
+        const phaseDef = PHASE_DEFINITIONS.find(p => p.id === phaseId);
+        if (!phaseDef) return { completed: 0, total: 0 };
+
+        const phaseFields = requirements.filter(r => phaseDef.fields.includes(r.id));
+        const completed = phaseFields.filter(r => r.provided).length;
+        return { completed, total: phaseFields.length, isComplete: completed === phaseFields.length && phaseFields.length > 0 };
+    };
+
+    const overallCompleted = requirements.filter(r => r.provided).length;
+    const overallTotal = requirements.length;
+
+    return (
+        <div className="checklist-panel">
+            <div className="checklist-header">
+                <h3>What's left to complete</h3>
+                <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
+                    {overallCompleted}/{overallTotal} items completed
+                </div>
+                <div style={{ height: '4px', background: '#e2e8f0', borderRadius: '2px', marginTop: '4px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', background: '#2563eb', width: `${(overallCompleted / overallTotal) * 100}%`, transition: 'width 0.3s' }} />
+                </div>
+            </div>
+            <div className="checklist-content">
+                {PHASE_DEFINITIONS.map(phase => {
+                    const status = getPhaseStatus(phase.id);
+                    if (status.total === 0) return null; // Skip if no fields in this phase (shouldn't happen with correct mapping)
+
+                    return (
+                        <div
+                            key={phase.id}
+                            className={`checklist-item ${status.isComplete ? 'completed' : ''}`}
+                            onClick={() => onScrollTo(phase.id)}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '12px',
+                                padding: '12px 16px',
+                                borderBottom: '1px solid #f1f5f9',
+                                cursor: 'pointer',
+                                background: status.isComplete ? '#effdf5' : 'transparent',
+                                color: status.isComplete ? '#10b981' : '#475569'
+                            }}
+                        >
+                            <div style={{
+                                width: '16px',
+                                height: '16px',
+                                border: `1.5px solid ${status.isComplete ? '#10b981' : '#cbd5e1'}`,
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                background: status.isComplete ? '#10b981' : 'transparent',
+                                color: 'white',
+                                fontSize: '10px'
+                            }}>
+                                {status.isComplete && '✓'}
+                            </div>
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{ fontWeight: 600, fontSize: '14px', color: '#1e293b' }}>{phase.title.split(':')[0]}</span>
+                                <span style={{ fontSize: '12px', fontWeight: 500, color: status.isComplete ? '#10b981' : '#64748b' }}>
+                                    {status.completed}/{status.total}
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '18px', color: '#cbd5e1', marginLeft: '8px' }}>›</div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
 export default function ClientOnboardingPage() {
     const params = useParams();
     const token = params.token as string;
@@ -88,10 +293,78 @@ export default function ClientOnboardingPage() {
     const [formData, setFormData] = useState<OnboardingFormData | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+
+
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [missingFieldsEta, setMissingFieldsEta] = useState<Record<string, string>>({});
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [showChatbot, setShowChatbot] = useState(false);
+    const [chatMessages, setChatMessages] = useState([
+        { text: "👋 Hi there! I'm here to help you complete your onboarding. Do you have any questions about the form or requirements?", isBot: true }
+    ]);
+
+
+    const [chatInput, setChatInput] = useState('');
+
+    // Phase 2 & 3 Enhancements State
+    const [showBrandGuidelines, setShowBrandGuidelines] = useState(false);
+    const [showReviewModal, setShowReviewModal] = useState(false);
+    const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+
+    // Effect to initialize toggles based on data
+    useEffect(() => {
+        if (formData?.data) {
+            if (formData.data.requirements?.brand_guidelines_available) setShowBrandGuidelines(true);
+        }
+    }, [formData]);
+
+    const handleSitemapPreset = (preset: string) => {
+        if (!formData) return;
+        const current = formData.data.requirements?.navigation_notes || '';
+        const newLine = current ? '\n' : '';
+        updateRequirements({ navigation_notes: current + newLine + '- ' + preset });
+    };
+
+    const handleInitialSubmit = () => {
+        setShowReviewModal(true);
+    };
+
+    const confirmSubmit = async () => {
+        setSubmissionStatus('submitting');
+        await submitClientForm();
+        setSubmissionStatus('success'); // OR error, handled in submitClientForm via alert currently
+        setShowReviewModal(false);
+    };
+
+    const chatContainerRef = useRef<HTMLDivElement>(null);
+
+    const scrollToBottom = () => {
+        if (chatContainerRef.current) {
+            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+    };
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [chatMessages, showChatbot]);
+
+    const handleSendMessage = (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!chatInput.trim()) return;
+
+        const newUserMsg = { text: chatInput, isBot: false };
+        setChatMessages(prev => [...prev, newUserMsg]);
+        setChatInput('');
+
+        // Simulate bot response
+        setTimeout(() => {
+            setChatMessages(prev => [...prev, {
+                text: "Thanks for your message! Our team has been notified and will review your question shortly. In the meantime, please continue filling out the required fields.",
+                isBot: true
+            }]);
+        }, 1000);
+    };
 
     const logoInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
@@ -135,6 +408,42 @@ export default function ClientOnboardingPage() {
         }
     };
 
+
+    const [activePhase, setActivePhase] = useState<string | null>('phase-1');
+
+    // AI Contextual Hints
+    useEffect(() => {
+        const HINTS: Record<string, string> = {
+            'phase-1': "Focus on the project summary. A clear description helps us build the right site structure.",
+            'phase-2': "For images, high-resolution works best. If you don't have them yet, you can upload placeholders.",
+            'phase-3': "Need help with colors? Modern property sites often use neutral backdrops with one bold accent color.",
+            'phase-4': "Don't worry if you don't have all floor plans ready. You can stick to the main unit types for now.",
+            'phase-5': "WCAG AA is the standard for accessibility. I've pre-selected it to ensure compliance.",
+            'phase-6': "Almost done! Configuring the right domain now prevents launch delays later."
+        };
+
+        if (activePhase && HINTS[activePhase]) {
+            setChatMessages(prev => {
+                // Avoid duplicate hints
+                if (prev[prev.length - 1]?.text === HINTS[activePhase]) return prev;
+                return [...prev, { text: HINTS[activePhase], isBot: true }];
+            });
+        }
+    }, [activePhase]);
+
+    const togglePhase = (phaseId: string) => {
+        setActivePhase(prev => prev === phaseId ? null : phaseId);
+    };
+
+    const scrollToPhase = (phaseId: string) => {
+        setActivePhase(phaseId);
+        setTimeout(() => {
+            const element = document.getElementById(phaseId);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }, 100);
+    };
 
     // Helper to update local state without triggering API save (for controlled inputs)
     const updateLocalData = (updates: Partial<OnboardingFormData['data']>) => {
@@ -464,687 +773,793 @@ export default function ClientOnboardingPage() {
             {error && <div className="alert alert-error">{error}</div>}
             {success && <div className="alert alert-success">{success}</div>}
 
-            {/* Missing Fields Alert */}
-            {getAllRequirements().filter(i => !i.provided).length > 0 ? (
-                <div className="missing-alert">
-                    <h3>⚠️ Action Required</h3>
-                    <p>Please complete the following items ({getAllRequirements().filter(i => !i.provided).length} remaining):</p>
-                    <div className="missing-fields-grid">
-                        {getAllRequirements().filter(i => !i.provided).map((item, i) => (
-                            <div key={item.id} className="missing-field-row">
-                                <span className="checklist-icon">❌</span>
-                                <div className="missing-field-name">{item.label}</div>
-                                <div className="missing-field-actions">
-                                    <button type="button" className="eta-btn" onClick={() => setEtaInDays(item.label, 1)}>1 day</button>
-                                    <button type="button" className="eta-btn" onClick={() => setEtaInDays(item.label, 2)}>2 days</button>
-                                    <input
-                                        type="date"
-                                        className="eta-input"
-                                        value={missingFieldsEta[item.label] || ''}
-                                        onChange={(e) =>
-                                            setMissingFieldsEta(prev => ({ ...prev, [item.label]: e.target.value }))
-                                        }
-                                    />
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            ) : (
-                <div className="missing-alert success-alert">
-                    <h3>✅ All Set!</h3>
-                    <p>You have provided all necessary information. Please review and submit.</p>
-                </div>
-            )}
+            <div className="layout-container">
+                <main className="main-content">
+                    {/* Phase 1: Project Basics */}
+                    <PhaseSection
+                        id="phase-1"
+                        title="Phase 1: Project Basics"
+                        isExpanded={activePhase === 'phase-1'}
+                        onToggle={() => togglePhase('phase-1')}
+                        completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[0].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[0].fields.length) * 100}
+                    >
+                        <div className="form-group">
+                            <label>Project Summary</label>
+                            <textarea
+                                value={formData.data.requirements?.project_summary || ''}
+                                onChange={(e) => updateRequirementsLocal({ project_summary: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                rows={3}
+                                placeholder="Brief summary of the project requirements..."
+                            />
+                        </div>
 
-            <style jsx>{`
-                .missing-fields-grid {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 8px;
-                    margin-top: 16px;
-                    max-height: 300px;
-                    overflow-y: auto;
-                    padding-right: 8px; /* For scrollbar */
-                }
-            `}</style>
+                        <div className="form-group">
+                            <label>Project Notes (applies to all locations)</label>
+                            <textarea
+                                value={formData.data.requirements?.project_notes || ''}
+                                onChange={(e) => updateRequirementsLocal({ project_notes: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                rows={3}
+                                placeholder="Notes that apply to all locations..."
+                            />
+                        </div>
 
-            <main className="form-container">
-                {/* Project Requirements */}
-                <section className="form-section">
-                    <h2>🧾 Project Requirements</h2>
-                    <p className="section-desc">Share details to guide the project across all locations.</p>
+                        <div className="form-group">
+                            <label>Phase #</label>
+                            <select
+                                value={formData.data.requirements?.phase_number || ''}
+                                onChange={(e) => updateRequirements({ phase_number: e.target.value })}
+                            >
+                                <option value="">Select phase</option>
+                                {phaseOptions.map(option => (
+                                    <option key={option} value={option}>{option}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </PhaseSection>
 
-                    <div className="form-group">
-                        <label>Project Summary</label>
-                        <textarea
-                            value={formData.data.requirements?.project_summary || ''}
-                            onChange={(e) => updateRequirementsLocal({ project_summary: e.target.value })}
-                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                            rows={3}
-                            placeholder="Brief summary of the project requirements..."
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label>Project Notes (applies to all locations)</label>
-                        <textarea
-                            value={formData.data.requirements?.project_notes || ''}
-                            onChange={(e) => updateRequirementsLocal({ project_notes: e.target.value })}
-                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                            rows={3}
-                            placeholder="Notes that apply to all locations..."
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label>Phase #</label>
-                        <select
-                            value={formData.data.requirements?.phase_number || ''}
-                            onChange={(e) => updateRequirements({ phase_number: e.target.value })}
-                        >
-                            <option value="">Select phase</option>
-                            {phaseOptions.map(option => (
-                                <option key={option} value={option}>{option}</option>
-                            ))}
-                        </select>
-                    </div>
-                </section>
-
-                {/* Logo Upload Section */}
-                <section className="form-section">
-                    <h2>🖼️ Company Logo</h2>
-                    <p className="section-desc">Upload your company logo (PNG, SVG, or JPEG)</p>
-
-                    <div className="upload-area">
-                        {formData.data.logo_url || formData.data.logo_file_path ? (
-                            <div className="logo-preview-container">
-                                <div className="logo-preview-card">
-                                    <img
-                                        src={getAssetUrl(formData.data.logo_url || formData.data.logo_file_path)}
-                                        alt="Company Logo"
-                                        className="logo-thumbnail"
-                                        onClick={() => setPreviewImage(getAssetUrl(formData.data.logo_url || formData.data.logo_file_path))}
-                                        title="Click to preview"
-                                    />
-                                    <div className="logo-actions">
-                                        <div className="preview-badge">✓ Logo Uploaded</div>
-                                        <div className="logo-btn-group">
-                                            <button className="btn-replace" onClick={() => logoInputRef.current?.click()}>
-                                                Replace
+                    {/* Phase 2: Brand & Visual Assets */}
+                    <PhaseSection
+                        id="phase-2"
+                        title="Phase 2: Brand & Visual Assets"
+                        isExpanded={activePhase === 'phase-2'}
+                        onToggle={() => togglePhase('phase-2')}
+                        completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[1].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[1].fields.length) * 100}
+                    >
+                        {/* Logo Section */}
+                        <div className="form-section-inner" style={{ marginBottom: '32px' }}>
+                            <h4 style={{ margin: '0 0 16px', fontSize: '15px' }}>Company Logo</h4>
+                            <div className="upload-area">
+                                {formData.data.logo_url || formData.data.logo_file_path ? (
+                                    <div className="logo-preview-container">
+                                        <div className="logo-preview-card">
+                                            <button
+                                                className="btn-remove-logo-x"
+                                                onClick={handleDeleteLogo}
+                                                title="Remove logo"
+                                            >
+                                                ×
                                             </button>
-                                            <button className="btn-remove-logo" onClick={handleDeleteLogo}>
-                                                Remove
-                                            </button>
+                                            <img
+                                                src={getAssetUrl(formData.data.logo_url || formData.data.logo_file_path)}
+                                                alt="Company Logo"
+                                                className="logo-thumbnail"
+                                                onClick={() => setPreviewImage(getAssetUrl(formData.data.logo_url || formData.data.logo_file_path))}
+                                                title="Click to preview"
+                                            />
+                                            <div className="logo-actions">
+                                                <div className="preview-badge">✓ Logo Uploaded</div>
+                                                <div className="logo-btn-group">
+                                                    <button className="btn-replace" onClick={() => logoInputRef.current?.click()}>
+                                                        Replace Logo
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="upload-placeholder" onClick={() => logoInputRef.current?.click()}>
-                                <span className="upload-icon">📤</span>
-                                <span>Click to upload logo</span>
-                            </div>
-                        )}
-                        <input
-                            ref={logoInputRef}
-                            type="file"
-                            accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                            onChange={handleLogoUpload}
-                            hidden
-                        />
-                    </div>
-
-                    <div className="or-divider"><span>or</span></div>
-
-                    <div className="url-input">
-                        <label>Logo URL</label>
-                        <input
-                            type="url"
-                            value={formData.data.logo_url || ''}
-                            onChange={(e) => updateLocalData({ logo_url: e.target.value })}
-                            onBlur={() => saveFormData({ logo_url: formData.data.logo_url })}
-                            placeholder="https://example.com/logo.png"
-                        />
-                    </div>
-                </section>
-
-                {/* Images Upload Section */}
-                <section className="form-section">
-                    <h2>📸 Website Images</h2>
-                    <p className="section-desc">Upload images for your website (hero images, product photos, etc.)</p>
-
-                    <div className="images-grid">
-                        {formData.data.images?.map((img, i) => {
-                            const url = getAssetUrl(img.url || img.file_path || (typeof img === 'string' ? img : ''));
-                            return (
-                                <div key={i} className="image-card">
-                                    <div className="image-preview">
-                                        <img
-                                            src={url}
-                                            alt={img.filename || 'Uploaded image'}
-                                            onClick={() => setPreviewImage(url)}
-                                            style={{ cursor: 'pointer' }}
-                                            title="Click to preview"
-                                        />
-                                        <button
-                                            className="btn-delete"
-                                            onClick={() => handleDeleteImage(i)}
-                                            title="Delete image"
-                                        >
-                                            ×
-                                        </button>
+                                ) : (
+                                    <div className="upload-placeholder" onClick={() => logoInputRef.current?.click()}>
+                                        <span className="upload-icon">📤</span>
+                                        <span>Click to upload logo</span>
                                     </div>
-                                    <div className="image-info">
-                                        <span className="image-name">{img.filename || 'Website Image'}</span>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                        <div className="upload-placeholder-card" onClick={() => imageInputRef.current?.click()}>
-                            <span className="upload-icon">+</span>
-                            <span>Add Image</span>
+                                )}
+                                <input
+                                    ref={logoInputRef}
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                                    onChange={handleLogoUpload}
+                                    hidden
+                                />
+                            </div>
                         </div>
-                    </div>
-                    <input
-                        ref={imageInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={handleImageUpload}
-                        hidden
-                    />
-                </section>
 
-                {/* Copy Text Section with Pricing */}
-                <section className="form-section">
-                    <h2>📝 Website Copy</h2>
-                    <p className="section-desc">Provide your website text content or request custom copywriting</p>
+                        {/* Images Section */}
+                        <div className="form-section-inner" style={{ marginBottom: '32px' }}>
+                            <div className="section-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                <h4 style={{ margin: 0, fontSize: '15px' }}>Website Images</h4>
+                                <button className="btn-add-header" onClick={() => imageInputRef.current?.click()}>
+                                    + Add Image
+                                </button>
+                            </div>
+                            <div className="images-grid">
+                                <div className="info-box-blue" style={{ gridColumn: '1/-1', marginBottom: '16px', background: '#eff6ff', padding: '16px', borderRadius: '8px', border: '1px solid #dbeafe' }}>
+                                    <h5 style={{ margin: '0 0 8px 0', color: '#1e40af', fontSize: '14px' }}>Recommended Approach</h5>
+                                    <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '13px', color: '#1e3a8a' }}>
+                                        <li><strong>Hero Image:</strong> High impact, wide aspect ratio (min 1920px wide).</li>
+                                        <li><strong>Amenities:</strong> Pool, Gym, Lounge, Office spaces.</li>
+                                        <li><strong>Interiors:</strong> Living room, Kitchen, Bedroom.</li>
+                                    </ul>
+                                </div>
 
-                    <div className="copy-options">
-                        <label className="option-card">
+                                {formData.data.images?.length === 0 && (
+                                    <div className="upload-placeholder" onClick={() => imageInputRef.current?.click()}>
+                                        <span className="upload-icon">📷</span>
+                                        <span>No images uploaded yet. Click to add.</span>
+                                        <span style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>JPG, PNG (Max 5MB)</span>
+                                    </div>
+                                )}
+                                {formData.data.images?.map((img, i) => {
+                                    const url = getAssetUrl(img.url || img.file_path || (typeof img === 'string' ? img : ''));
+                                    return (
+                                        <div key={i} className="image-card">
+                                            <div className="image-preview">
+                                                <img
+                                                    src={url}
+                                                    alt={img.filename || 'Uploaded image'}
+                                                    onClick={() => setPreviewImage(url)}
+                                                    style={{ cursor: 'pointer' }}
+                                                    title="Click to preview"
+                                                />
+                                                <button
+                                                    className="btn-delete"
+                                                    onClick={() => handleDeleteImage(i)}
+                                                    title="Delete image"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                            <div className="image-info">
+                                                <span className="image-name">{img.filename || 'Website Image'}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                             <input
-                                type="radio"
-                                name="copy_option"
-                                checked={!formData.data.use_custom_copy}
-                                onChange={() => saveFormData({ use_custom_copy: false })}
-                            />
-                            <div className="option-content">
-                                <h4>I'll Provide My Own Copy</h4>
-                                <p>Enter your website text below</p>
-                            </div>
-                        </label>
-                        <label className="option-card">
-                            <input
-                                type="radio"
-                                name="copy_option"
-                                checked={formData.data.use_custom_copy}
-                                onChange={() => saveFormData({ use_custom_copy: true })}
-                            />
-                            <div className="option-content">
-                                <h4>Request Custom Copywriting</h4>
-                                <p>Professional writers will create your content</p>
-                            </div>
-                        </label>
-                    </div>
-
-                    {!formData.data.use_custom_copy ? (
-                        <div className="copy-input">
-                            <label>Your Website Copy</label>
-                            <textarea
-                                value={formData.data.copy_text || ''}
-                                onChange={(e) => updateLocalData({ copy_text: e.target.value })}
-                                onBlur={() => saveFormData({ copy_text: formData.data.copy_text })}
-                                placeholder="Enter all your website text content here..."
-                                rows={6}
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={handleImageUpload}
+                                hidden
                             />
                         </div>
-                    ) : (
-                        <div className="pricing-section">
-                            <h4>💰 Select a Copywriting Package</h4>
-                            <div className="pricing-grid">
-                                {formData.copy_pricing.map((tier) => (
-                                    <div
-                                        key={tier.words}
-                                        className={`pricing-card ${formData.data.custom_copy_word_count === tier.words ? 'selected' : ''}`}
-                                        onClick={() => selectCopyPricing(tier)}
-                                    >
-                                        <div className="price">${tier.price}</div>
-                                        <div className="tier-name">{tier.description}</div>
-                                        {formData.data.custom_copy_word_count === tier.words && (
-                                            <div className="selected-badge">✓ Selected</div>
-                                        )}
+
+                        {/* Copy Section */}
+                        <div className="form-section-inner" style={{ marginBottom: '32px' }}>
+                            <h4 style={{ margin: '0 0 16px', fontSize: '15px' }}>Website Copy</h4>
+                            <div className="copy-options">
+                                <label className="option-card">
+                                    <input
+                                        type="radio"
+                                        name="copy_option"
+                                        checked={!formData.data.use_custom_copy}
+                                        onChange={() => saveFormData({ use_custom_copy: false })}
+                                    />
+                                    <div className="option-content">
+                                        <h4>I'll Provide My Own Copy</h4>
+                                        <p>Enter your website text below</p>
                                     </div>
-                                ))}
+                                </label>
+                                <label className="option-card">
+                                    <input
+                                        type="radio"
+                                        name="copy_option"
+                                        checked={formData.data.use_custom_copy}
+                                        onChange={() => saveFormData({ use_custom_copy: true })}
+                                    />
+                                    <div className="option-content">
+                                        <h4>Request Custom Copywriting</h4>
+                                        <p>Professional writers will create your content</p>
+                                    </div>
+                                </label>
                             </div>
-                            {formData.data.custom_copy_final_price && (
-                                <div className="final-price">
-                                    <strong>Your Selected Package:</strong> ${formData.data.custom_copy_final_price}
-                                    <p>Up to {formData.data.custom_copy_word_count} words</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </section>
 
-                {/* Theme Templates Section */}
-                <section className="form-section">
-                    <h2>🎨 Website Template</h2>
-                    <p className="section-desc">Choose a design template for your website</p>
-
-                    <div className="templates-grid">
-                        {formData.templates.map((template) => (
-                            <div
-                                key={template.id}
-                                className={`template-card ${formData.data.selected_template_id === template.id ? 'selected' : ''}`}
-                                onClick={() => selectTemplate(template.id)}
-                            >
-                                <div className="template-preview" style={{
-                                    background: `linear-gradient(135deg, ${template.colors.primary} 0%, ${template.colors.secondary} 100%)`
-                                }}>
-                                    {formData.data.selected_template_id === template.id && (
-                                        <div className="selected-overlay">✓</div>
-                                    )}
+                            {!formData.data.use_custom_copy ? (
+                                <div className="copy-input">
+                                    <label>Your Website Copy</label>
+                                    <textarea
+                                        value={formData.data.copy_text || ''}
+                                        onChange={(e) => updateLocalData({ copy_text: e.target.value })}
+                                        onBlur={() => saveFormData({ copy_text: formData.data.copy_text })}
+                                        placeholder="Enter all your website text content here..."
+                                        rows={6}
+                                    />
                                 </div>
-                                <div className="template-info">
-                                    <h4>{template.name}</h4>
-                                    <p>{template.description}</p>
-                                    <div className="template-features">
-                                        {template.features.slice(0, 2).map((f, i) => (
-                                            <span key={i} className="feature-tag">{f}</span>
+                            ) : (
+                                <div className="pricing-section">
+                                    <div className="pricing-grid">
+                                        {formData.copy_pricing.map((tier) => (
+                                            <div
+                                                key={tier.words}
+                                                className={`pricing-card ${formData.data.custom_copy_word_count === tier.words ? 'selected' : ''}`}
+                                                onClick={() => selectCopyPricing(tier)}
+                                            >
+                                                <div className="price">${tier.price}</div>
+                                                <div className="tier-name">{tier.description}</div>
+                                                {formData.data.custom_copy_word_count === tier.words && (
+                                                    <div className="selected-badge">✓ Selected</div>
+                                                )}
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
+                            )}
+                            <div className="form-group" style={{ marginTop: '16px' }}>
+                                <label>Copy Text Scope – Additional Notes</label>
+                                <textarea
+                                    value={formData.data.requirements?.copy_scope_notes || ''}
+                                    onChange={(e) => updateRequirements({ copy_scope_notes: e.target.value })}
+                                    rows={3}
+                                    placeholder="Additional notes about copy scope..."
+                                />
                             </div>
-                        ))}
-                    </div>
-
-                    <div className="form-group">
-                        <label>Template Direction</label>
-                        <div className="radio-group">
-                            <label>
-                                <input
-                                    type="radio"
-                                    name="template_mode"
-                                    checked={formData.data.requirements?.template_mode === 'NEW'}
-                                    onChange={() => updateRequirements({ template_mode: 'NEW' })}
-                                />
-                                New design
-                            </label>
-                            <label>
-                                <input
-                                    type="radio"
-                                    name="template_mode"
-                                    checked={formData.data.requirements?.template_mode === 'CLONE'}
-                                    onChange={() => updateRequirements({ template_mode: 'CLONE' })}
-                                />
-                                Clone from existing template
-                            </label>
                         </div>
-                    </div>
 
-                    <div className="form-group">
-                        <label>Reference links (optional)</label>
-                        <textarea
-                            value={formData.data.requirements?.template_references || ''}
-                            onChange={(e) => updateRequirementsLocal({ template_references: e.target.value })}
-                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                            rows={3}
-                            placeholder="Add links or notes for reference..."
-                        />
-                    </div>
-                </section>
+                        {/* Template Section */}
+                        <div className="form-section-inner">
+                            <h4 style={{ margin: '0 0 16px', fontSize: '15px' }}>Website Template</h4>
+                            <div className="form-group">
+                                <label>Template Direction</label>
+                                <div className="radio-group box-radio-group">
+                                    <label className={`radio-card ${formData.data.requirements?.template_mode !== 'NEW' ? 'selected' : ''}`}>
+                                        <input
+                                            type="radio"
+                                            name="template_mode"
+                                            checked={formData.data.requirements?.template_mode !== 'NEW'}
+                                            onChange={() => updateRequirements({ template_mode: 'CLONE' })}
+                                        />
+                                        <div className="radio-content">
+                                            <span className="radio-title">Clone from Validated Template</span>
+                                            <span className="radio-desc">Proven designs optimized for conversion</span>
+                                        </div>
+                                    </label>
+                                    <label className={`radio-card ${formData.data.requirements?.template_mode === 'NEW' ? 'selected' : ''}`}>
+                                        <input
+                                            type="radio"
+                                            name="template_mode"
+                                            checked={formData.data.requirements?.template_mode === 'NEW'}
+                                            onChange={() => updateRequirements({ template_mode: 'NEW' })}
+                                        />
+                                        <div className="radio-content">
+                                            <span className="radio-title">New Custom Design</span>
+                                            <span className="radio-desc">Unique design built from scratch</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
 
-                {/* WCAG Section */}
-                <section className="form-section">
-                    <h2>♿ Accessibility</h2>
-                    <div className="checkbox-group">
-                        <label>
-                            <input
-                                type="checkbox"
-                                checked={formData.data.wcag_compliance_required}
-                                onChange={(e) => saveFormData({
-                                    wcag_compliance_required: e.target.checked,
-                                    wcag_confirmed: true  // Mark as explicitly confirmed by client
-                                })}
-                            />
-                            WCAG Compliance Required
-                        </label>
-                    </div>
-                    {formData.data.wcag_compliance_required && (
+                            {formData.data.requirements?.template_mode !== 'NEW' ? (
+                                <div className="templates-grid">
+                                    {formData.templates.map((template) => (
+                                        <div
+                                            key={template.id}
+                                            className={`template-card ${formData.data.selected_template_id === template.id ? 'selected' : ''}`}
+                                            onClick={() => selectTemplate(template.id)}
+                                        >
+                                            <div className="template-preview">
+                                                {template.preview_url ? (
+                                                    <img src={template.preview_url} alt={template.name} className="template-thumb" />
+                                                ) : (
+                                                    <div className="template-thumb-placeholder" style={{
+                                                        background: `linear-gradient(135deg, ${template.colors.primary} 0%, ${template.colors.secondary} 100%)`
+                                                    }} />
+                                                )}
+                                                {formData.data.selected_template_id === template.id && (
+                                                    <div className="selected-overlay">✓</div>
+                                                )}
+                                            </div>
+                                            <div className="template-info">
+                                                <h4>{template.name}</h4>
+                                                <p>{template.description}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="new-design-container">
+                                    <div className="info-card highlight">
+                                        <div className="info-icon">✨</div>
+                                        <div>
+                                            <h4>Custom Design Package</h4>
+                                            <p>Our expert designers will create a fully unique website tailored to your brand identity.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="form-group" style={{ marginTop: '20px' }}>
+                                <label>Reference links (optional)</label>
+                                <textarea
+                                    value={formData.data.requirements?.template_references || ''}
+                                    onChange={(e) => updateRequirementsLocal({ template_references: e.target.value })}
+                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    rows={3}
+                                    placeholder="Add links to websites you like..."
+                                />
+                            </div>
+                        </div>
+                    </PhaseSection>
+
+                    {/* Phase 3: Design Preferences */}
+                    <PhaseSection
+                        id="phase-3"
+                        title="Phase 3: Design Preferences"
+                        isExpanded={activePhase === 'phase-3'}
+                        onToggle={() => togglePhase('phase-3')}
+                        completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[2].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[2].fields.length) * 100}
+                    >
+                        <div className="form-group">
+                            <div className="toggle-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                <label style={{ margin: 0 }}>Do you have existing Brand Guidelines?</label>
+                                <div className="toggle-switch-wrapper">
+                                    <label className="switch">
+                                        <input
+                                            type="checkbox"
+                                            checked={showBrandGuidelines}
+                                            onChange={(e) => {
+                                                setShowBrandGuidelines(e.target.checked);
+                                                updateRequirements({ brand_guidelines_available: e.target.checked });
+                                            }}
+                                        />
+                                        <span className="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            {showBrandGuidelines && (
+                                <textarea
+                                    className="animate-fadeIn"
+                                    value={formData.data.requirements?.brand_guidelines_details || ''}
+                                    onChange={(e) => updateRequirementsLocal({ brand_guidelines_details: e.target.value })}
+                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    rows={3}
+                                    placeholder="Paste a link to your brand book or describe your guidelines..."
+                                    style={{ marginTop: '8px' }}
+                                />
+                            )}
+                        </div>
+
                         <div className="select-group">
-                            <label>Compliance Level</label>
+                            <label>Color Selection</label>
                             <select
-                                value={formData.data.wcag_level}
-                                onChange={(e) => saveFormData({
-                                    wcag_level: e.target.value,
-                                    wcag_confirmed: true  // Mark as explicitly confirmed by client
-                                })}
+                                value={formData.data.requirements?.color_selection || ''}
+                                onChange={(e) => updateRequirements({ color_selection: e.target.value })}
                             >
-                                <option value="A">Level A (Minimum)</option>
-                                <option value="AA">Level AA (Standard)</option>
-                                <option value="AAA">Level AAA (Enhanced)</option>
+                                <option value="">Select color preference</option>
+                                {colorOptions.map(option => (
+                                    <option key={option} value={option}>{option}</option>
+                                ))}
                             </select>
                         </div>
-                    )}
-                </section>
-
-                {/* Privacy Policy Section */}
-                <section className="form-section">
-                    <h2>🔒 Privacy Policy</h2>
-                    <div className="url-input">
-                        <label>Privacy Policy URL</label>
-                        <input
-                            type="url"
-                            value={formData.data.privacy_policy_url || ''}
-                            onChange={(e) => updateLocalData({ privacy_policy_url: e.target.value })}
-                            onBlur={() => saveFormData({ privacy_policy_url: formData.data.privacy_policy_url })}
-                            placeholder="https://example.com/privacy"
-                        />
-                    </div>
-                    <div className="or-divider"><span>or</span></div>
-                    <div className="copy-input">
-                        <label>Privacy Policy Text</label>
-                        <textarea
-                            value={formData.data.privacy_policy_text || ''}
-                            onChange={(e) => updateLocalData({ privacy_policy_text: e.target.value })}
-                            onBlur={() => saveFormData({ privacy_policy_text: formData.data.privacy_policy_text })}
-                            placeholder="Paste your privacy policy here..."
-                            rows={4}
-                        />
-                    </div>
-                </section>
-
-                <section className="form-section">
-                    <h2>🧩 Design & Content Details</h2>
-                    <p className="section-desc">Add preferences to guide the build and testing teams.</p>
-
-                    <div className="form-group">
-                        <label>Brand Guidelines</label>
-                        <div className="radio-group">
-                            <label>
-                                <input
-                                    type="radio"
-                                    name="brand_guidelines"
-                                    checked={formData.data.requirements?.brand_guidelines_available === true}
-                                    onChange={() => updateRequirements({ brand_guidelines_available: true })}
-                                />
-                                Yes
-                            </label>
-                            <label>
-                                <input
-                                    type="radio"
-                                    name="brand_guidelines"
-                                    checked={formData.data.requirements?.brand_guidelines_available === false}
-                                    onChange={() => updateRequirements({ brand_guidelines_available: false })}
-                                />
-                                No
-                            </label>
-                        </div>
-                        {formData.data.requirements?.brand_guidelines_available && (
-                            <textarea
-                                value={formData.data.requirements?.brand_guidelines_details || ''}
-                                onChange={(e) => updateRequirementsLocal({ brand_guidelines_details: e.target.value })}
+                        <div className="form-group">
+                            <label>Color Notes / Codes</label>
+                            <input
+                                type="text"
+                                value={formData.data.requirements?.color_notes || ''}
+                                onChange={(e) => updateRequirementsLocal({ color_notes: e.target.value })}
                                 onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                                rows={3}
-                                placeholder="Add brand guidelines link or details..."
+                                placeholder="Hex codes or color notes"
                             />
-                        )}
-                    </div>
-
-                    <div className="select-group">
-                        <label>Color Selection</label>
-                        <select
-                            value={formData.data.requirements?.color_selection || ''}
-                            onChange={(e) => updateRequirements({ color_selection: e.target.value })}
-                        >
-                            <option value="">Select color preference</option>
-                            {colorOptions.map(option => (
-                                <option key={option} value={option}>{option}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label>Color Notes / Codes</label>
-                        <input
-                            type="text"
-                            value={formData.data.requirements?.color_notes || ''}
-                            onChange={(e) => updateRequirementsLocal({ color_notes: e.target.value })}
-                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                            placeholder="Hex codes or color notes"
-                        />
-                    </div>
-
-                    <div className="select-group">
-                        <label>Font Selection</label>
-                        <select
-                            value={formData.data.requirements?.font_selection || ''}
-                            onChange={(e) => updateRequirements({ font_selection: e.target.value })}
-                        >
-                            <option value="">Select font preference</option>
-                            {fontOptions.map(option => (
-                                <option key={option} value={option}>{option}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label>Font Notes</label>
-                        <input
-                            type="text"
-                            value={formData.data.requirements?.font_notes || ''}
-                            onChange={(e) => updateRequirementsLocal({ font_notes: e.target.value })}
-                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                            placeholder="Font details or links"
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label>Custom Graphic Notes</label>
-                        <div className="radio-group">
-                            <label>
-                                <input
-                                    type="radio"
-                                    name="custom_graphics"
-                                    checked={formData.data.requirements?.custom_graphic_notes_enabled === true}
-                                    onChange={() => updateRequirements({ custom_graphic_notes_enabled: true })}
-                                />
-                                Yes
-                            </label>
-                            <label>
-                                <input
-                                    type="radio"
-                                    name="custom_graphics"
-                                    checked={formData.data.requirements?.custom_graphic_notes_enabled === false}
-                                    onChange={() => updateRequirements({ custom_graphic_notes_enabled: false })}
-                                />
-                                No
-                            </label>
                         </div>
-                        {formData.data.requirements?.custom_graphic_notes_enabled && (
-                            <textarea
-                                value={formData.data.requirements?.custom_graphic_notes || ''}
-                                onChange={(e) => updateRequirementsLocal({ custom_graphic_notes: e.target.value })}
+
+                        <div className="select-group">
+                            <label>Font Selection</label>
+                            <select
+                                value={formData.data.requirements?.font_selection || ''}
+                                onChange={(e) => updateRequirements({ font_selection: e.target.value })}
+                            >
+                                <option value="">Select font preference</option>
+                                {fontOptions.map(option => (
+                                    <option key={option} value={option}>{option}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>Font Notes</label>
+                            <input
+                                type="text"
+                                value={formData.data.requirements?.font_notes || ''}
+                                onChange={(e) => updateRequirementsLocal({ font_notes: e.target.value })}
                                 onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                                rows={3}
-                                placeholder="Describe custom graphic needs..."
+                                placeholder="Font details or links"
                             />
-                        )}
-                    </div>
-
-                    <div className="select-group">
-                        <label>Navigation Notes</label>
-                        <select
-                            value={formData.data.requirements?.navigation_notes_option || ''}
-                            onChange={(e) => updateRequirements({ navigation_notes_option: e.target.value })}
-                        >
-                            <option value="">Select navigation preference</option>
-                            {navigationOptions.map(option => (
-                                <option key={option} value={option}>{option}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label>Navigation Details</label>
-                        <textarea
-                            value={formData.data.requirements?.navigation_notes || ''}
-                            onChange={(e) => updateRequirementsLocal({ navigation_notes: e.target.value })}
-                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                            rows={3}
-                            placeholder="Add navigation notes..."
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label>Stock Images Reference</label>
-                        <textarea
-                            value={formData.data.requirements?.stock_images_reference || ''}
-                            onChange={(e) => updateRequirementsLocal({ stock_images_reference: e.target.value })}
-                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                            rows={2}
-                            placeholder="Links or notes for stock images..."
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Floor Plan Images</label>
-                        <textarea
-                            value={formData.data.requirements?.floor_plan_images || ''}
-                            onChange={(e) => updateRequirements({ floor_plan_images: e.target.value })}
-                            rows={2}
-                            placeholder="Links or notes for floor plan images..."
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Sitemap</label>
-                        <textarea
-                            value={formData.data.requirements?.sitemap || ''}
-                            onChange={(e) => updateRequirements({ sitemap: e.target.value })}
-                            rows={2}
-                            placeholder="Sitemap links or details..."
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Virtual Tours</label>
-                        <textarea
-                            value={formData.data.requirements?.virtual_tours || ''}
-                            onChange={(e) => updateRequirements({ virtual_tours: e.target.value })}
-                            rows={2}
-                            placeholder="Virtual tour links..."
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Point of Interest Categories & Details</label>
-                        <textarea
-                            value={formData.data.requirements?.poi_categories || ''}
-                            onChange={(e) => updateRequirements({ poi_categories: e.target.value })}
-                            rows={3}
-                            placeholder="POI categories and details..."
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label>Specials</label>
-                        <div className="radio-group">
-                            <label>
-                                <input
-                                    type="radio"
-                                    name="specials"
-                                    checked={formData.data.requirements?.specials_enabled === true}
-                                    onChange={() => updateRequirements({ specials_enabled: true })}
-                                />
-                                Yes
-                            </label>
-                            <label>
-                                <input
-                                    type="radio"
-                                    name="specials"
-                                    checked={formData.data.requirements?.specials_enabled === false}
-                                    onChange={() => updateRequirements({ specials_enabled: false })}
-                                />
-                                No
-                            </label>
                         </div>
-                        {formData.data.requirements?.specials_enabled && (
+
+                        <div className="form-group">
+                            <label>Custom Graphic Notes</label>
+                            <div className="radio-group">
+                                <label>
+                                    <input
+                                        type="radio"
+                                        name="custom_graphics"
+                                        checked={formData.data.requirements?.custom_graphic_notes_enabled === true}
+                                        onChange={() => updateRequirements({ custom_graphic_notes_enabled: true })}
+                                    />
+                                    Yes
+                                </label>
+                                <label>
+                                    <input
+                                        type="radio"
+                                        name="custom_graphics"
+                                        checked={formData.data.requirements?.custom_graphic_notes_enabled === false}
+                                        onChange={() => updateRequirements({ custom_graphic_notes_enabled: false })}
+                                    />
+                                    No
+                                </label>
+                            </div>
+                            {formData.data.requirements?.custom_graphic_notes_enabled && (
+                                <textarea
+                                    value={formData.data.requirements?.custom_graphic_notes || ''}
+                                    onChange={(e) => updateRequirementsLocal({ custom_graphic_notes: e.target.value })}
+                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    rows={3}
+                                    placeholder="Describe custom graphic needs..."
+                                />
+                            )}
+                        </div>
+
+                        <div className="select-group">
+                            <label>Navigation Notes</label>
+                            <select
+                                value={formData.data.requirements?.navigation_notes_option || ''}
+                                onChange={(e) => updateRequirements({ navigation_notes_option: e.target.value })}
+                            >
+                                <option value="">Select navigation preference</option>
+                                {navigationOptions.map(option => (
+                                    <option key={option} value={option}>{option}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>Navigation & Sitemap Requests</label>
+                            <div className="mb-2" style={{ marginBottom: '8px' }}>
+                                <span style={{ fontSize: '12px', color: '#64748b' }}>Quick Presets:</span>
+                                <div className="chip-group" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                    {['Home', 'Apartments', 'Amenities', 'Neighborhood', 'Gallery', 'Contact Us', 'Apply Now', 'Residents'].map(preset => (
+                                        <button
+                                            key={preset}
+                                            className="chip-btn"
+                                            onClick={() => handleSitemapPreset(preset)}
+                                            style={{
+                                                padding: '4px 12px',
+                                                borderRadius: '16px',
+                                                border: '1px solid #cbd5e1',
+                                                background: 'white',
+                                                fontSize: '12px',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            + {preset}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                             <textarea
-                                value={formData.data.requirements?.specials_details || ''}
-                                onChange={(e) => updateRequirements({ specials_details: e.target.value })}
+                                value={formData.data.requirements?.navigation_notes || ''}
+                                onChange={(e) => updateRequirementsLocal({ navigation_notes: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                rows={4}
+                                placeholder="List the pages you want on your menu..."
+                            />
+                        </div>
+                    </PhaseSection>
+
+                    {/* Phase 4: Property Content */}
+                    <PhaseSection
+                        id="phase-4"
+                        title="Phase 4: Property Content"
+                        isExpanded={activePhase === 'phase-4'}
+                        onToggle={() => togglePhase('phase-4')}
+                        completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[3].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[3].fields.length) * 100}
+                    >
+                        <div className="form-group">
+                            <label>Stock Images Reference</label>
+                            <textarea
+                                value={formData.data.requirements?.stock_images_reference || ''}
+                                onChange={(e) => updateRequirementsLocal({ stock_images_reference: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                                 rows={2}
-                                placeholder="Describe specials to add..."
+                                placeholder="Links or notes for stock images..."
                             />
+                        </div>
+                        <div className="form-group">
+                            <label>Floor Plan Images</label>
+                            <textarea
+                                value={formData.data.requirements?.floor_plan_images || ''}
+                                onChange={(e) => updateRequirements({ floor_plan_images: e.target.value })}
+                                rows={2}
+                                placeholder="Links or notes for floor plan images..."
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Sitemap</label>
+                            <textarea
+                                value={formData.data.requirements?.sitemap || ''}
+                                onChange={(e) => updateRequirements({ sitemap: e.target.value })}
+                                rows={2}
+                                placeholder="Sitemap links or details..."
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Virtual Tours</label>
+                            <textarea
+                                value={formData.data.requirements?.virtual_tours || ''}
+                                onChange={(e) => updateRequirements({ virtual_tours: e.target.value })}
+                                rows={2}
+                                placeholder="Virtual tour links..."
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Point of Interest Categories & Details</label>
+                            <textarea
+                                value={formData.data.requirements?.poi_categories || ''}
+                                onChange={(e) => updateRequirements({ poi_categories: e.target.value })}
+                                rows={3}
+                                placeholder="POI categories and details..."
+                            />
+                        </div>
+
+                        <div className="form-group">
+                            <label>Specials</label>
+                            <div className="radio-group">
+                                <label>
+                                    <input
+                                        type="radio"
+                                        name="specials"
+                                        checked={formData.data.requirements?.specials_enabled === true}
+                                        onChange={() => updateRequirements({ specials_enabled: true })}
+                                    />
+                                    Yes
+                                </label>
+                                <label>
+                                    <input
+                                        type="radio"
+                                        name="specials"
+                                        checked={formData.data.requirements?.specials_enabled === false}
+                                        onChange={() => updateRequirements({ specials_enabled: false })}
+                                    />
+                                    No
+                                </label>
+                            </div>
+                            {formData.data.requirements?.specials_enabled && (
+                                <textarea
+                                    value={formData.data.requirements?.specials_details || ''}
+                                    onChange={(e) => updateRequirements({ specials_details: e.target.value })}
+                                    rows={2}
+                                    placeholder="Describe specials to add..."
+                                />
+                            )}
+                        </div>
+                    </PhaseSection>
+
+                    {/* Phase 5: Compliance & Legal */}
+                    <PhaseSection
+                        id="phase-5"
+                        title="Phase 5: Compliance & Legal"
+                        isExpanded={activePhase === 'phase-5'}
+                        onToggle={() => togglePhase('phase-5')}
+                        completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[4].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[4].fields.length) * 100}
+                    >
+                        <div className="form-group">
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={formData.data.wcag_compliance_required}
+                                    onChange={(e) => saveFormData({
+                                        wcag_compliance_required: e.target.checked,
+                                        wcag_confirmed: true
+                                    })}
+                                />
+                                WCAG Compliance Required
+                            </label>
+                        </div>
+                        {formData.data.wcag_compliance_required && (
+                            <div className="select-group">
+                                <label>Compliance Level</label>
+                                <select
+                                    value={formData.data.wcag_level}
+                                    onChange={(e) => saveFormData({
+                                        wcag_level: e.target.value,
+                                        wcag_confirmed: true
+                                    })}
+                                >
+                                    <option value="A">Level A (Minimum)</option>
+                                    <option value="AA">Level AA (Standard)</option>
+                                    <option value="AAA">Level AAA (Enhanced)</option>
+                                </select>
+                            </div>
                         )}
-                    </div>
 
-                    <div className="form-group">
-                        <label>Copy Text Scope – Additional Notes</label>
-                        <textarea
-                            value={formData.data.requirements?.copy_scope_notes || ''}
-                            onChange={(e) => updateRequirements({ copy_scope_notes: e.target.value })}
-                            rows={3}
-                            placeholder="Additional notes about copy scope..."
-                        />
-                    </div>
+                        <div style={{ marginTop: '24px' }}>
+                            <label style={{ display: 'block', fontWeight: 500, marginBottom: '8px', color: '#475569' }}>Privacy Policy</label>
+                            <div className="url-input">
+                                <input
+                                    type="url"
+                                    value={formData.data.privacy_policy_url || ''}
+                                    onChange={(e) => updateLocalData({ privacy_policy_url: e.target.value })}
+                                    onBlur={() => saveFormData({ privacy_policy_url: formData.data.privacy_policy_url })}
+                                    placeholder="Enter Privacy Policy URL..."
+                                />
+                            </div>
+                            <div className="or-divider"><span>or</span></div>
+                            <div className="copy-input">
+                                <textarea
+                                    value={formData.data.privacy_policy_text || ''}
+                                    onChange={(e) => updateLocalData({ privacy_policy_text: e.target.value })}
+                                    onBlur={() => saveFormData({ privacy_policy_text: formData.data.privacy_policy_text })}
+                                    placeholder="Paste privacy policy text here..."
+                                    rows={4}
+                                />
+                            </div>
+                        </div>
+                    </PhaseSection>
 
-                    <div className="form-group">
-                        <label>Pages for the Website</label>
-                        <textarea
-                            value={formData.data.requirements?.pages || ''}
-                            onChange={(e) => updateRequirements({ pages: e.target.value })}
-                            rows={2}
-                            placeholder="List pages (comma-separated)..."
-                        />
-                    </div>
+                    {/* Phase 6: Technical & Launch Setup */}
+                    <PhaseSection
+                        id="phase-6"
+                        title="Phase 6: Technical & Launch Setup"
+                        isExpanded={activePhase === 'phase-6'}
+                        onToggle={() => togglePhase('phase-6')}
+                        completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[5].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[5].fields.length) * 100}
+                    >
+                        <div className="form-group">
+                            <label>Pages for the Website</label>
+                            <textarea
+                                value={formData.data.requirements?.pages || ''}
+                                onChange={(e) => updateRequirements({ pages: e.target.value })}
+                                rows={2}
+                                placeholder="List pages (comma-separated)..."
+                            />
+                        </div>
 
-                    <div className="select-group">
-                        <label>Domain Type</label>
-                        <select
-                            value={formData.data.requirements?.domain_type || ''}
-                            onChange={(e) => updateRequirements({ domain_type: e.target.value })}
-                        >
-                            <option value="">Select domain type</option>
-                            {domainTypeOptions.map(option => (
-                                <option key={option} value={option}>{option}</option>
-                            ))}
-                        </select>
-                    </div>
+                        <div className="select-group">
+                            <label>Domain Type</label>
+                            <select
+                                value={formData.data.requirements?.domain_type || ''}
+                                onChange={(e) => updateRequirements({ domain_type: e.target.value })}
+                            >
+                                <option value="">Select domain type</option>
+                                {domainTypeOptions.map(option => (
+                                    <option key={option} value={option}>{option}</option>
+                                ))}
+                            </select>
+                        </div>
 
-                    <div className="form-group">
-                        <label>Vanity Domains / Redirects</label>
-                        <textarea
-                            value={formData.data.requirements?.vanity_domains || ''}
-                            onChange={(e) => updateRequirements({ vanity_domains: e.target.value })}
-                            rows={2}
-                            placeholder="Add vanity domains or redirect details..."
-                        />
-                    </div>
+                        <div className="form-group">
+                            <label>Vanity Domains / Redirects</label>
+                            <textarea
+                                value={formData.data.requirements?.vanity_domains || ''}
+                                onChange={(e) => updateRequirements({ vanity_domains: e.target.value })}
+                                rows={2}
+                                placeholder="Add vanity domains or redirect details..."
+                            />
+                        </div>
 
-                    <div className="select-group">
-                        <label>Call Tracking Plan</label>
-                        <select
-                            value={formData.data.requirements?.call_tracking_plan || ''}
-                            onChange={(e) => updateRequirements({ call_tracking_plan: e.target.value })}
-                        >
-                            <option value="">Select call tracking plan</option>
-                            {callTrackingOptions.map(option => (
-                                <option key={option} value={option}>{option}</option>
-                            ))}
-                        </select>
-                    </div>
-                </section>
+                        <div className="select-group">
+                            <label>Call Tracking Plan</label>
+                            <select
+                                value={formData.data.requirements?.call_tracking_plan || ''}
+                                onChange={(e) => updateRequirements({ call_tracking_plan: e.target.value })}
+                            >
+                                <option value="">Select call tracking plan</option>
+                                {callTrackingOptions.map(option => (
+                                    <option key={option} value={option}>{option}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </PhaseSection>
 
-                <div className="submit-section">
-                    <button className="btn-submit-form" disabled={saving} onClick={submitClientForm}>
-                        {saving ? 'Submitting...' : 'Submit Form'}
-                    </button>
+                    {/* Spacer for fixed bottom bar */}
+                    <div className="bottom-bar-spacer" />
+                </main>
+
+                <aside className="sidebar">
+                    <ChecklistPanel
+                        requirements={getAllRequirements()}
+                        onScrollTo={scrollToPhase}
+                    />
+                </aside>
+            </div>
+
+            {/* Fixed Bottom Action Bar */}
+            <div className="bottom-action-bar">
+                <div style={{ color: '#64748b', fontSize: '14px' }}>
+                    {saving ? 'Saving changes...' : 'Changes saved automatically'}
                 </div>
-            </main>
+                <button className="btn-submit-form" onClick={handleInitialSubmit}>
+                    Review & Submit
+                </button>
+            </div>
 
-            <footer className="page-footer">
+            {showReviewModal && (
+                <ReviewModal
+                    onClose={() => setShowReviewModal(false)}
+                    onConfirm={confirmSubmit}
+                    phases={PHASE_DEFINITIONS}
+                    requirements={getAllRequirements()}
+                />
+            )}
+
+            {/* Chatbot Tooltip */}
+            <div className="chatbot-container">
+                <div className="chat-tooltip">
+                    Need help? Chat with us!
+                </div>
+                {/* Chatbot icon would go here */}
+            </div>
+
+            <footer className="page-footer" style={{ marginBottom: '80px' }}>
                 <p>Questions? Contact your project manager for assistance.</p>
             </footer>
 
+            <style jsx global>{`
+                /* Global Fixed Elements */
+                .modal-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.5);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 2000;
+                    backdrop-filter: blur(4px);
+                }
+
+                .chatbot-container {
+                    position: fixed;
+                    bottom: 24px;
+                    right: 24px;
+                    z-index: 1500;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-end;
+                }
+                
+                .chat-tooltip {
+                    background: white;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #1e293b;
+                    margin-bottom: 8px;
+                    position: relative;
+                    animation: bounceSlow 2s infinite;
+                }
+
+                .chat-tooltip:after {
+                    content: '';
+                    position: absolute;
+                    bottom: -6px;
+                    right: 24px;
+                    border-left: 6px solid transparent;
+                    border-right: 6px solid transparent;
+                    border-top: 6px solid white;
+                }
+
+                @keyframes bounceSlow {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-5px); }
+                }
+            `}</style>
             <style jsx>{`
                 .client-page {
                     min-height: 100vh;
-                    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                    background: #e2e8f0;
+                    padding-bottom: 120px; /* Space for bottom bar */
                 }
 
                 .page-header {
@@ -1256,9 +1671,9 @@ export default function ClientOnboardingPage() {
                     color: #78350f;
                 }
                 .missing-fields-grid {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 12px;
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                    gap: 10px;
                     margin: 12px 0 16px;
                 }
                 .missing-field-row {
@@ -1266,26 +1681,27 @@ export default function ClientOnboardingPage() {
                     flex-wrap: wrap;
                     align-items: center;
                     justify-content: space-between;
-                    gap: 12px;
-                    padding: 10px 12px;
+                    gap: 8px;
+                    padding: 8px 12px;
                     background: #fff7ed;
                     border: 1px solid #fed7aa;
-                    border-radius: 10px;
+                    border-radius: 8px;
                 }
                 .missing-field-name {
                     font-weight: 600;
                     color: #7c2d12;
+                    font-size: 14px;
                 }
                 .missing-field-actions {
                     display: flex;
                     flex-wrap: wrap;
-                    gap: 8px;
+                    gap: 6px;
                     align-items: center;
                 }
                 .eta-btn {
-                    padding: 6px 10px;
-                    font-size: 12px;
-                    border-radius: 6px;
+                    padding: 4px 8px;
+                    font-size: 11px;
+                    border-radius: 4px;
                     border: 1px solid #fdba74;
                     background: white;
                     color: #9a3412;
@@ -1295,12 +1711,36 @@ export default function ClientOnboardingPage() {
                     background: #ffedd5;
                 }
                 .eta-input {
-                    padding: 6px 10px;
+                    padding: 4px 8px;
                     border: 1px solid #fdba74;
-                    border-radius: 6px;
-                    font-size: 12px;
+                    border-radius: 4px;
+                    font-size: 11px;
                     color: #9a3412;
                     background: white;
+                    width: auto;
+                }
+                .btn-remove-logo-x {
+                    position: absolute;
+                    top: -10px;
+                    right: -10px;
+                    width: 28px;
+                    height: 28px;
+                    background: rgba(220, 38, 38, 0.9);
+                    color: white;
+                    border: none;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    cursor: pointer;
+                    font-size: 16px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    transition: all 0.2s;
+                    z-index: 10;
+                }
+                .btn-remove-logo-x:hover {
+                    background: #ef4444;
+                    transform: scale(1.1);
                 }
                 .btn-submit-form {
                     padding: 10px 16px;
@@ -1840,6 +2280,7 @@ export default function ClientOnboardingPage() {
                 }
 
                 .logo-preview-card {
+                    position: relative;
                     display: flex;
                     flex-direction: column;
                     align-items: center;
@@ -1984,7 +2425,34 @@ export default function ClientOnboardingPage() {
                     max-height: 90vh;
                     object-fit: contain;
                     border-radius: 4px;
-                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                    border: 10px solid white; /* Requested 10px white border */
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+                }
+                .section-header-row {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 8px;
+                }
+                .section-header-row h2 {
+                    margin: 0;
+                }
+                .btn-add-header {
+                    padding: 8px 16px;
+                    background: #2563eb;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 14px;
+                    font-weight: 500;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    transition: background 0.2s;
+                }
+                .btn-add-header:hover {
+                    background: #1d4ed8;
                 }
                 .lightbox-close {
                     position: absolute;
@@ -2003,9 +2471,665 @@ export default function ClientOnboardingPage() {
                 .lightbox-close:hover {
                     opacity: 1;
                 }
-                @keyframes fadeIn {
-                    from { opacity: 0; }
-                    to { opacity: 1; }
+                /* Template Section Updates */
+                .box-radio-group {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 16px;
+                }
+                .radio-card {
+                    display: flex;
+                    align-items: flex-start;
+                    padding: 16px;
+                    border: 2px solid #e2e8f0;
+                    border-radius: 10px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                    background: white;
+                }
+                .radio-card:hover {
+                    border-color: #94a3b8;
+                    background: #f8fafc;
+                }
+                .radio-card.selected {
+                    border-color: #2563eb;
+                    background: #eff6ff;
+                }
+                .radio-card input {
+                    margin-top: 4px;
+                    margin-right: 12px;
+                }
+                .radio-content {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .radio-title {
+                    font-weight: 600;
+                    color: #1e293b;
+                    font-size: 14px;
+                }
+                .radio-desc {
+                    font-size: 12px;
+                    color: #64748b;
+                }
+                .template-thumb {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                }
+                .template-thumb-placeholder {
+                    width: 100%;
+                    height: 100%;
+                }
+                .info-card {
+                    display: flex;
+                    gap: 16px;
+                    padding: 20px;
+                    border-radius: 12px;
+                    background: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                }
+                .info-card.highlight {
+                    background: #fdf2f8; /* Pinkish tint for premium feel */
+                    border-color: #fbcfe8;
+                }
+                .info-icon {
+                    font-size: 24px;
+                }
+                .benefits-list {
+                    margin: 8px 0 0 0;
+                    padding-left: 20px;
+                    font-size: 13px;
+                    color: #475569;
+                }
+                .price-tag {
+                    margin-left: auto;
+                    text-align: right;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-end;
+                }
+                .price-tag .label {
+                    font-size: 11px;
+                    text-transform: uppercase;
+                    color: #64748b;
+                    font-weight: 600;
+                }
+                .price-tag .amount {
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: #be185d;
+                }
+                @media (max-width: 640px) {
+                    .box-radio-group { grid-template-columns: 1fr; }
+                    .info-card { flex-direction: column; }
+                    .price-tag { margin-left: 0; align-items: flex-start; margin-top: 12px; }
+                }
+
+                /* Layout Overhaul */
+                .layout-container {
+                    display: grid;
+                    grid-template-columns: 1fr 300px;
+                    gap: 24px;
+                    max-width: 1100px; /* Reduced from 1200px for tighter feel */
+                    margin: 24px auto;
+                    padding: 0 20px;
+                    align-items: start;
+                }
+                
+                .main-content {
+                    min-width: 0; /* Prevent overflow */
+                }
+
+                .sidebar {
+                    position: sticky;
+                    top: 24px;
+                    height: calc(100vh - 48px);
+                    overflow-y: auto;
+                    padding-right: 4px; /* Scrollbar space */
+                }
+
+                @media (max-width: 1024px) {
+                    .layout-container {
+                        grid-template-columns: 1fr;
+                    }
+                    .sidebar {
+                        display: none; /* Hide on mobile/tablet for now or move to bottom */
+                    }
+                }
+
+                /* Phase Sections */
+                .phase-section {
+                    background: white;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 12px;
+                    margin-bottom: 16px;
+                    overflow: hidden;
+                    transition: all 0.2s;
+                    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+                }
+
+                .phase-section.active {
+                    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+                    border-color: #bfdbfe;
+                    border-left: 4px solid #2563eb;
+                }
+
+                .phase-header {
+                    padding: 16px 24px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    cursor: pointer;
+                    background: #f8fafc;
+                    border-bottom: 1px solid transparent;
+                    transition: background 0.2s;
+                }
+
+                .phase-section.active .phase-header {
+                    background: #eff6ff; /* Lighter blue tint */
+                    border-bottom-color: #e2e8f0;
+                }
+
+                .phase-title h3 {
+                    margin: 0;
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: #1e293b;
+                }
+                
+                .phase-progress {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-top: 4px;
+                }
+
+                .phase-content {
+                    padding: 24px;
+                    animation: slideDown 0.3s ease-out;
+                }
+
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+
+                .toggle-icon {
+                    width: 28px;
+                    height: 28px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: #f1f5f9;
+                    border-radius: 50%;
+                    color: #64748b;
+                    font-weight: bold;
+                    transition: all 0.2s;
+                    font-size: 18px;
+                }
+
+                .phase-header:hover .toggle-icon {
+                    background: #e2e8f0;
+                    color: #334155;
+                }
+                
+                /* Modal Styles */
+                .modal-overlay {
+                    position: fixed;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background: rgba(0,0,0,0.5);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 2000;
+                    backdrop-filter: blur(4px);
+                }
+                
+                .review-modal {
+                    background: white;
+                    border-radius: 16px;
+                    width: 90%;
+                    max-width: 600px;
+                    max-height: 90vh;
+                    overflow-y: auto;
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+                }
+                
+                .review-header {
+                    padding: 24px;
+                    border-bottom: 1px solid #e2e8f0;
+                }
+                
+                .review-body {
+                    padding: 24px;
+                }
+                
+                .review-footer {
+                    padding: 20px 24px;
+                    background: #f8fafc;
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 12px;
+                    border-top: 1px solid #e2e8f0;
+                }
+                
+                .review-phase-item {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 12px;
+                    border-bottom: 1px solid #f1f5f9;
+                }
+                
+                .review-phase-item.complete .status { color: #10b981; }
+                .review-phase-item.incomplete .status { color: #f59e0b; }
+                
+                .btn-secondary {
+                    padding: 10px 20px;
+                    border-radius: 8px;
+                    border: 1px solid #e2e8f0;
+                    background: white;
+                    color: #64748b;
+                    font-weight: 500;
+                    cursor: pointer;
+                }
+                
+                .btn-primary {
+                    padding: 10px 20px;
+                    border-radius: 8px;
+                    border: none;
+                    background: #2563eb;
+                    color: white;
+                    font-weight: 500;
+                    cursor: pointer;
+                    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+                }
+
+                /* Chip hover */
+                .chip-btn:hover {
+                    background: #f1f5f9 !important;
+                    border-color: #94a3b8 !important;
+                }
+
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: #1e293b;
+                }
+                
+                .phase-progress {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-top: 4px;
+                }
+
+                .phase-content {
+                    padding: 24px;
+                    animation: slideDown 0.3s ease-out;
+                }
+
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+
+                .toggle-icon {
+                    width: 24px;
+                    height: 24px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: #f1f5f9;
+                    border-radius: 50%;
+                    color: #64748b;
+                    font-weight: bold;
+                    transition: all 0.2s;
+                }
+
+                .phase-header:hover .toggle-icon {
+                    background: #e2e8f0;
+                    color: #334155;
+                }
+
+                /* Conditional Toggle Styles */
+                .toggle-section {
+                    background: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 16px;
+                    margin-bottom: 16px;
+                }
+                
+                .toggle-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+
+                .toggle-label {
+                    font-weight: 500;
+                    color: #334155;
+                }
+
+                .switch {
+                    position: relative;
+                    display: inline-block;
+                    width: 44px;
+                    height: 24px;
+                }
+                
+                .switch input { opacity: 0; width: 0; height: 0; }
+                
+                .slider {
+                    position: absolute;
+                    cursor: pointer;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background-color: #cbd5e1;
+                    transition: .4s;
+                    border-radius: 34px;
+                }
+                
+                .slider:before {
+                    position: absolute;
+                    content: "";
+                    height: 18px;
+                    width: 18px;
+                    left: 3px;
+                    bottom: 3px;
+                    background-color: white;
+                    transition: .4s;
+                    border-radius: 50%;
+                }
+                
+                input:checked + .slider { background-color: #2563eb; }
+                input:checked + .slider:before { transform: translateX(20px); }
+
+                /* Chips for Navigation */
+                .chip-group {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    margin-top: 8px;
+                }
+                
+                .chip-btn {
+                    padding: 6px 12px;
+                    border-radius: 16px;
+                    border: 1px solid #cbd5e1;
+                    background: white;
+                    color: #64748b;
+                    font-size: 13px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                
+                .chip-btn:hover {
+                    border-color: #94a3b8;
+                    background: #f8fafc;
+                }
+                
+                .chip-btn.active {
+                    background: #eff6ff;
+                    border-color: #3b82f6;
+                    color: #2563eb;
+                    font-weight: 500;
+                }
+
+                /* Enhanced Phase Header */
+                .phase-header {
+                   padding: 20px 24px;
+                }
+                .phase-title h3 {
+                    margin: 0;
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: #1e293b;
+                }
+                .progress-bar-small {
+                    width: 100px;
+                    height: 6px;
+                    background: #e2e8f0;
+                    border-radius: 3px;
+                    overflow: hidden;
+                }
+                .progress-bar-small .fill {
+                    height: 100%;
+                    background: #10b981;
+                    transition: width 0.3s;
+                }
+                .percentage {
+                    font-size: 13px;
+                    font-weight: 500;
+                    color: #64748b;
+                }
+                .toggle-icon {
+                    width: 32px;
+                    height: 32px;
+                    font-size: 20px;
+                    transition: transform 0.3s;
+                }
+                .toggle-icon.expanded {
+                    transform: rotate(180deg);
+                }
+
+                /* Chatbot Tooltip */
+                .chat-tooltip {
+                    position: absolute;
+                    bottom: 70px;
+                    right: 0;
+                    background: white;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: #1e293b;
+                    white-space: nowrap;
+                    pointer-events: none;
+                }
+                .chat-tooltip:after {
+                    content: '';
+                    position: absolute;
+                    bottom: -6px;
+                    right: 24px;
+                    border-left: 6px solid transparent;
+                    border-right: 6px solid transparent;
+                    border-top: 6px solid white;
+                }
+                @keyframes bounceSlow {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-5px); }
+                }
+                .animate-bounce-slow {
+                    animation: bounceSlow 2s infinite;
+                }
+
+                /* Fixed Bottom Bar */
+                .bottom-action-bar {
+                    position: fixed;
+                    bottom: 0;
+                    left: 0;
+                    right: 0;
+                    background: white;
+                    border-top: 1px solid #e2e8f0;
+                    padding: 16px 32px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    z-index: 900;
+                    box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);
+                }
+                .bottom-bar-spacer {
+                    height: 80px;
+                }
+
+                /* Checklist Panel */
+                .checklist-panel {
+                    background: white;
+                    border-radius: 12px;
+                    border: 1px solid #e2e8f0;
+                    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+                    overflow: hidden;
+                }
+
+                .checklist-header {
+                    padding: 16px;
+                    background: #f1f5f9;
+                    border-bottom: 1px solid #e2e8f0;
+                }
+
+                .checklist-header h3 {
+                    margin: 0;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: #334155;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                }
+
+                .checklist-content {
+                    padding: 0;
+                }
+
+                .checklist-item {
+                    display: flex;
+                    flex-direction: row;
+                    flex-wrap: nowrap;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    padding: 12px 16px;
+                    border-bottom: 1px solid #f1f5f9;
+                    cursor: pointer;
+                    transition: background 0.1s;
+                    font-size: 13px;
+                    color: #475569;
+                }
+
+                .checklist-item:hover {
+                    background: #f8fafc;
+                    color: #1e293b;
+                }
+
+                .checklist-item.completed {
+                    color: #10b981;
+                    background: #effdf5;
+                }
+
+                .checklist-status {
+                    width: 16px;
+                    height: 16px;
+                    border: 1.5px solid #cbd5e1;
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
+                }
+
+                .checklist-item.completed .checklist-status {
+                    background: #10b981;
+                    border-color: #10b981;
+                    color: white;
+                    font-size: 10px;
+                }
+
+                /* Chatbot Widget */
+                .chatbot-container {
+                    position: fixed;
+                    bottom: 24px;
+                    right: 24px;
+                    z-index: 1500;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-end;
+                }
+
+                .chatbot-toggle {
+                    width: 56px;
+                    height: 56px;
+                    border-radius: 50%;
+                    background: #2563eb;
+                    color: white;
+                    border: none;
+                    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: transform 0.2s;
+                    position: relative;
+                }
+
+                .chatbot-toggle:hover {
+                    transform: scale(1.05);
+                    background: #1d4ed8;
+                }
+
+                .chatbot-window {
+                    position: fixed;
+                    bottom: 90px;
+                    right: 24px;
+                    width: 350px;
+                    height: 500px;
+                    background: white;
+                    border-radius: 16px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                    border: 1px solid #e2e8f0;
+                    z-index: 1510;
+                    animation: slideUp 0.3s ease-out;
+                }
+                .chatbot-header h4 {
+                    margin: 0;
+                    font-size: 16px;
+                }
+                .chatbot-body {
+                    flex: 1;
+                    padding: 16px;
+                    background: #f8fafc;
+                    overflow-y: auto;
+                }
+                .chat-message {
+                    padding: 12px;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    margin-bottom: 12px;
+                    max-width: 85%;
+                }
+                .chat-message.bot {
+                    background: white;
+                    border: 1px solid #e2e8f0;
+                    color: #1e293b;
+                    border-bottom-left-radius: 2px;
+                }
+                .chatbot-input {
+                    padding: 12px;
+                    border-top: 1px solid #e2e8f0;
+                    display: flex;
+                    gap: 8px;
+                }
+                .chatbot-input input {
+                    flex: 1;
+                    padding: 8px 12px;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 20px;
+                    font-size: 13px;
+                    outline: none;
+                }
+                .chatbot-input button {
+                    background: none;
+                    border: none;
+                    color: #2563eb;
+                    font-weight: bold;
+                    cursor: pointer;
+                }
+                @keyframes slideUp {
+                    from { opacity: 0; transform: translateY(20px); }
+                    to { opacity: 1; transform: translateY(0); }
                 }
             `}</style>
 
@@ -2020,6 +3144,35 @@ export default function ClientOnboardingPage() {
                     </div>
                 )
             }
+
+            {/* Chatbot Widget */}
+            <button className="chatbot-toggle" onClick={() => setShowChatbot(!showChatbot)}>
+                {showChatbot ? '×' : '💬'}
+            </button>
+
+            {showChatbot && (
+                <div className="chatbot-window">
+                    <div className="chatbot-header">
+                        <h4>Consultant AI</h4>
+                    </div>
+                    <div className="chatbot-body" ref={chatContainerRef}>
+                        {chatMessages.map((msg, idx) => (
+                            <div key={idx} className={`chat-message ${msg.isBot ? 'bot' : 'user'}`} style={!msg.isBot ? { marginLeft: 'auto', background: '#2563eb', color: 'white' } : {}}>
+                                <p style={{ margin: 0 }}>{msg.text}</p>
+                            </div>
+                        ))}
+                    </div>
+                    <form className="chatbot-input" onSubmit={handleSendMessage}>
+                        <input
+                            type="text"
+                            placeholder="Type a message..."
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                        />
+                        <button type="submit">→</button>
+                    </form>
+                </div>
+            )}
         </div >
     );
 }
