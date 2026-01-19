@@ -769,7 +769,7 @@ export default function ProjectDetailPage() {
 
     const renderReadonlyOnboardingDetails = () => {
         const requirements = onboardingData?.requirements_json || {};
-        const hasRequirements = Object.keys(requirements).length > 0;
+
         const readonlyCardStyle: React.CSSProperties = {
             padding: 'var(--space-lg)',
             background: 'var(--bg-secondary)',
@@ -784,22 +784,20 @@ export default function ProjectDetailPage() {
             padding: 'var(--space-md)',
             boxShadow: 'var(--shadow-sm)',
         };
-        const assetGridStyle: React.CSSProperties = {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: 'var(--space-md)',
-        };
-        const assetCardStyle: React.CSSProperties = {
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-light)',
-            borderRadius: 'var(--radius-md)',
-            padding: 'var(--space-md)',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            minHeight: '220px',
-            boxShadow: 'var(--shadow-sm)',
-        };
+
+        const renderField = (label: string, value: any) => (
+            <div className="readonly-item">
+                <label>{label}</label>
+                <span>{value || 'Not provided'}</span>
+            </div>
+        );
+
+        const renderBoolField = (label: string, value: boolean | undefined) => (
+            <div className="readonly-item">
+                <label>{label}</label>
+                <span>{value === true ? 'Yes' : value === false ? 'No' : 'Not provided'}</span>
+            </div>
+        );
 
         return (
             <div className="form-card readonly-section requirements-panel" style={readonlyCardStyle}>
@@ -807,13 +805,23 @@ export default function ProjectDetailPage() {
                     <span className="badge-readonly">👀 Read-only (Client fills via form)</span>
                 </div>
 
-                {/* Assets - Read Only */}
+                {/* Phase 1: Project Basics */}
                 <div className="readonly-group">
-                    <h4>🖼️ Website Assets</h4>
+                    <h4>1. Project Basics</h4>
+                    <div className="requirements-grid">
+                        {renderField('Project Summary', requirements.project_summary)}
+                        {renderField('Project Notes', requirements.project_notes)}
+                        {renderField('Phase', requirements.phase_number)}
+                    </div>
+                </div>
 
-                    {/* Company Logo */}
-                    <div className="readonly-field" style={fieldStyle}>
-                        <label>Company Logo</label>
+                {/* Phase 2: Brand & Visual Assets */}
+                <div className="readonly-group">
+                    <h4>2. Brand & Visual Assets</h4>
+
+                    {/* Logo & Images */}
+                    <div className="readonly-field" style={{ ...fieldStyle, marginBottom: '16px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Company Logo</label>
                         {(onboardingData?.logo_url || onboardingData?.logo_file_path) ? (
                             <div className="logo-preview-card">
                                 <img
@@ -824,35 +832,21 @@ export default function ProjectDetailPage() {
                                     title="Click to preview"
                                 />
                                 <div className="logo-actions">
-                                    <a
-                                        className="btn-download"
-                                        href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)}
-                                        download
-                                    >
-                                        ⬇ Download Logo
-                                    </a>
+                                    <a className="btn-download" href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)} download>⬇ Download</a>
                                 </div>
                             </div>
-                        ) : (
-                            <span className="empty">Not provided</span>
-                        )}
+                        ) : <span className="empty">Not provided</span>}
                     </div>
 
-                    {/* Website Images - Hidden for Admin */}
                     {user?.role !== 'ADMIN' && (
-                        <div className="readonly-field" style={fieldStyle}>
-                            <label>Website Images</label>
+                        <div className="readonly-field" style={{ ...fieldStyle, marginBottom: '16px' }}>
+                            <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Website Images</label>
                             {getImageItems().length ? (
                                 <div className="images-grid">
                                     {getImageItems().map((img) => (
                                         <div key={img.key} className="image-card">
                                             <div className="image-preview">
-                                                <img
-                                                    src={img.url}
-                                                    alt={img.name}
-                                                    onClick={() => setPreviewImage(img.url)}
-                                                    title="Click to preview"
-                                                />
+                                                <img src={img.url} alt={img.name} onClick={() => setPreviewImage(img.url)} />
                                             </div>
                                             <div className="image-info">
                                                 <span className="image-name">{img.name}</span>
@@ -861,62 +855,21 @@ export default function ProjectDetailPage() {
                                         </div>
                                     ))}
                                 </div>
-                            ) : (
-                                <span className="empty">Not provided</span>
-                            )}
+                            ) : <span className="empty">Not provided</span>}
                         </div>
                     )}
-                </div>
 
-                {/* Copy Text - Read Only */}
-                <div className="readonly-group">
-                    <h4>📝 Copy Text</h4>
-                    <div className="readonly-field full-width" style={fieldStyle}>
+                    {/* Copy Text */}
+                    <div className="readonly-field full-width" style={{ ...fieldStyle, marginBottom: '16px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Copy Text</label>
                         <span className={onboardingData?.copy_text || onboardingData?.use_custom_copy ? 'filled' : 'empty'}>
                             {getCopySummary()}
                         </span>
                     </div>
-                </div>
 
-                {/* WCAG - Read Only */}
-                <div className="readonly-group">
-                    <h4>♿ Accessibility (WCAG)</h4>
-                    <div className="readonly-field" style={fieldStyle}>
-                        <span className={onboardingData?.wcag_compliance_required ? 'filled' : 'empty'}>
-                            {onboardingData?.wcag_compliance_required
-                                ? `Required - Level ${onboardingData?.wcag_level || 'AA'}`
-                                : 'Not required'}
-                        </span>
-                    </div>
-                </div>
-
-                {/* Privacy Policy - Read Only */}
-                <div className="readonly-group">
-                    <h4>🔒 Privacy Policy</h4>
+                    {/* Theme */}
                     <div className="readonly-field full-width" style={fieldStyle}>
-                        {onboardingData?.privacy_policy_text ? (
-                            <textarea
-                                className="privacy-policy-text"
-                                readOnly
-                                value={onboardingData.privacy_policy_text}
-                            />
-                        ) : onboardingData?.privacy_policy_url ? (
-                            <div className="privacy-link-container">
-                                <span className="filled">URL Provided: </span>
-                                <a href={onboardingData.privacy_policy_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                    {onboardingData.privacy_policy_url}
-                                </a>
-                            </div>
-                        ) : (
-                            <span className="empty">Not provided</span>
-                        )}
-                    </div>
-                </div>
-
-                {/* Theme - Read Only */}
-                <div className="readonly-group">
-                    <h4>🎨 Theme Preferences</h4>
-                    <div className="readonly-field full-width" style={fieldStyle}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Theme & Template</label>
                         <div className="theme-display-container" style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
                             {onboardingData?.selected_template_id && (
                                 <div className="theme-preview">
@@ -927,11 +880,7 @@ export default function ProjectDetailPage() {
                                             onClick={() => setPreviewImage(templates.find(t => t.id === onboardingData?.selected_template_id)?.preview_url || '')}
                                             style={{ cursor: 'pointer' }}
                                         />
-                                    ) : (
-                                        <div className="theme-preview-placeholder">
-                                            Preview Not Available
-                                        </div>
-                                    )}
+                                    ) : <div className="theme-preview-placeholder">Preview Not Available</div>}
                                 </div>
                             )}
                             <div className="theme-info">
@@ -947,46 +896,93 @@ export default function ProjectDetailPage() {
                                         {onboardingData?.selected_template_id || 'None'}
                                     </span>
                                 </div>
+                                <div className="info-row" style={{ marginTop: '8px' }}>
+                                    <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem' }}>References:</label>
+                                    <span className={requirements.template_references ? 'filled' : 'empty'}>
+                                        {requirements.template_references || 'None'}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Project Requirements Details (Consolidated) */}
-                {hasRequirements && (
-                    <div className="readonly-group">
-                        {/* Header removed for consolidation */}
-                        <div className="requirements-grid">
-                            <div className="readonly-item"><label>Project Summary</label><span>{requirements.project_summary || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Project Notes</label><span>{requirements.project_notes || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Phase</label><span>{requirements.phase_number || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Template Mode</label><span>{requirements.template_mode || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Template References</label><span>{requirements.template_references || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Brand Guidelines</label><span>{requirements.brand_guidelines_available === true ? 'Yes' : requirements.brand_guidelines_available === false ? 'No' : 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Brand Guidelines Details</label><span>{requirements.brand_guidelines_details || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Color Selection</label><span>{requirements.color_selection || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Color Notes</label><span>{requirements.color_notes || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Font Selection</label><span>{requirements.font_selection || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Font Notes</label><span>{requirements.font_notes || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Custom Graphic Notes</label><span>{requirements.custom_graphic_notes_enabled === true ? 'Yes' : requirements.custom_graphic_notes_enabled === false ? 'No' : 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Custom Graphic Details</label><span>{requirements.custom_graphic_notes || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Navigation Notes</label><span>{requirements.navigation_notes_option || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Navigation Details</label><span>{requirements.navigation_notes || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Stock Images Reference</label><span>{requirements.stock_images_reference || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Floor Plan Images</label><span>{requirements.floor_plan_images || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Sitemap</label><span>{requirements.sitemap || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Virtual Tours</label><span>{requirements.virtual_tours || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>POI Categories</label><span>{requirements.poi_categories || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Specials</label><span>{requirements.specials_enabled === true ? 'Yes' : requirements.specials_enabled === false ? 'No' : 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Specials Details</label><span>{requirements.specials_details || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Copy Scope Notes</label><span>{requirements.copy_scope_notes || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Pages</label><span>{requirements.pages || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Domain Type</label><span>{requirements.domain_type || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Vanity Domains</label><span>{requirements.vanity_domains || 'Not provided'}</span></div>
-                            <div className="readonly-item"><label>Call Tracking Plan</label><span>{requirements.call_tracking_plan || 'Not provided'}</span></div>
-                        </div>
+                {/* Phase 3: Design Preferences */}
+                <div className="readonly-group">
+                    <h4>3. Design Preferences</h4>
+                    <div className="requirements-grid">
+                        {renderBoolField('Brand Guidelines', requirements.brand_guidelines_available)}
+                        {renderField('Guidelines Details', requirements.brand_guidelines_details)}
+                        {renderField('Color Selection', requirements.color_selection)}
+                        {renderField('Color Notes', requirements.color_notes)}
+                        {renderField('Font Selection', requirements.font_selection)}
+                        {renderField('Font Notes', requirements.font_notes)}
+                        {renderBoolField('Custom Graphic Notes', requirements.custom_graphic_notes_enabled)}
+                        {renderField('Graphic Details', requirements.custom_graphic_notes)}
+                        {renderField('Navigation Option', requirements.navigation_notes_option)}
+                        {renderField('Navigation Details', requirements.navigation_notes)}
                     </div>
-                )}
+                </div>
+
+                {/* Phase 4: Property Content */}
+                <div className="readonly-group">
+                    <h4>4. Property Content</h4>
+                    <div className="requirements-grid">
+                        {renderField('Stock Images Ref', requirements.stock_images_reference)}
+                        {renderField('Floor Plan Images', requirements.floor_plan_images)}
+                        {renderField('Sitemap', requirements.sitemap)}
+                        {renderField('Virtual Tours', requirements.virtual_tours)}
+                        {renderField('POI Categories', requirements.poi_categories)}
+                        {renderBoolField('Specials Enabled', requirements.specials_enabled)}
+                        {renderField('Specials Details', requirements.specials_details)}
+                        {renderField('Copy Scope Notes', requirements.copy_scope_notes)}
+                    </div>
+                </div>
+
+                {/* Phase 5: Compliance & Legal */}
+                <div className="readonly-group">
+                    <h4>5. Compliance & Legal</h4>
+
+                    {/* WCAG */}
+                    <div className="readonly-field" style={{ ...fieldStyle, marginBottom: '16px' }}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>WCAG Accessibility</label>
+                        <span className={onboardingData?.wcag_compliance_required ? 'filled' : 'empty'}>
+                            {onboardingData?.wcag_compliance_required
+                                ? `Required - Level ${onboardingData?.wcag_level || 'AA'}`
+                                : 'Not required'}
+                        </span>
+                    </div>
+
+                    {/* Privacy Policy */}
+                    <div className="readonly-field full-width" style={fieldStyle}>
+                        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Privacy Policy</label>
+                        {onboardingData?.privacy_policy_text ? (
+                            <textarea
+                                className="privacy-policy-text"
+                                readOnly
+                                value={onboardingData.privacy_policy_text}
+                            />
+                        ) : onboardingData?.privacy_policy_url ? (
+                            <div className="privacy-link-container">
+                                <span className="filled">URL Provided: </span>
+                                <a href={onboardingData.privacy_policy_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                    {onboardingData.privacy_policy_url}
+                                </a>
+                            </div>
+                        ) : <span className="empty">Not provided</span>}
+                    </div>
+                </div>
+
+                {/* Phase 6: Website Fundamentals */}
+                <div className="readonly-group">
+                    <h4>6. Website Fundamentals</h4>
+                    <div className="requirements-grid">
+                        {renderField('Pages', requirements.pages)}
+                        {renderField('Domain Type', requirements.domain_type)}
+                        {renderField('Vanity Domains', requirements.vanity_domains)}
+                        {renderField('Call Tracking', requirements.call_tracking_plan)}
+                    </div>
+                </div>
             </div>
         );
     };

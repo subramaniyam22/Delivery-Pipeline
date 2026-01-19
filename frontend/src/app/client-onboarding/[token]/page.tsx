@@ -83,13 +83,28 @@ interface OnboardingFormData {
 
 const ReviewModal = ({ onClose, onConfirm, phases, requirements }: any) => {
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal-content review-modal" onClick={e => e.stopPropagation()}>
-                <div className="review-header">
-                    <h2 style={{ margin: 0, fontSize: '20px' }}>Review & Submit</h2>
+        <div className="modal-overlay" onClick={onClose} style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)'
+        }}>
+            <div className="modal-content review-modal" onClick={e => e.stopPropagation()} style={{
+                background: 'white',
+                borderRadius: '16px',
+                width: '90%',
+                maxWidth: '600px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+                display: 'flex',
+                flexDirection: 'column'
+            }}>
+                <div className="review-header" style={{ padding: '24px', borderBottom: '1px solid #e2e8f0' }}>
+                    <h2 style={{ margin: 0, fontSize: '20px', color: '#1e293b' }}>Review & Submit</h2>
                     <p style={{ margin: '4px 0 0', color: '#64748b' }}>Please check your progress before final submission.</p>
                 </div>
-                <div className="review-body">
+                <div className="review-body" style={{ padding: '24px' }}>
                     <div style={{ marginBottom: '24px' }}>
                         <h4 style={{ margin: '0 0 12px', fontSize: '14px', textTransform: 'uppercase', color: '#94a3b8' }}>Completion Summary</h4>
                         <div className="phase-summary-list">
@@ -100,9 +115,11 @@ const ReviewModal = ({ onClose, onConfirm, phases, requirements }: any) => {
                                 const isComplete = completed === total && total > 0;
 
                                 return (
-                                    <div key={phase.id} className={`review-phase-item ${isComplete ? 'complete' : 'incomplete'}`}>
-                                        <span style={{ fontWeight: 500 }}>{phase.title.split(':')[0]}</span>
-                                        <span className="status">
+                                    <div key={phase.id} className={`review-phase-item ${isComplete ? 'complete' : 'incomplete'}`} style={{
+                                        display: 'flex', justifyContent: 'space-between', padding: '12px', borderBottom: '1px solid #f1f5f9'
+                                    }}>
+                                        <span style={{ fontWeight: 500, color: '#334155' }}>{phase.title}</span>
+                                        <span className="status" style={{ color: isComplete ? '#10b981' : '#f59e0b', fontWeight: 500 }}>
                                             {isComplete ? '✓ Complete' : `${completed}/${total} steps`}
                                         </span>
                                     </div>
@@ -120,9 +137,16 @@ const ReviewModal = ({ onClose, onConfirm, phases, requirements }: any) => {
                         </ul>
                     </div>
                 </div>
-                <div className="review-footer">
-                    <button className="btn-secondary" onClick={onClose}>Keep Editing</button>
-                    <button className="btn-primary" onClick={onConfirm}>Confirm & Submit Project</button>
+                <div className="review-footer" style={{
+                    padding: '20px 24px', background: '#f8fafc', borderTop: '1px solid #e2e8f0',
+                    display: 'flex', justifyContent: 'flex-end', gap: '12px'
+                }}>
+                    <button className="btn-secondary" onClick={onClose} style={{
+                        padding: '10px 20px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', color: '#64748b', cursor: 'pointer'
+                    }}>Keep Editing</button>
+                    <button className="btn-primary" onClick={onConfirm} style={{
+                        padding: '10px 20px', borderRadius: '8px', border: 'none', background: '#2563eb', color: 'white', cursor: 'pointer'
+                    }}>Confirm & Submit Project</button>
                 </div>
             </div>
         </div>
@@ -130,12 +154,12 @@ const ReviewModal = ({ onClose, onConfirm, phases, requirements }: any) => {
 };
 
 const PHASE_DEFINITIONS = [
-    { id: 'phase-1', title: 'Phase 1: Project Basics', fields: ['project_summary', 'project_notes', 'phase_number'] },
-    { id: 'phase-2', title: 'Phase 2: Brand & Visual Assets', fields: ['logo', 'images', 'copy', 'theme'] },
-    { id: 'phase-3', title: 'Phase 3: Design Preferences', fields: ['brand_guidelines', 'color_selection', 'font_selection', 'custom_graphics', 'navigation'] },
-    { id: 'phase-4', title: 'Phase 4: Property Content', fields: ['floor_plans', 'virtual_tours', 'poi', 'stock_images', 'sitemap', 'specials'] },
-    { id: 'phase-5', title: 'Phase 5: Compliance & Legal', fields: ['wcag', 'privacy'] },
-    { id: 'phase-6', title: 'Phase 6: Technical & Launch Setup', fields: ['pages', 'domain', 'vanity', 'call_tracking'] }
+    { id: 'phase-1', title: 'Project Basics', fields: ['project_summary', 'project_notes', 'phase_number'] },
+    { id: 'phase-2', title: 'Brand & Visual Assets', fields: ['logo', 'images', 'copy', 'theme'] },
+    { id: 'phase-3', title: 'Design Preferences', fields: ['brand_guidelines', 'color_selection', 'font_selection', 'custom_graphics', 'navigation'] },
+    { id: 'phase-4', title: 'Property Content', fields: ['floor_plans', 'virtual_tours', 'poi', 'stock_images', 'sitemap', 'specials'] },
+    { id: 'phase-5', title: 'Compliance & Legal', fields: ['wcag', 'privacy'] },
+    { id: 'phase-6', title: 'Website Fundamentals', fields: ['pages', 'domain', 'vanity', 'call_tracking'] }
 ];
 
 const PhaseSection = ({
@@ -367,6 +391,7 @@ export default function ClientOnboardingPage() {
     };
 
     const logoInputRef = useRef<HTMLInputElement>(null);
+    const variantInputRef = useRef<HTMLInputElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -579,6 +604,28 @@ export default function ClientOnboardingPage() {
         }
     };
 
+    const handleVariantUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+
+        setSaving(true);
+        try {
+            for (const file of files) {
+                // Resize or rename to distinguish as variant
+                const newName = `brand_variant_${file.name}`;
+                const renamedFile = new File([file], newName, { type: file.type });
+                await clientAPI.uploadImage(token, renamedFile);
+            }
+            setSuccess('Logo variant(s) added successfully!');
+            await loadFormData();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to upload variant(s)');
+        } finally {
+            setSaving(false);
+            e.target.value = '';
+        }
+    };
+
     const handleDeleteLogo = async () => {
         if (!window.confirm('Are you sure you want to delete the logo?')) return;
 
@@ -778,7 +825,7 @@ export default function ClientOnboardingPage() {
                     {/* Phase 1: Project Basics */}
                     <PhaseSection
                         id="phase-1"
-                        title="Phase 1: Project Basics"
+                        title="Project Basics"
                         isExpanded={activePhase === 'phase-1'}
                         onToggle={() => togglePhase('phase-1')}
                         completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[0].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[0].fields.length) * 100}
@@ -822,7 +869,7 @@ export default function ClientOnboardingPage() {
                     {/* Phase 2: Brand & Visual Assets */}
                     <PhaseSection
                         id="phase-2"
-                        title="Phase 2: Brand & Visual Assets"
+                        title="Brand & Visual Assets"
                         isExpanded={activePhase === 'phase-2'}
                         onToggle={() => togglePhase('phase-2')}
                         completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[1].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[1].fields.length) * 100}
@@ -833,11 +880,28 @@ export default function ClientOnboardingPage() {
                             <div className="upload-area">
                                 {formData.data.logo_url || formData.data.logo_file_path ? (
                                     <div className="logo-preview-container">
-                                        <div className="logo-preview-card">
+                                        <div className="logo-preview-card" style={{
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: '8px',
+                                            padding: '16px',
+                                            boxShadow: '0 2px 4px -1px rgba(0,0,0,0.05)',
+                                            background: 'white',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            position: 'relative'
+                                        }}>
                                             <button
                                                 className="btn-remove-logo-x"
                                                 onClick={handleDeleteLogo}
                                                 title="Remove logo"
+                                                style={{
+                                                    position: 'absolute', top: '8px', right: '8px',
+                                                    background: '#fee2e2', color: '#ef4444',
+                                                    border: 'none', borderRadius: '50%',
+                                                    width: '24px', height: '24px', cursor: 'pointer',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                }}
                                             >
                                                 ×
                                             </button>
@@ -847,15 +911,48 @@ export default function ClientOnboardingPage() {
                                                 className="logo-thumbnail"
                                                 onClick={() => setPreviewImage(getAssetUrl(formData.data.logo_url || formData.data.logo_file_path))}
                                                 title="Click to preview"
+                                                style={{ maxWidth: '100%', maxHeight: '120px', objectFit: 'contain', marginBottom: '12px' }}
                                             />
-                                            <div className="logo-actions">
-                                                <div className="preview-badge">✓ Logo Uploaded</div>
-                                                <div className="logo-btn-group">
-                                                    <button className="btn-replace" onClick={() => logoInputRef.current?.click()}>
-                                                        Replace Logo
+                                            <div className="logo-actions" style={{ width: '100%', textAlign: 'center' }}>
+                                                <div className="preview-badge" style={{ fontSize: '12px', color: '#10b981', fontWeight: 600, marginBottom: '8px' }}>✓ Logo Uploaded</div>
+                                                <div className="logo-btn-group" style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                                    <button className="btn-replace" onClick={() => logoInputRef.current?.click()} style={{
+                                                        fontSize: '12px', color: '#2563eb', background: '#eff6ff', border: '1px solid #bfdbfe',
+                                                        borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontWeight: 500
+                                                    }}>
+                                                        Replace Primary
+                                                    </button>
+                                                    <button className="btn-add-variant" onClick={() => variantInputRef.current?.click()} style={{
+                                                        fontSize: '12px', color: '#475569', background: 'white', border: '1px solid #cbd5e1',
+                                                        borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontWeight: 500
+                                                    }}>
+                                                        Add Variant
                                                     </button>
                                                 </div>
                                             </div>
+
+                                            {/* Render Variants inside the card */}
+                                            {formData.data.images?.filter(img => (img.filename || '').startsWith('brand_variant_')).length > 0 && (
+                                                <div className="logo-variants" style={{ marginTop: '16px', borderTop: '1px solid #f1f5f9', paddingTop: '12px', width: '100%' }}>
+                                                    <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px', textAlign: 'left', fontWeight: 600 }}>VARIANTS</div>
+                                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                        {formData.data.images?.filter(img => (img.filename || '').startsWith('brand_variant_')).map((img, i) => {
+                                                            const url = getAssetUrl(img.url || img.file_path || (typeof img === 'string' ? img : ''));
+                                                            // Find actua index in main array for deletion
+                                                            const realIndex = formData.data.images.findIndex(x => x === img);
+                                                            return (
+                                                                <div key={i} style={{ position: 'relative', width: '60px', height: '60px', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '4px' }}>
+                                                                    <img src={url} alt="Variant" onClick={() => setPreviewImage(url)} style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }} />
+                                                                    <button onClick={() => handleDeleteImage(realIndex)} style={{
+                                                                        position: 'absolute', top: '-6px', right: '-6px', width: '16px', height: '16px', background: '#ef4444', color: 'white',
+                                                                        borderRadius: '50%', border: 'none', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                                                                    }}>×</button>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ) : (
@@ -869,6 +966,14 @@ export default function ClientOnboardingPage() {
                                     type="file"
                                     accept="image/png,image/jpeg,image/svg+xml,image/webp"
                                     onChange={handleLogoUpload}
+                                    hidden
+                                />
+                                <input
+                                    ref={variantInputRef}
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                                    multiple
+                                    onChange={handleVariantUpload}
                                     hidden
                                 />
                             </div>
@@ -899,7 +1004,11 @@ export default function ClientOnboardingPage() {
                                         <span style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>JPG, PNG (Max 5MB)</span>
                                     </div>
                                 )}
-                                {formData.data.images?.map((img, i) => {
+                                {formData.data.images?.filter(img => !(img.filename || '').startsWith('brand_variant_')).map((img, i) => {
+                                    // Use original index logic is tricky with filter. Better to rely on object identity or just pass ID if available. 
+                                    // But handleDeleteImage takes INDEX.
+                                    // We must find the index in original array.
+                                    const realIndex = formData.data.images.findIndex(x => x === img);
                                     const url = getAssetUrl(img.url || img.file_path || (typeof img === 'string' ? img : ''));
                                     return (
                                         <div key={i} className="image-card">
@@ -913,7 +1022,7 @@ export default function ClientOnboardingPage() {
                                                 />
                                                 <button
                                                     className="btn-delete"
-                                                    onClick={() => handleDeleteImage(i)}
+                                                    onClick={() => handleDeleteImage(realIndex)}
                                                     title="Delete image"
                                                 >
                                                     ×
@@ -1012,31 +1121,33 @@ export default function ClientOnboardingPage() {
                             <h4 style={{ margin: '0 0 16px', fontSize: '15px' }}>Website Template</h4>
                             <div className="form-group">
                                 <label>Template Direction</label>
-                                <div className="radio-group box-radio-group">
-                                    <label className={`radio-card ${formData.data.requirements?.template_mode !== 'NEW' ? 'selected' : ''}`}>
-                                        <input
-                                            type="radio"
-                                            name="template_mode"
-                                            checked={formData.data.requirements?.template_mode !== 'NEW'}
-                                            onChange={() => updateRequirements({ template_mode: 'CLONE' })}
-                                        />
-                                        <div className="radio-content">
-                                            <span className="radio-title">Clone from Validated Template</span>
-                                            <span className="radio-desc">Proven designs optimized for conversion</span>
-                                        </div>
-                                    </label>
-                                    <label className={`radio-card ${formData.data.requirements?.template_mode === 'NEW' ? 'selected' : ''}`}>
-                                        <input
-                                            type="radio"
-                                            name="template_mode"
-                                            checked={formData.data.requirements?.template_mode === 'NEW'}
-                                            onChange={() => updateRequirements({ template_mode: 'NEW' })}
-                                        />
-                                        <div className="radio-content">
-                                            <span className="radio-title">New Custom Design</span>
-                                            <span className="radio-desc">Unique design built from scratch</span>
-                                        </div>
-                                    </label>
+                                <div className="template-btn-group" style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+                                    <button
+                                        className={`btn-toggle ${formData.data.requirements?.template_mode !== 'NEW' ? 'active' : ''}`}
+                                        onClick={() => updateRequirements({ template_mode: 'CLONE' })}
+                                        style={{
+                                            flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid',
+                                            borderColor: formData.data.requirements?.template_mode !== 'NEW' ? '#2563eb' : '#cbd5e1',
+                                            background: formData.data.requirements?.template_mode !== 'NEW' ? '#eff6ff' : 'white',
+                                            color: formData.data.requirements?.template_mode !== 'NEW' ? '#1e40af' : '#64748b',
+                                            fontWeight: 600, cursor: 'pointer'
+                                        }}
+                                    >
+                                        Clone from Validated Template
+                                    </button>
+                                    <button
+                                        className={`btn-toggle ${formData.data.requirements?.template_mode === 'NEW' ? 'active' : ''}`}
+                                        onClick={() => updateRequirements({ template_mode: 'NEW' })}
+                                        style={{
+                                            flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid',
+                                            borderColor: formData.data.requirements?.template_mode === 'NEW' ? '#2563eb' : '#cbd5e1',
+                                            background: formData.data.requirements?.template_mode === 'NEW' ? '#eff6ff' : 'white',
+                                            color: formData.data.requirements?.template_mode === 'NEW' ? '#1e40af' : '#64748b',
+                                            fontWeight: 600, cursor: 'pointer'
+                                        }}
+                                    >
+                                        New Custom Design
+                                    </button>
                                 </div>
                             </div>
 
@@ -1068,13 +1179,35 @@ export default function ClientOnboardingPage() {
                                     ))}
                                 </div>
                             ) : (
-                                <div className="new-design-container">
-                                    <div className="info-card highlight">
-                                        <div className="info-icon">✨</div>
-                                        <div>
-                                            <h4>Custom Design Package</h4>
-                                            <p>Our expert designers will create a fully unique website tailored to your brand identity.</p>
-                                        </div>
+                                <div className="custom-design-section">
+                                    <label>Select Design Package</label>
+                                    <div className="pricing-grid" style={{ marginTop: '8px' }}>
+                                        {[
+                                            { name: 'Essential', price: 500, features: 'Custom Homepage + 5 Inner Pages' },
+                                            { name: 'Professional', price: 1000, features: 'Custom Homepage + 10 Inner Pages' },
+                                            { name: 'Enterprise', price: 2000, features: 'Fully Custom UI/UX + Branding' }
+                                        ].map((tier) => (
+                                            <div
+                                                key={tier.name}
+                                                className={`pricing-card`}
+                                                style={{ border: '1px solid #cbd5e1', padding: '16px', borderRadius: '8px', cursor: 'pointer', background: 'white' }}
+                                                onClick={() => updateRequirements({ template_references: `Selected Package: ${tier.name} ($${tier.price})` })}
+                                            >
+                                                <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>${tier.price}</div>
+                                                <div style={{ fontWeight: 600, color: '#334155', marginBottom: '4px' }}>{tier.name}</div>
+                                                <div style={{ fontSize: '12px', color: '#64748b' }}>{tier.features}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="form-group" style={{ marginTop: '16px' }}>
+                                        <label>Design Parameters & Details</label>
+                                        <textarea
+                                            value={formData.data.requirements?.template_references || ''}
+                                            onChange={(e) => updateRequirementsLocal({ template_references: e.target.value })}
+                                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                            rows={4}
+                                            placeholder="Describe your vision, target audience, and key design elements..."
+                                        />
                                     </div>
                                 </div>
                             )}
@@ -1095,7 +1228,7 @@ export default function ClientOnboardingPage() {
                     {/* Phase 3: Design Preferences */}
                     <PhaseSection
                         id="phase-3"
-                        title="Phase 3: Design Preferences"
+                        title="Design Preferences"
                         isExpanded={activePhase === 'phase-3'}
                         onToggle={() => togglePhase('phase-3')}
                         completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[2].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[2].fields.length) * 100}
@@ -1259,7 +1392,7 @@ export default function ClientOnboardingPage() {
                     {/* Phase 4: Property Content */}
                     <PhaseSection
                         id="phase-4"
-                        title="Phase 4: Property Content"
+                        title="Property Content"
                         isExpanded={activePhase === 'phase-4'}
                         onToggle={() => togglePhase('phase-4')}
                         completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[3].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[3].fields.length) * 100}
@@ -1347,23 +1480,33 @@ export default function ClientOnboardingPage() {
                     {/* Phase 5: Compliance & Legal */}
                     <PhaseSection
                         id="phase-5"
-                        title="Phase 5: Compliance & Legal"
+                        title="Compliance & Legal"
                         isExpanded={activePhase === 'phase-5'}
                         onToggle={() => togglePhase('phase-5')}
                         completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[4].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[4].fields.length) * 100}
                     >
                         <div className="form-group">
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={formData.data.wcag_compliance_required}
-                                    onChange={(e) => saveFormData({
-                                        wcag_compliance_required: e.target.checked,
-                                        wcag_confirmed: true
-                                    })}
-                                />
-                                WCAG Compliance Required
-                            </label>
+                            <div className="wcag-container" style={{
+                                background: '#f8fafc',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '8px',
+                                padding: '16px',
+                                display: 'flex',
+                                alignItems: 'center'
+                            }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: 0, width: '100%', cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.data.wcag_compliance_required}
+                                        onChange={(e) => saveFormData({
+                                            wcag_compliance_required: e.target.checked,
+                                            wcag_confirmed: true
+                                        })}
+                                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                    />
+                                    <span style={{ fontWeight: 500, color: '#1e293b' }}>WCAG Compliance Review Required</span>
+                                </label>
+                            </div>
                         </div>
                         {formData.data.wcag_compliance_required && (
                             <div className="select-group">
@@ -1409,7 +1552,7 @@ export default function ClientOnboardingPage() {
                     {/* Phase 6: Technical & Launch Setup */}
                     <PhaseSection
                         id="phase-6"
-                        title="Phase 6: Technical & Launch Setup"
+                        title="Website Fundamentals"
                         isExpanded={activePhase === 'phase-6'}
                         onToggle={() => togglePhase('phase-6')}
                         completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[5].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[5].fields.length) * 100}
@@ -3038,41 +3181,20 @@ export default function ClientOnboardingPage() {
                 .chatbot-container {
                     position: fixed;
                     bottom: 24px;
-                    right: 24px;
+                    left: 24px; /* Moved to Left */
                     z-index: 1500;
                     display: flex;
                     flex-direction: column;
-                    align-items: flex-end;
-                }
-
-                .chatbot-toggle {
-                    width: 56px;
-                    height: 56px;
-                    border-radius: 50%;
-                    background: #2563eb;
-                    color: white;
-                    border: none;
-                    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
-                    cursor: pointer;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    transition: transform 0.2s;
-                    position: relative;
-                }
-
-                .chatbot-toggle:hover {
-                    transform: scale(1.05);
-                    background: #1d4ed8;
+                    align-items: flex-start; /* Align start for left styling */
                 }
 
                 .chatbot-window {
                     position: fixed;
                     bottom: 90px;
-                    right: 24px;
+                    left: 24px; /* Moved to Left */
                     width: 350px;
                     height: 500px;
-                    background: white;
+                    background: white; /* Ensure white background */
                     border-radius: 16px;
                     box-shadow: 0 10px 40px rgba(0,0,0,0.15);
                     display: flex;

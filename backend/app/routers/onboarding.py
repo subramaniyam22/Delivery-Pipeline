@@ -37,7 +37,7 @@ THEME_TEMPLATES = [
         "id": "modern-corporate",
         "name": "Modern Corporate",
         "description": "Clean, professional design for businesses",
-        "preview_url": "/templates/modern-corporate.png",
+        "preview_url": "https://placehold.co/600x400/2563eb/white?text=Modern+Corporate",
         "colors": {"primary": "#2563eb", "secondary": "#1e40af", "accent": "#3b82f6"},
         "features": ["Hero section", "Services grid", "Team section", "Contact form"]
     },
@@ -45,7 +45,7 @@ THEME_TEMPLATES = [
         "id": "creative-agency",
         "name": "Creative Agency",
         "description": "Bold, artistic design for creative teams",
-        "preview_url": "/templates/creative-agency.png",
+        "preview_url": "https://placehold.co/600x400/7c3aed/white?text=Creative+Agency",
         "colors": {"primary": "#7c3aed", "secondary": "#5b21b6", "accent": "#a78bfa"},
         "features": ["Portfolio gallery", "Case studies", "Team carousel", "Animated sections"]
     },
@@ -53,7 +53,7 @@ THEME_TEMPLATES = [
         "id": "ecommerce-starter",
         "name": "E-commerce Starter",
         "description": "Ready-to-use online store template",
-        "preview_url": "/templates/ecommerce-starter.png",
+        "preview_url": "https://placehold.co/600x400/059669/white?text=E-commerce",
         "colors": {"primary": "#059669", "secondary": "#047857", "accent": "#10b981"},
         "features": ["Product grid", "Shopping cart", "Checkout flow", "Reviews section"]
     },
@@ -61,7 +61,7 @@ THEME_TEMPLATES = [
         "id": "saas-landing",
         "name": "SaaS Landing",
         "description": "Conversion-focused template for software products",
-        "preview_url": "/templates/saas-landing.png",
+        "preview_url": "https://placehold.co/600x400/0ea5e9/white?text=SaaS+Landing",
         "colors": {"primary": "#0ea5e9", "secondary": "#0284c7", "accent": "#38bdf8"},
         "features": ["Feature comparison", "Pricing tables", "Testimonials", "FAQ section"]
     },
@@ -69,7 +69,7 @@ THEME_TEMPLATES = [
         "id": "healthcare-professional",
         "name": "Healthcare Professional",
         "description": "Trust-building design for medical practices",
-        "preview_url": "/templates/healthcare.png",
+        "preview_url": "https://placehold.co/600x400/14b8a6/white?text=Healthcare",
         "colors": {"primary": "#14b8a6", "secondary": "#0d9488", "accent": "#2dd4bf"},
         "features": ["Services listing", "Doctor profiles", "Appointment booking", "Patient resources"]
     },
@@ -77,7 +77,7 @@ THEME_TEMPLATES = [
         "id": "restaurant-menu",
         "name": "Restaurant & Menu",
         "description": "Appetizing design for food businesses",
-        "preview_url": "/templates/restaurant.png",
+        "preview_url": "https://placehold.co/600x400/dc2626/white?text=Restaurant",
         "colors": {"primary": "#dc2626", "secondary": "#b91c1c", "accent": "#f87171"},
         "features": ["Menu display", "Online ordering", "Reservations", "Gallery"]
     },
