@@ -9,6 +9,8 @@ from app.models import User, Role
 from app.auth import get_password_hash
 import os
 import logging
+from alembic import command
+from alembic.config import Config
 
 # Configure logging
 logging.basicConfig(
@@ -16,6 +18,31 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def run_migrations():
+    """Run Alembic migrations on startup"""
+    try:
+        logger.info("Running DB migrations...")
+        
+        # Point to alembic.ini relative to this file
+        # backend/app/main.py -> backend/
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        alembic_cfg_path = os.path.join(current_dir, "alembic.ini")
+        
+        # Create Alembic Config object
+        alembic_cfg = Config(alembic_cfg_path)
+        
+        # Override sqlalchemy.url with the fixed production URL
+        alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url_fixed)
+        
+        # Run upgrade head
+        command.upgrade(alembic_cfg, "head")
+        logger.info("DB migrations completed successfully")
+    except Exception as e:
+        logger.error(f"Failed to run DB migrations: {e}")
+        # We don't raise here to allow app to start even if migration fails (though risky)
+        # But for 'features_json' missing, app might fail later anyway.
 
 
 def seed_admin_user(db):
@@ -81,6 +108,9 @@ app.add_middleware(
 async def startup_event():
     """Initialize application on startup"""
     logger.info("Starting Multi-Agent Delivery Pipeline...")
+    
+    # 1. Run Migrations
+    run_migrations()
     
     # Create upload directory
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
