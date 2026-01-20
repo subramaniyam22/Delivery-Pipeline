@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { projectsAPI, artifactsAPI, workflowAPI, onboardingAPI, projectTasksAPI, remindersAPI, testingAPI, usersAPI, capacityAPI } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
@@ -252,6 +252,50 @@ interface SuggestionsResponse {
     total_available_hours: number;
 }
 
+const ChatLogsModal = ({ logs, onClose }: { logs: any[], onClose: () => void }) => {
+    return (
+        <div className="modal-overlay" onClick={onClose} style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{
+                background: 'white', padding: '24px', borderRadius: '12px',
+                width: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column'
+            }}>
+                <h3 style={{ margin: 0 }}>Client Chat History</h3>
+                <div style={{ flex: 1, overflowY: 'auto', marginTop: '16px', background: '#f8fafc', padding: '16px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {logs.length === 0 ? <p style={{ color: '#64748b', textAlign: 'center' }}>No chat history found.</p> : logs.map(log => (
+                        <div key={log.id} style={{
+                            alignSelf: log.sender === 'user' ? 'flex-end' : 'flex-start',
+                            maxWidth: '80%'
+                        }}>
+                            <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '2px', textAlign: log.sender === 'user' ? 'right' : 'left' }}>
+                                {log.sender === 'user' ? 'Client' : log.sender === 'consultant' ? 'Consultant' : 'AI Assistant'} • {new Date(log.created_at).toLocaleString()}
+                            </div>
+                            <div style={{
+                                background: log.sender === 'user' ? '#3b82f6' : 'white',
+                                color: log.sender === 'user' ? 'white' : '#1e293b',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                border: log.sender === 'user' ? 'none' : '1px solid #e2e8f0',
+                                whiteSpace: 'pre-wrap',
+                                fontSize: '14px',
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                            }}>
+                                {log.message}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+                    <button onClick={onClose} style={{ background: '#e2e8f0', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>Close</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const STAGES = [
     { key: 'ONBOARDING', label: 'Onboarding', icon: '📋' },
     { key: 'ASSIGNMENT', label: 'Assignment', icon: '📥' },
@@ -272,6 +316,167 @@ const WCAG_LEVELS = [
     { value: 'AA', label: 'Level AA (Standard)' },
     { value: 'AAA', label: 'Level AAA (Enhanced)' },
 ];
+
+const ConsultantChatModal = ({ projectId, onClose }: { projectId: string; onClose: () => void }) => {
+    const [logs, setLogs] = useState<any[]>([]);
+    const [input, setInput] = useState('');
+    const [aiEnabled, setAiEnabled] = useState(true);
+    const [sending, setSending] = useState(false);
+    const bottomRef = useRef<HTMLDivElement>(null);
+
+    const loadData = async () => {
+        try {
+            const [logsRes, statusRes] = await Promise.all([
+                projectsAPI.getChatLogs(projectId),
+                projectsAPI.getAIStatus(projectId)
+            ]);
+            setLogs(logsRes.data);
+            setAiEnabled(statusRes.data.ai_enabled);
+        } catch (err) {
+            console.error('Failed to load chat data', err);
+        }
+    };
+
+    useEffect(() => {
+        loadData();
+        const interval = setInterval(loadData, 5000); // Poll every 5s
+        return () => clearInterval(interval);
+    }, [projectId]);
+
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [logs]);
+
+    const handleSend = async () => {
+        if (!input.trim()) return;
+        setSending(true);
+        try {
+            await projectsAPI.sendConsultantMessage({ project_id: projectId, message: input });
+            setInput('');
+            await loadData();
+        } catch (err) {
+            console.error('Failed to send message', err);
+        } finally {
+            setSending(false);
+        }
+    };
+
+    const handleToggleAI = async () => {
+        try {
+            await projectsAPI.toggleAI({ project_id: projectId, enabled: !aiEnabled });
+            setAiEnabled(!aiEnabled);
+        } catch (err) {
+            console.error('Failed to toggle AI', err);
+        }
+    };
+
+    return (
+        <div className="modal-overlay" onClick={onClose} style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)', zIndex: 2000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{
+                background: 'white', padding: '0', borderRadius: '12px', overflow: 'hidden',
+                width: '600px', height: '80vh', display: 'flex', flexDirection: 'column',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
+            }}>
+                <div style={{
+                    padding: '16px 24px', borderBottom: '1px solid #e2e8f0',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    background: '#f8fafc'
+                }}>
+                    <div>
+                        <h3 style={{ margin: 0, fontSize: '18px' }}>Client Chat</h3>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginTop: '4px' }}>
+                            <span style={{
+                                width: '8px', height: '8px', borderRadius: '50%',
+                                background: aiEnabled ? '#10b981' : '#cbd5e1'
+                            }} />
+                            {aiEnabled ? 'AI Assistant Active' : 'AI Paused (Human Mode)'}
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                        <button
+                            onClick={handleToggleAI}
+                            style={{
+                                fontSize: '12px', padding: '6px 12px', borderRadius: '6px',
+                                border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer',
+                                color: aiEnabled ? '#dc2626' : '#10b981', fontWeight: 500
+                            }}
+                        >
+                            {aiEnabled ? '⏸ Pause AI' : '▶ Resume AI'}
+                        </button>
+                        <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>×</button>
+                    </div>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '24px', background: '#f1f5f9', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {logs.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: '40px' }}>
+                            <p>No messages yet.</p>
+                        </div>
+                    ) : logs.map(log => {
+                        const isMe = log.sender === 'consultant';
+                        const isUser = log.sender === 'user';
+                        return (
+                            <div key={log.id} style={{
+                                alignSelf: isMe ? 'flex-end' : 'flex-start',
+                                maxWidth: '80%',
+                                display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start'
+                            }}>
+                                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', marginLeft: '4px' }}>
+                                    {isUser ? 'Client' : isMe ? 'You' : 'AI Assistant'} • {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                                <div style={{
+                                    background: isMe ? '#3b82f6' : isUser ? 'white' : '#e2e8f0',
+                                    color: isMe ? 'white' : '#1e293b',
+                                    padding: '10px 16px',
+                                    borderRadius: '12px',
+                                    borderTopLeftRadius: !isMe ? '2px' : '12px',
+                                    borderTopRightRadius: isMe ? '2px' : '12px',
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                                    whiteSpace: 'pre-wrap',
+                                    fontSize: '14px',
+                                    border: isUser ? '1px solid #e2e8f0' : 'none'
+                                }}>
+                                    {log.message}
+                                </div>
+                            </div>
+                        );
+                    })}
+                    <div ref={bottomRef} />
+                </div>
+                <div style={{ padding: '16px 24px', background: 'white', borderTop: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                        <input
+                            type="text"
+                            value={input}
+                            onChange={e => setInput(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
+                            placeholder="Type a message..."
+                            disabled={sending}
+                            style={{
+                                flex: 1, padding: '10px 16px', borderRadius: '8px',
+                                border: '1px solid #cbd5e1', outline: 'none', fontSize: '14px'
+                            }}
+                        />
+                        <button
+                            onClick={handleSend}
+                            disabled={sending || !input.trim()}
+                            style={{
+                                background: '#3b82f6', color: 'white', border: 'none',
+                                padding: '10px 20px', borderRadius: '8px', cursor: 'pointer',
+                                fontWeight: 500, opacity: sending || !input.trim() ? 0.7 : 1
+                            }}
+                        >
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default function ProjectDetailPage() {
     const router = useRouter();
@@ -374,6 +579,23 @@ export default function ProjectDetailPage() {
     const [success, setSuccess] = useState('');
     const [myCapacity, setMyCapacity] = useState<any>(null);
 
+    const [showCustomInterval, setShowCustomInterval] = useState(false);
+
+    // Chat Logs State
+    const [showChatLogs, setShowChatLogs] = useState(false);
+    const [chatLogs, setChatLogs] = useState<any[]>([]);
+
+    const handleViewChatLogs = async () => {
+        try {
+            const res = await projectsAPI.getChatLogs(projectId);
+            setChatLogs(res.data);
+            setShowChatLogs(true);
+        } catch (err) {
+            console.error('Failed to load chat logs:', err);
+            setError('Failed to load chat logs');
+        }
+    };
+
     // Role and assignment checks
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const isExecutiveAdmin = user?.role === 'ADMIN';
@@ -439,7 +661,11 @@ export default function ProjectDetailPage() {
             }
 
             // Load onboarding data for requirements visibility across stages
-            await loadOnboardingData();
+            const onboardingRes = await loadOnboardingData();
+            if (onboardingRes && onboardingRes.reminder_interval_hours) {
+                setReminderInterval(onboardingRes.reminder_interval_hours);
+                setShowCustomInterval(![6, 12, 24].includes(onboardingRes.reminder_interval_hours));
+            }
 
             // Load test phase data if in TEST or DEFECT_VALIDATION stage
             if (projectRes.data.current_stage === 'TEST' || projectRes.data.current_stage === 'DEFECT_VALIDATION') {
@@ -785,12 +1011,58 @@ export default function ProjectDetailPage() {
             boxShadow: 'var(--shadow-sm)',
         };
 
-        const renderField = (label: string, value: any) => (
-            <div className="readonly-item">
-                <label>{label}</label>
-                <span>{value || 'Not provided'}</span>
-            </div>
-        );
+        const handleDownload = async (e: React.MouseEvent, url: string, filename: string) => {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                const response = await fetch(url);
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = filename || 'download';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(blobUrl);
+            } catch (error) {
+                console.error('Download failed:', error);
+                window.open(url, '_blank');
+            }
+        };
+
+        const renderField = (label: string, value: string | undefined) => {
+            if (!value) return (
+                <div className="readonly-item">
+                    <label>{label}</label>
+                    <span className="empty">Not provided</span>
+                </div>
+            );
+
+            // SPECIAL HANDLING: Navigation Details (Comma or Newline separated)
+            if (label === 'Navigation Details') {
+                const items = value.split(/,|\n|- /).map(s => s.trim()).filter(s => s.length > 0 && s !== '-');
+                if (items.length > 1) {
+                    return (
+                        <div className="readonly-item">
+                            <label>{label}</label>
+                            <div className="value-list">
+                                {items.map((item, i) => (
+                                    <div key={i} className="list-item">• {item}</div>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                }
+            }
+
+            return (
+                <div className="readonly-item">
+                    <label>{label}</label>
+                    <span className="value-text">{value}</span>
+                </div>
+            );
+        };
 
         const renderBoolField = (label: string, value: boolean | undefined) => (
             <div className="readonly-item">
@@ -832,7 +1104,10 @@ export default function ProjectDetailPage() {
                                     title="Click to preview"
                                 />
                                 <div className="logo-actions">
-                                    <a className="btn-download" href={getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path)} download>⬇ Download</a>
+                                    <button
+                                        className="btn-download"
+                                        onClick={(e) => handleDownload(e, getAssetUrl(onboardingData?.logo_url || onboardingData?.logo_file_path), 'logo.png')}
+                                    >⬇ Download</button>
                                 </div>
                             </div>
                         ) : <span className="empty">Not provided</span>}
@@ -850,7 +1125,10 @@ export default function ProjectDetailPage() {
                                             </div>
                                             <div className="image-info">
                                                 <span className="image-name">{img.name}</span>
-                                                <a className="link-download" href={img.url} download>⬇</a>
+                                                <button
+                                                    className="link-download"
+                                                    onClick={(e) => handleDownload(e, img.url, img.name)}
+                                                >⬇</button>
                                             </div>
                                         </div>
                                     ))}
@@ -884,17 +1162,15 @@ export default function ProjectDetailPage() {
                                 </div>
                             )}
                             <div className="theme-info">
-                                <div className="info-row">
-                                    <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem' }}>Preference:</label>
-                                    <span className={onboardingData?.theme_preference ? 'filled' : 'empty'}>
-                                        {onboardingData?.theme_preference || 'None'}
-                                    </span>
-                                </div>
-                                <div className="info-row" style={{ marginTop: '8px' }}>
-                                    <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem' }}>Selected Template:</label>
-                                    <span className={onboardingData?.selected_template_id ? 'filled' : 'empty'}>
-                                        {onboardingData?.selected_template_id || 'None'}
-                                    </span>
+                                {/* Theme & Template Section - Refined */}
+                                <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase' }}>Selected Template</label>
+                                    <div className="template-display" style={{ fontSize: '1.1rem', fontWeight: 600, color: '#0f172a' }}>
+                                        {templates.find(t => t.id === onboardingData?.theme_preference || t.name === onboardingData?.theme_preference)?.name || onboardingData?.theme_preference || 'None'}
+                                    </div>
+                                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                        (Client Preference)
+                                    </div>
                                 </div>
                                 <div className="info-row" style={{ marginTop: '8px' }}>
                                     <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem' }}>References:</label>
@@ -1016,8 +1292,10 @@ export default function ProjectDetailPage() {
             setCompletionStatus(completionRes.data);
             setTemplates(templatesRes.data.templates || []);
             setPricingTiers(pricingRes.data.pricing_tiers || []);
+            return dataRes.data;
         } catch (error) {
             console.error('Failed to load onboarding data:', error);
+            return null;
         }
     };
 
@@ -1421,6 +1699,9 @@ export default function ProjectDetailPage() {
 
     if (!project || !user) return null;
 
+    console.log('Current User Role:', user.role);
+    console.log('Is Admin?', user.role === 'ADMIN');
+
     return (
         <div className="page-wrapper">
             <Navigation />
@@ -1442,18 +1723,40 @@ export default function ProjectDetailPage() {
                             <span className="status">{project.status}</span>
                         </div>
                     </div>
-                    {completionStatus && (
+                    {isProjectOwner && (
+                        <div className="header-actions" style={{ marginLeft: 'auto', marginRight: '24px' }}>
+                            <button
+                                onClick={handleViewChatLogs}
+                                style={{
+                                    background: '#3b82f6',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '8px 16px',
+                                    borderRadius: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    cursor: 'pointer',
+                                    fontWeight: 500,
+                                    boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)'
+                                }}
+                            >
+                                <span>💬</span> View Client Chat
+                            </button>
+                        </div>
+                    )}
+                    {project && (
                         <div className="completion-badge">
                             <div className="completion-ring">
                                 <svg viewBox="0 0 36 36">
                                     <path className="ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                                     <path
                                         className="ring-fill"
-                                        strokeDasharray={`${completionStatus.completion_percentage}, 100`}
+                                        strokeDasharray={`${project.completion_percentage || 0}, 100`}
                                         d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                                     />
                                 </svg>
-                                <span className="ring-value">{completionStatus.completion_percentage}%</span>
+                                <span className="ring-value">{project.completion_percentage || 0}%</span>
                             </div>
                             <span className="completion-label">Complete</span>
                         </div>
@@ -1590,20 +1893,87 @@ export default function ProjectDetailPage() {
                                         </div>
 
                                         {/* Auto Reminder Toggle */}
-                                        <div className="auto-reminder-toggle">
-                                            <div className="auto-reminder-label">
-                                                <span className="auto-reminder-title">Auto-Reminders</span>
-                                                <span className="auto-reminder-status">{onboardingData.auto_reminder_enabled ? 'Enabled' : 'Disabled'}</span>
+                                        {/* Auto Reminder Toggle & Settings */}
+                                        <div className="auto-reminder-section" style={{ marginTop: '16px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                            <div className="flex-between" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                                <div>
+                                                    <span style={{ fontWeight: 600, fontSize: '14px', color: '#334155' }}>Auto-Reminders</span>
+                                                    <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Automatically nudge client every {reminderInterval} hours</p>
+                                                </div>
+                                                <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ fontSize: '12px', fontWeight: 500, color: onboardingData.auto_reminder_enabled ? '#10b981' : '#94a3b8' }}>
+                                                        {onboardingData.auto_reminder_enabled ? 'Enabled' : 'Disabled'}
+                                                    </span>
+                                                    <label className="switch">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={onboardingData.auto_reminder_enabled}
+                                                            onChange={(e) => {
+                                                                onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval)
+                                                                    .then(() => loadOnboardingData())
+                                                                    .catch(() => setError('Failed to update'));
+                                                            }}
+                                                        />
+                                                        <span className="slider round"></span>
+                                                    </label>
+                                                </div>
                                             </div>
-                                            <input
-                                                type="checkbox"
-                                                checked={onboardingData.auto_reminder_enabled}
-                                                onChange={(e) => {
-                                                    onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval)
-                                                        .then(() => loadOnboardingData())
-                                                        .catch(() => setError('Failed to update'));
-                                                }}
-                                            />
+
+                                            {onboardingData.auto_reminder_enabled && (
+                                                <div className="interval-selector" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                    <label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>Reminder Frequency</label>
+                                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                        {[6, 12, 24].map(hours => (
+                                                            <button
+                                                                key={hours}
+                                                                className={`btn-chip ${reminderInterval === hours && !showCustomInterval ? 'active' : ''}`}
+                                                                onClick={() => {
+                                                                    setReminderInterval(hours);
+                                                                    setShowCustomInterval(false);
+                                                                    onboardingAPI.toggleAutoReminder(projectId, true, hours)
+                                                                        .then(() => loadOnboardingData());
+                                                                }}
+                                                                style={{
+                                                                    padding: '6px 12px', borderRadius: '16px', border: '1px solid',
+                                                                    borderColor: reminderInterval === hours && !showCustomInterval ? '#2563eb' : '#cbd5e1',
+                                                                    background: reminderInterval === hours && !showCustomInterval ? '#eff6ff' : 'white',
+                                                                    color: reminderInterval === hours && !showCustomInterval ? '#1e40af' : '#64748b',
+                                                                    fontSize: '12px', cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                Every {hours}h
+                                                            </button>
+                                                        ))}
+                                                        <button
+                                                            className={`btn-chip ${showCustomInterval ? 'active' : ''}`}
+                                                            onClick={() => setShowCustomInterval(true)}
+                                                            style={{
+                                                                padding: '6px 12px', borderRadius: '16px', border: '1px solid',
+                                                                borderColor: showCustomInterval ? '#2563eb' : '#cbd5e1',
+                                                                background: showCustomInterval ? '#eff6ff' : 'white',
+                                                                color: showCustomInterval ? '#1e40af' : '#64748b',
+                                                                fontSize: '12px', cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            Custom
+                                                        </button>
+                                                    </div>
+
+                                                    {showCustomInterval && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                                                            <input
+                                                                type="number"
+                                                                min="1"
+                                                                value={reminderInterval}
+                                                                onChange={(e) => setReminderInterval(parseInt(e.target.value) || 24)}
+                                                                onBlur={() => onboardingAPI.toggleAutoReminder(projectId, true, reminderInterval).then(() => loadOnboardingData())}
+                                                                style={{ width: '80px', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                                                            />
+                                                            <span style={{ fontSize: '13px', color: '#64748b' }}>hours</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Send Reminder - Only if Auto-Reminder is OFF */}
@@ -1804,7 +2174,7 @@ export default function ProjectDetailPage() {
                 {project.current_stage === 'ONBOARDING' && onboardingData && (
                     <div className="onboarding-section">
                         <div className="section-header">
-                            <h2>📋 Project Onboarding Details</h2>
+                            <h2>📋 {user?.role === 'ADMIN' ? 'Project Requirement Progress' : 'Project Onboarding Details'}</h2>
                             {completionStatus?.can_auto_advance && hasFullEditAccess && (
                                 <button className="btn-auto-advance" onClick={handleAutoAdvance} disabled={advancing}>
                                     🚀 Auto-Advance
@@ -1875,7 +2245,7 @@ export default function ProjectDetailPage() {
                         </div>
 
                         {/* Read-Only Details for Managers/Admins/Others */}
-                        {(user?.role !== 'CONSULTANT' || !isAssignedToProject) && (
+                        {(user?.role !== 'CONSULTANT' || !isAssignedToProject) && user?.role !== 'ADMIN' && (
                             <div className="onboarding-readonly-view">
                                 {renderReadonlyOnboardingDetails()}
                             </div>
@@ -1892,10 +2262,10 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
-                {project.current_stage !== 'ONBOARDING' && onboardingData && hasDetailedViewAccess && !isExecutiveView && (
+                {project.current_stage !== 'ONBOARDING' && onboardingData && hasDetailedViewAccess && !isExecutiveView && user?.role !== 'ADMIN' && (
                     <div className="requirements-section">
                         <div className="section-header">
-                            <h2>📋 Project Onboarding Details</h2>
+                            <h2>📋 {user?.role === 'ADMIN' ? 'Project Requirement Progress' : 'Project Onboarding Details'}</h2>
                         </div>
                         {renderReadonlyOnboardingDetails()}
                     </div>
@@ -2997,6 +3367,19 @@ export default function ProjectDetailPage() {
                     </div>
                 </div>
             )}
+
+            {showChatLogs && <ConsultantChatModal projectId={projectId as string} onClose={() => setShowChatLogs(false)} />}
+
+            <style jsx global>{`
+                .requirements-grid {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                }
+                .readonly-group {
+                    margin-bottom: 24px;
+                }
+            `}</style>
 
 
         </div>

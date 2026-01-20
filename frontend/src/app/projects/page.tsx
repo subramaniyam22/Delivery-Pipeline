@@ -14,12 +14,43 @@ export default function ProjectsPage() {
     const [projects, setProjects] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState<any>(null);
+
+    // UI State
     const [filter, setFilter] = useState('active');
-    const [showActionModal, setShowActionModal] = useState(false);
-    const [actionType, setActionType] = useState<'pause' | 'archive' | null>(null);
     const [selectedProject, setSelectedProject] = useState<any>(null);
+    const [selectedRegion, setSelectedRegion] = useState<string>('ALL'); // Region Filter
+
+    // Action State
+    const [showActionModal, setShowActionModal] = useState(false);
+    const [actionType, setActionType] = useState<'pause' | 'resume' | 'archive' | 'complete'>('pause');
     const [actionReason, setActionReason] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState('');
+
+    // Derived state
+    const showRegionFilter = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+
+    const getFilteredProjects = (projectList: any[], activeFilter: string) => {
+        let filtered = projectList;
+
+        // 1. Status Filter
+        if (activeFilter !== 'all') {
+            filtered = filtered.filter(p => {
+                if (activeFilter === 'active') return p.status === 'ACTIVE' || p.status === 'DRAFT';
+                if (activeFilter === 'paused') return p.status === 'PAUSED';
+                if (activeFilter === 'archived') return p.status === 'ARCHIVED' || p.is_archived;
+                if (activeFilter === 'complete') return p.status === 'COMPLETED';
+                return true;
+            });
+        }
+
+        // 2. Region Filter (for Admin/Manager)
+        if (showRegionFilter && selectedRegion !== 'ALL') {
+            filtered = filtered.filter(p => p.region === selectedRegion);
+        }
+
+        return filtered;
+    };
 
     const getApiUrl = () => {
         if (typeof window !== 'undefined') {
@@ -72,12 +103,32 @@ export default function ProjectsPage() {
 
     const isAssignedToProject = (project: any) => {
         if (!user) return false;
-        return (
+
+        // Direct assignment
+        if (
             project.consultant_user_id === user.id ||
             project.pc_user_id === user.id ||
             project.builder_user_id === user.id ||
             project.tester_user_id === user.id
-        );
+        ) {
+            return true;
+        }
+
+        // Manager Regional Assignment
+        if (user.role === 'MANAGER' && user.region) {
+            let projectRegion = null;
+            if (project.consultant) {
+                projectRegion = project.consultant.region;
+            } else if (project.creator) {
+                projectRegion = project.creator.region;
+            }
+
+            if (projectRegion === user.region) {
+                return true;
+            }
+        }
+
+        return false;
     };
 
     const isMyProject = (project: any) => {
@@ -86,6 +137,10 @@ export default function ProjectsPage() {
             return project.consultant_user_id === user.id;
         }
         return isAssignedToProject(project);
+    };
+
+    const hasClientUpdates = (project: any) => {
+        return project.has_new_updates === true;
     };
 
     const handlePause = (project: any) => {
@@ -139,14 +194,14 @@ export default function ProjectsPage() {
     const submitAction = async () => {
         if (!selectedProject || !actionType) return;
         setSubmitting(true);
-        
+
         try {
             const response = await fetch(`${getApiUrl()}/project-management/${actionType}/${selectedProject.id}`, {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({ reason: actionReason || null })
             });
-            
+
             if (response.ok) {
                 setShowActionModal(false);
                 loadProjects();
@@ -161,13 +216,7 @@ export default function ProjectsPage() {
         }
     };
 
-    const filteredProjects = projects.filter((p) => {
-        if (filter === 'active') return p.status === 'ACTIVE' || p.status === 'DRAFT';
-        if (filter === 'paused') return p.status === 'PAUSED';
-        if (filter === 'archived') return p.status === 'ARCHIVED';
-        if (filter === 'complete') return p.status === 'COMPLETED';
-        return true;
-    });
+    const filteredProjects = getFilteredProjects(projects, filter);
 
     const getStageColor = (stage: string) => {
         const colors: Record<string, string> = {
@@ -204,6 +253,8 @@ export default function ProjectsPage() {
     }
 
     if (!user) return null;
+
+    console.log('ProjectsPage Render - User Role:', user.role);
 
     return (
         <div className="page-wrapper">
@@ -247,24 +298,60 @@ export default function ProjectsPage() {
                             </button>
                         ))}
                     </div>
+
+                    {showRegionFilter && (
+                        <div className="region-filter" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <label style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>Region:</label>
+                            <select
+                                value={selectedRegion}
+                                onChange={(e) => setSelectedRegion(e.target.value)}
+                                className="region-select"
+                                style={{
+                                    padding: '8px 12px',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--border-color)',
+                                    backgroundColor: 'var(--bg-card)',
+                                    color: 'var(--text-primary)',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <option value="ALL">All Regions</option>
+                                <option value="INDIA">India</option>
+                                <option value="US">US</option>
+                                <option value="PH">Philippines</option>
+                            </select>
+                        </div>
+                    )}
                 </div>
 
-                {/* My Projects Section - For Consultants/Managers */}
-                {user?.role && ['CONSULTANT', 'MANAGER', 'PC', 'BUILDER', 'TESTER'].includes(user.role) && (
+                {user?.role && ['CONSULTANT', 'PC', 'BUILDER', 'TESTER'].includes(user.role) && (
                     <div className="my-projects-section">
                         <h2>📌 My Assigned Projects ({filteredProjects.filter(p => isAssignedToProject(p)).length})</h2>
                         <div className="my-projects-grid">
                             {filteredProjects.filter(p => isAssignedToProject(p)).map((project) => (
                                 <div key={project.id} className="my-project-card" onClick={() => router.push(`/projects/${project.id}`)}>
                                     <div className="project-card-header">
-                                        <h3>{project.title}</h3>
+                                        <h3>
+                                            {project.title}
+                                            {hasClientUpdates(project) && (
+                                                <span className="badge-update-text" style={{
+                                                    marginLeft: '8px',
+                                                    fontSize: '0.75rem',
+                                                    backgroundColor: '#fee2e2',
+                                                    color: '#ef4444',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '12px',
+                                                    border: '1px solid #fecaca'
+                                                }}>New Updates</span>
+                                            )}
+                                        </h3>
                                         <span className={`badge badge-priority badge-${project.priority?.toLowerCase()}`}>
                                             {project.priority}
                                         </span>
                                     </div>
                                     <p className="client-name">{project.client_name}</p>
                                     <div className="project-card-footer">
-                                        <span 
+                                        <span
                                             className="badge badge-stage"
                                             style={{ '--stage-color': getStageColor(project.current_stage) } as React.CSSProperties}
                                         >
@@ -286,7 +373,6 @@ export default function ProjectsPage() {
                     </div>
                 )}
 
-                {/* All Projects Table */}
                 <div className="all-projects-header">
                     <h2>{user?.role === 'ADMIN' ? '📊 All Projects Overview' : '📋 All Projects (Backlog)'}</h2>
                     {user?.role !== 'ADMIN' && (
@@ -311,8 +397,8 @@ export default function ProjectsPage() {
                         </thead>
                         <tbody>
                             {filteredProjects.map((project, index) => (
-                                <tr 
-                                    key={project.id} 
+                                <tr
+                                    key={project.id}
                                     style={{ animationDelay: `${index * 30}ms` }}
                                     className={isAssignedToProject(project) ? 'my-project-row' : ''}
                                 >
@@ -352,9 +438,9 @@ export default function ProjectsPage() {
                                         </span>
                                     </td>
                                     <td>
-                                        <span 
+                                        <span
                                             className="badge badge-stage"
-                                            style={{ 
+                                            style={{
                                                 '--stage-color': getStageColor(project.current_stage)
                                             } as React.CSSProperties}
                                         >
@@ -434,7 +520,7 @@ export default function ProjectsPage() {
                             ))}
                         </tbody>
                     </table>
-                    
+
                     {filteredProjects.length === 0 && (
                         <div className="empty-state">
                             <div className="empty-icon">📭</div>
@@ -445,7 +531,6 @@ export default function ProjectsPage() {
                 </div>
             </main>
 
-            {/* Pause/Archive Modal */}
             {showActionModal && selectedProject && (
                 <div className="modal-overlay" onClick={() => setShowActionModal(false)}>
                     <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -456,13 +541,13 @@ export default function ProjectsPage() {
                         <div className="modal-body">
                             <p className="project-name">{selectedProject.title}</p>
                             <p className="action-description">
-                                {actionType === 'pause' 
+                                {actionType === 'pause'
                                     ? 'Pausing will temporarily halt all work on this project. It can be resumed later.'
                                     : 'Archiving will move this project to the archive. Only Admin/Manager can unarchive.'}
                             </p>
                             <div className="form-group">
                                 <label>Reason (optional)</label>
-                                <textarea 
+                                <textarea
                                     value={actionReason}
                                     onChange={(e) => setActionReason(e.target.value)}
                                     placeholder={`Enter reason for ${actionType}ing...`}
@@ -472,7 +557,7 @@ export default function ProjectsPage() {
                         </div>
                         <div className="modal-actions">
                             <button className="btn-secondary" onClick={() => setShowActionModal(false)}>Cancel</button>
-                            <button 
+                            <button
                                 className={actionType === 'pause' ? 'btn-warning' : 'btn-danger'}
                                 onClick={submitAction}
                                 disabled={submitting}
@@ -531,6 +616,8 @@ export default function ProjectsPage() {
                 
                 .filter-bar {
                     margin-bottom: var(--space-lg);
+                    display: flex;
+                    align-items: center;
                 }
                 
                 .filter-tabs {

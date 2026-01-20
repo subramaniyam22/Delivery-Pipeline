@@ -98,9 +98,13 @@ class ProjectResponse(BaseModel):
     priority: str
     status: ProjectStatus
     current_stage: Stage
+    region: Optional[Region] = None
     created_by_user_id: UUID
     created_at: datetime
     updated_at: datetime
+    onboarding_updated_at: Optional[datetime] = None
+    has_new_updates: Optional[bool] = False
+    completion_percentage: Optional[int] = 0
     # Team Assignments
     pc_user_id: Optional[UUID] = None
     consultant_user_id: Optional[UUID] = None

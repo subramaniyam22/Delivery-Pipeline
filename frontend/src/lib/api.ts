@@ -96,6 +96,12 @@ export const projectsAPI = {
         api.post(`/projects/${id}/onboarding/update`, data),
     publishAssignment: (id: string) =>
         api.post(`/projects/${id}/assignment/publish`),
+    getChatLogs: (id: string) => api.get(`/api/ai/chat-logs/${id}`),
+    sendConsultantMessage: (data: { project_id: string; message: string }) =>
+        api.post('/api/ai/chat/send', data),
+    toggleAI: (data: { project_id: string; enabled: boolean }) =>
+        api.post('/api/ai/toggle-ai', data),
+    getAIStatus: (id: string) => api.get(`/api/ai/status/${id}`),
     updateBuildStatus: (id: string, data: any) =>
         api.post(`/projects/${id}/build/status`, data),
     updateTestStatus: (id: string, data: any) =>
@@ -198,6 +204,9 @@ export const clientAPI = {
         api.delete(`/projects/client-onboarding/${token}/image`, { params: { index } }),
     deleteLogo: (token: string) =>
         api.delete(`/projects/client-onboarding/${token}/logo`),
+    consultAI: (message: string, context?: any) =>
+        api.post('/api/ai/consult', { message, context }),
+    getChatLogs: (projectId: string) => api.get(`/api/ai/chat-logs/${projectId}`),
 };
 
 export const projectTasksAPI = {
@@ -292,4 +301,11 @@ export const capacityAPI = {
 
     // Project Workload
     getProjectWorkload: (projectId: string) => api.get(`/capacity/projects/${projectId}/workload`),
+};
+
+// Configuration API (Admin/Manager)
+export const configurationAPI = {
+    getTemplates: () => api.get('/templates'),
+    createTemplate: (data: any) => api.post('/templates', data),
+    deleteTemplate: (id: string) => api.delete(`/templates/${id}`),
 };

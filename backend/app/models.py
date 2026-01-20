@@ -121,6 +121,7 @@ class Project(Base):
     created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    features_json = Column(JSONB, default=dict)
     
     # Client Contact Information
     client_emails = Column(JSONB, default=list)  # List of client email addresses
@@ -1027,3 +1028,32 @@ class ClientReminderLog(Base):
     # Relationships
     project = relationship("Project", backref="reminder_logs")
     sent_by = relationship("User", backref="sent_reminders")
+
+
+class ThemeTemplate(Base):
+    __tablename__ = "theme_templates"
+
+    id = Column(String(100), primary_key=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    preview_url = Column(String(1000), nullable=True)
+    colors_json = Column(JSONB, default=dict)
+    features_json = Column(JSONB, default=list)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+
+class ChatLog(Base):
+    """Logs of chat between Client and AI/Consultant"""
+    __tablename__ = "chat_logs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+    sender = Column(String(50), nullable=False)  # 'user', 'bot', 'consultant'
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    # Relationships
+    project = relationship("Project", backref="chat_logs")
+
+

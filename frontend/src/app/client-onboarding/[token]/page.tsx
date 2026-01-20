@@ -323,10 +323,34 @@ export default function ClientOnboardingPage() {
     const [success, setSuccess] = useState('');
     const [missingFieldsEta, setMissingFieldsEta] = useState<Record<string, string>>({});
     const [previewImage, setPreviewImage] = useState<string | null>(null);
-    const [showChatbot, setShowChatbot] = useState(false);
-    const [chatMessages, setChatMessages] = useState([
-        { text: "👋 Hi there! I'm here to help you complete your onboarding. Do you have any questions about the form or requirements?", isBot: true }
+    const [showChatbot, setShowChatbot] = useState(true);
+    const [chatMessages, setChatMessages] = useState<any[]>([
+        { text: "👋 Hi there! I'm here to help you complete your onboarding. Do you have any questions about the form or requirements?", isBot: true, sender: 'bot' }
     ]);
+
+    useEffect(() => {
+        if (!formData?.project_id) return;
+        const fetchChat = async () => {
+            try {
+                const res = await clientAPI.getChatLogs(formData.project_id);
+                if (res.data && res.data.length > 0) {
+                    const mapped = res.data.map((log: any) => ({
+                        text: log.message,
+                        isBot: log.sender !== 'user',
+                        sender: log.sender,
+                        id: log.id,
+                        created_at: log.created_at
+                    }));
+                    setChatMessages(mapped);
+                }
+            } catch (e) {
+                // Silent fail on poll
+            }
+        };
+        fetchChat();
+        const interval = setInterval(fetchChat, 5000);
+        return () => clearInterval(interval);
+    }, [formData?.project_id]);
 
 
     const [chatInput, setChatInput] = useState('');
@@ -373,21 +397,38 @@ export default function ClientOnboardingPage() {
         scrollToBottom();
     }, [chatMessages, showChatbot]);
 
-    const handleSendMessage = (e?: React.FormEvent) => {
+    const handleSendMessage = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!chatInput.trim()) return;
 
-        const newUserMsg = { text: chatInput, isBot: false };
+        const userMsgText = chatInput;
+        const newUserMsg = { text: userMsgText, isBot: false, sender: 'user' };
         setChatMessages(prev => [...prev, newUserMsg]);
         setChatInput('');
 
-        // Simulate bot response
-        setTimeout(() => {
+        try {
+            // Prepare context from form data
+            const context = { ...(formData?.data || {}), project_id: formData?.project_id };
+
+            // Show typing indicator or just wait (optimistic UI could handle 'typing...')
+            // For now, we just await.
+
+            const response = await clientAPI.consultAI(userMsgText, context);
+
+            if (response.data.response) {
+                setChatMessages(prev => [...prev, {
+                    text: response.data.response,
+                    isBot: true,
+                    sender: 'bot'
+                }]);
+            }
+        } catch (error) {
+            console.error("AI Consult Error:", error);
             setChatMessages(prev => [...prev, {
-                text: "Thanks for your message! Our team has been notified and will review your question shortly. In the meantime, please continue filling out the required fields.",
+                text: "I'm having trouble connecting to the consultant right now. Please try again later.",
                 isBot: true
             }]);
-        }, 1000);
+        }
     };
 
     const logoInputRef = useRef<HTMLInputElement>(null);
@@ -436,25 +477,58 @@ export default function ClientOnboardingPage() {
 
     const [activePhase, setActivePhase] = useState<string | null>('phase-1');
 
-    // AI Contextual Hints
-    useEffect(() => {
-        const HINTS: Record<string, string> = {
-            'phase-1': "Focus on the project summary. A clear description helps us build the right site structure.",
-            'phase-2': "For images, high-resolution works best. If you don't have them yet, you can upload placeholders.",
-            'phase-3': "Need help with colors? Modern property sites often use neutral backdrops with one bold accent color.",
-            'phase-4': "Don't worry if you don't have all floor plans ready. You can stick to the main unit types for now.",
-            'phase-5': "WCAG AA is the standard for accessibility. I've pre-selected it to ensure compliance.",
-            'phase-6': "Almost done! Configuring the right domain now prevents launch delays later."
-        };
+    // Dynamic AI Hints
+    const hintedPhasesRef = useRef<Set<string>>(new Set());
+    const hintedFieldsRef = useRef<Set<string>>(new Set());
 
-        if (activePhase && HINTS[activePhase]) {
-            setChatMessages(prev => {
-                // Avoid duplicate hints
-                if (prev[prev.length - 1]?.text === HINTS[activePhase]) return prev;
-                return [...prev, { text: HINTS[activePhase], isBot: true }];
-            });
-        }
+    // Section-level hints
+    useEffect(() => {
+        const fetchHint = async () => {
+            if (!activePhase) return;
+            if (hintedPhasesRef.current.has(activePhase)) return;
+
+            const phaseDef = PHASE_DEFINITIONS.find(p => p.id === activePhase);
+            if (!phaseDef) return;
+
+            hintedPhasesRef.current.add(activePhase);
+
+            try {
+                const response = await clientAPI.consultAI(
+                    `I am starting the "${phaseDef.title}" section. Give me a brief overview of what's important here.`,
+                    formData?.data
+                );
+
+                setChatMessages(prev => [...prev, {
+                    text: `💡 **${phaseDef.title}**: ${response.data.response}`,
+                    isBot: true
+                }]);
+            } catch (err) {
+                console.error('Failed to fetch AI hint:', err);
+            }
+        };
+        fetchHint();
     }, [activePhase]);
+
+    // Field-level hints
+    const handleFieldFocus = async (fieldId: string, label: string) => {
+        if (hintedFieldsRef.current.has(fieldId)) return;
+
+        hintedFieldsRef.current.add(fieldId);
+
+        try {
+            const response = await clientAPI.consultAI(
+                `I am filling out the "${label}" field. What specific details should I include? Keep it short and helpful.`,
+                formData?.data
+            );
+
+            setChatMessages(prev => [...prev, {
+                text: `✍️ **Tip for ${label}**:\n${response.data.response}`,
+                isBot: true
+            }]);
+        } catch (err) {
+            console.error('Failed to fetch field hint:', err);
+        }
+    };
 
     const togglePhase = (phaseId: string) => {
         setActivePhase(prev => prev === phaseId ? null : phaseId);
@@ -836,6 +910,7 @@ export default function ClientOnboardingPage() {
                                 value={formData.data.requirements?.project_summary || ''}
                                 onChange={(e) => updateRequirementsLocal({ project_summary: e.target.value })}
                                 onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onFocus={() => handleFieldFocus('project_summary', 'Project Summary')}
                                 rows={3}
                                 placeholder="Brief summary of the project requirements..."
                             />
@@ -847,6 +922,7 @@ export default function ClientOnboardingPage() {
                                 value={formData.data.requirements?.project_notes || ''}
                                 onChange={(e) => updateRequirementsLocal({ project_notes: e.target.value })}
                                 onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onFocus={() => handleFieldFocus('project_notes', 'Project Notes')}
                                 rows={3}
                                 placeholder="Notes that apply to all locations..."
                             />
@@ -1082,6 +1158,7 @@ export default function ClientOnboardingPage() {
                                         value={formData.data.copy_text || ''}
                                         onChange={(e) => updateLocalData({ copy_text: e.target.value })}
                                         onBlur={() => saveFormData({ copy_text: formData.data.copy_text })}
+                                        onFocus={() => handleFieldFocus('copy_text', 'Website Copy')}
                                         placeholder="Enter all your website text content here..."
                                         rows={6}
                                     />
@@ -1110,6 +1187,7 @@ export default function ClientOnboardingPage() {
                                 <textarea
                                     value={formData.data.requirements?.copy_scope_notes || ''}
                                     onChange={(e) => updateRequirements({ copy_scope_notes: e.target.value })}
+                                    onFocus={() => handleFieldFocus('copy_scope_notes', 'Copy Scope Notes')}
                                     rows={3}
                                     placeholder="Additional notes about copy scope..."
                                 />
@@ -1205,6 +1283,7 @@ export default function ClientOnboardingPage() {
                                             value={formData.data.requirements?.template_references || ''}
                                             onChange={(e) => updateRequirementsLocal({ template_references: e.target.value })}
                                             onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                            onFocus={() => handleFieldFocus('template_references', 'Design Parameters & Details')}
                                             rows={4}
                                             placeholder="Describe your vision, target audience, and key design elements..."
                                         />
@@ -1215,9 +1294,10 @@ export default function ClientOnboardingPage() {
                             <div className="form-group" style={{ marginTop: '20px' }}>
                                 <label>Reference links (optional)</label>
                                 <textarea
-                                    value={formData.data.requirements?.template_references || ''}
-                                    onChange={(e) => updateRequirementsLocal({ template_references: e.target.value })}
+                                    value={formData.data.requirements?.stock_images_reference || ''}
+                                    onChange={(e) => updateRequirementsLocal({ stock_images_reference: e.target.value })}
                                     onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onFocus={() => handleFieldFocus('stock_images_reference', 'Reference links')}
                                     rows={3}
                                     placeholder="Add links to websites you like..."
                                 />
@@ -1257,6 +1337,7 @@ export default function ClientOnboardingPage() {
                                     value={formData.data.requirements?.brand_guidelines_details || ''}
                                     onChange={(e) => updateRequirementsLocal({ brand_guidelines_details: e.target.value })}
                                     onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onFocus={() => handleFieldFocus('brand_guidelines', 'Brand Guidelines')}
                                     rows={3}
                                     placeholder="Paste a link to your brand book or describe your guidelines..."
                                     style={{ marginTop: '8px' }}
@@ -1283,6 +1364,7 @@ export default function ClientOnboardingPage() {
                                 value={formData.data.requirements?.color_notes || ''}
                                 onChange={(e) => updateRequirementsLocal({ color_notes: e.target.value })}
                                 onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onFocus={() => handleFieldFocus('color_notes', 'Color Notes')}
                                 placeholder="Hex codes or color notes"
                             />
                         </div>
@@ -1306,6 +1388,7 @@ export default function ClientOnboardingPage() {
                                 value={formData.data.requirements?.font_notes || ''}
                                 onChange={(e) => updateRequirementsLocal({ font_notes: e.target.value })}
                                 onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onFocus={() => handleFieldFocus('font_notes', 'Font Notes')}
                                 placeholder="Font details or links"
                             />
                         </div>
@@ -1337,6 +1420,7 @@ export default function ClientOnboardingPage() {
                                     value={formData.data.requirements?.custom_graphic_notes || ''}
                                     onChange={(e) => updateRequirementsLocal({ custom_graphic_notes: e.target.value })}
                                     onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onFocus={() => handleFieldFocus('custom_graphic_notes', 'Custom Graphic Notes')}
                                     rows={3}
                                     placeholder="Describe custom graphic needs..."
                                 />
@@ -1605,7 +1689,7 @@ export default function ClientOnboardingPage() {
                     </PhaseSection>
 
                     {/* Spacer for fixed bottom bar */}
-                    <div className="bottom-bar-spacer" />
+
                 </main>
 
                 <aside className="sidebar">
@@ -1635,15 +1719,9 @@ export default function ClientOnboardingPage() {
                 />
             )}
 
-            {/* Chatbot Tooltip */}
-            <div className="chatbot-container">
-                <div className="chat-tooltip">
-                    Need help? Chat with us!
-                </div>
-                {/* Chatbot icon would go here */}
-            </div>
+            {/* Chatbot Container Removed - Moved to End */}
 
-            <footer className="page-footer" style={{ marginBottom: '80px' }}>
+            <footer className="page-footer">
                 <p>Questions? Contact your project manager for assistance.</p>
             </footer>
 
@@ -1702,7 +1780,7 @@ export default function ClientOnboardingPage() {
                 .client-page {
                     min-height: 100vh;
                     background: #e2e8f0;
-                    padding-bottom: 120px; /* Space for bottom bar */
+                    padding-bottom: 60px; /* Reduced space */
                 }
 
                 .page-header {
@@ -3177,82 +3255,7 @@ export default function ClientOnboardingPage() {
                     font-size: 10px;
                 }
 
-                /* Chatbot Widget */
-                .chatbot-container {
-                    position: fixed;
-                    bottom: 24px;
-                    left: 24px; /* Moved to Left */
-                    z-index: 1500;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: flex-start; /* Align start for left styling */
-                }
 
-                .chatbot-window {
-                    position: fixed;
-                    bottom: 90px;
-                    left: 24px; /* Moved to Left */
-                    width: 350px;
-                    height: 500px;
-                    background: white; /* Ensure white background */
-                    border-radius: 16px;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-                    display: flex;
-                    flex-direction: column;
-                    overflow: hidden;
-                    border: 1px solid #e2e8f0;
-                    z-index: 1510;
-                    animation: slideUp 0.3s ease-out;
-                }
-                .chatbot-header h4 {
-                    margin: 0;
-                    font-size: 16px;
-                }
-                .chatbot-body {
-                    flex: 1;
-                    padding: 16px;
-                    background: #f8fafc;
-                    overflow-y: auto;
-                }
-                .chat-message {
-                    padding: 12px;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    line-height: 1.5;
-                    margin-bottom: 12px;
-                    max-width: 85%;
-                }
-                .chat-message.bot {
-                    background: white;
-                    border: 1px solid #e2e8f0;
-                    color: #1e293b;
-                    border-bottom-left-radius: 2px;
-                }
-                .chatbot-input {
-                    padding: 12px;
-                    border-top: 1px solid #e2e8f0;
-                    display: flex;
-                    gap: 8px;
-                }
-                .chatbot-input input {
-                    flex: 1;
-                    padding: 8px 12px;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 20px;
-                    font-size: 13px;
-                    outline: none;
-                }
-                .chatbot-input button {
-                    background: none;
-                    border: none;
-                    color: #2563eb;
-                    font-weight: bold;
-                    cursor: pointer;
-                }
-                @keyframes slideUp {
-                    from { opacity: 0; transform: translateY(20px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
             `}</style>
 
             {/* Lightbox Modal */}
@@ -3267,34 +3270,223 @@ export default function ClientOnboardingPage() {
                 )
             }
 
-            {/* Chatbot Widget */}
-            <button className="chatbot-toggle" onClick={() => setShowChatbot(!showChatbot)}>
-                {showChatbot ? '×' : '💬'}
-            </button>
+            {/* Consolidated Chatbot Widget */}
+            <div className="chatbot-widget-container">
+                {!showChatbot && (
+                    <div className="chat-tooltip">
+                        Need help? Chat with us!
+                    </div>
+                )}
 
-            {showChatbot && (
-                <div className="chatbot-window">
-                    <div className="chatbot-header">
-                        <h4>Consultant AI</h4>
+                <button className={`chatbot-toggle ${showChatbot ? 'active' : ''}`} onClick={() => setShowChatbot(!showChatbot)}>
+                    {showChatbot ? '×' : '💬'}
+                </button>
+
+                {showChatbot && (
+                    <div className="chatbot-window">
+                        <div className="chatbot-header">
+                            <h4>Consultant AI</h4>
+                            <button onClick={() => setShowChatbot(false)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer' }}>×</button>
+                        </div>
+                        <div className="chatbot-body" ref={chatContainerRef}>
+                            {chatMessages.map((msg, idx) => (
+                                <div key={idx} className={`chat-message ${msg.isBot ? 'bot' : 'user'}`} style={!msg.isBot ? { marginLeft: 'auto', background: '#2563eb', color: 'white' } : {}}>
+                                    {msg.sender === 'consultant' && <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#2563eb', marginBottom: '2px' }}>Consultant</div>}
+                                    {msg.sender === 'bot' && <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '2px' }}>AI Assistant</div>}
+                                    <p style={{ margin: 0 }}>{msg.text}</p>
+                                </div>
+                            ))}
+                        </div>
+                        <form className="chatbot-input" onSubmit={handleSendMessage}>
+                            <input
+                                type="text"
+                                placeholder="Type a message..."
+                                value={chatInput}
+                                onChange={(e) => setChatInput(e.target.value)}
+                            />
+                            <button type="submit">→</button>
+                        </form>
                     </div>
-                    <div className="chatbot-body" ref={chatContainerRef}>
-                        {chatMessages.map((msg, idx) => (
-                            <div key={idx} className={`chat-message ${msg.isBot ? 'bot' : 'user'}`} style={!msg.isBot ? { marginLeft: 'auto', background: '#2563eb', color: 'white' } : {}}>
-                                <p style={{ margin: 0 }}>{msg.text}</p>
-                            </div>
-                        ))}
-                    </div>
-                    <form className="chatbot-input" onSubmit={handleSendMessage}>
-                        <input
-                            type="text"
-                            placeholder="Type a message..."
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                        />
-                        <button type="submit">→</button>
-                    </form>
-                </div>
-            )}
-        </div >
+                )}
+            </div>
+
+            <style jsx>{`
+                .chatbot-widget-container {
+                    position: fixed;
+                    bottom: 100px;
+                    right: 24px;
+                    z-index: 2000;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: flex-end;
+                    gap: 12px;
+                }
+
+                .chatbot-toggle {
+                    width: 56px;
+                    height: 56px;
+                    border-radius: 50%;
+                    background: #2563eb;
+                    color: white;
+                    border: none;
+                    font-size: 24px;
+                    cursor: pointer;
+                    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    z-index: 2002;
+                }
+
+                .chatbot-toggle:hover {
+                    transform: scale(1.05);
+                    background: #1d4ed8;
+                }
+
+                .chatbot-toggle.active {
+                    transform: rotate(90deg);
+                    background: #64748b;
+                }
+
+                .chat-tooltip {
+                    background: white;
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                    font-size: 14px;
+                    font-weight: 500;
+                    color: #1e293b;
+                    white-space: nowrap;
+                    margin-bottom: 8px;
+                    position: absolute;
+                    bottom: 100%;
+                    right: 0;
+                    margin-bottom: 12px;
+                    animation: float 3s ease-in-out infinite;
+                }
+
+                .chat-tooltip:after {
+                    content: '';
+                    position: absolute;
+                    bottom: -6px;
+                    right: 24px;
+                    border-left: 6px solid transparent;
+                    border-right: 6px solid transparent;
+                    border-top: 6px solid white;
+                }
+
+                .chatbot-window {
+                    position: absolute;
+                    bottom: 100%;
+                    right: 0;
+                    margin-bottom: 12px;
+                    width: 360px;
+                    height: 520px;
+                    background: white;
+                    border-radius: 16px;
+                    box-shadow: 0 10px 40px -5px rgba(0, 0, 0, 0.2);
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                    border: 1px solid #e2e8f0;
+                    z-index: 2001;
+                    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                    transform-origin: bottom right;
+                }
+
+                .chatbot-header {
+                    padding: 16px 20px;
+                    background: #2563eb;
+                    color: white !important;
+                    border-bottom: 1px solid #1d4ed8;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+
+                .chatbot-header h4 {
+                    margin: 0;
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: white !important;
+                }
+                
+                .chatbot-body {
+                     padding: 16px;
+                     overflow-y: auto;
+                     flex: 1;
+                     background: #f8fafc;
+                }
+
+                .chat-message {
+                    padding: 12px;
+                    border-radius: 8px;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    margin-bottom: 12px;
+                    max-width: 85%;
+                    word-break: break-word;
+                    white-space: pre-wrap;
+                }
+
+                .chat-message.bot {
+                    background: white;
+                    border: 1px solid #e2e8f0;
+                    color: #1e293b;
+                    border-bottom-left-radius: 2px;
+                }
+
+                .chat-message.user {
+                    background-color: #2563eb;
+                    color: white !important;
+                    margin-left: auto;
+                    border-bottom-right-radius: 2px;
+                }
+
+                .chat-message p {
+                    margin: 0;
+                }
+                
+                .chat-message.user *, .chat-message.user p {
+                    color: white !important;
+                }
+
+                .chatbot-input {
+                    background: white;
+                    border-top: 1px solid #e2e8f0;
+                    padding: 12px;
+                    display: flex;
+                    gap: 8px;
+                }
+
+                .chatbot-input input {
+                    flex: 1;
+                    padding: 8px 12px;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 20px;
+                    font-size: 13px;
+                    outline: none;
+                }
+
+                .chatbot-input button {
+                     background: none;
+                     border: none;
+                     color: #2563eb;
+                     font-weight: bold;
+                     cursor: pointer;
+                }
+
+                @keyframes float {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-6px); }
+                }
+
+                @keyframes slideUp {
+                    from { opacity: 0; transform: translateY(20px) scale(0.95); }
+                    to { opacity: 1; transform: translateY(0) scale(1); }
+                }
+            `}</style>
+        </div>
     );
 }

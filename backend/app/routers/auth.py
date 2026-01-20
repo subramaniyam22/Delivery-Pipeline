@@ -39,6 +39,9 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         print(f"[LOGIN] User active: {user.is_active}")
         password_valid = verify_password(request.password, user.password_hash)
         print(f"[LOGIN] Password valid: {password_valid}")
+        if not password_valid:
+            print(f"[LOGIN] Received password repr: {repr(request.password)}")
+            print(f"[LOGIN] User hash: {user.password_hash}")
     
     if not user or not verify_password(request.password, user.password_hash):
         raise HTTPException(

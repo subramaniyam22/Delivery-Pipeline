@@ -16,7 +16,7 @@ export default function Navigation() {
 
         if (currentUser) {
             // Single warm-up ping; avoid continuous background requests
-            healthAPI.ping().catch(() => {});
+            healthAPI.ping().catch(() => { });
         }
         return;
     }, []);
@@ -47,8 +47,11 @@ export default function Navigation() {
         ] : []),
         // All users: Leave Management
         { path: '/leave-management', label: 'Leave', icon: '📅' },
-        // Managers+: User Management
-        ...(isManager ? [{ path: '/users', label: 'Manage Users', icon: '⚙️' }] : []),
+        // Managers+: User Management & Configuration
+        ...(isManager ? [
+            { path: '/users', label: 'Manage Users', icon: '⚙️' },
+            { path: '/configuration', label: 'Config', icon: '🛠️' },
+        ] : []),
         // All users: Team directory
         { path: '/team', label: 'Team', icon: '📋' },
     ];
@@ -58,8 +61,8 @@ export default function Navigation() {
     return (
         <nav className="navigation" role="navigation" aria-label="Main navigation">
             <div className="nav-container">
-                <div 
-                    className="nav-brand" 
+                <div
+                    className="nav-brand"
                     onClick={() => router.push('/dashboard')}
                     onKeyDown={(e) => e.key === 'Enter' && router.push('/dashboard')}
                     tabIndex={0}
@@ -99,14 +102,14 @@ export default function Navigation() {
                         <span className="user-name">{user.name}</span>
                         <span className="user-role">{user.role}</span>
                     </div>
-                    <button 
-                        onClick={logout} 
-                        className="btn-logout" 
+                    <button
+                        onClick={logout}
+                        className="btn-logout"
                         title="Logout"
                         aria-label="Logout from application"
                     >
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+                            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
                         </svg>
                     </button>
                 </div>

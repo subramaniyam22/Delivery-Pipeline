@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.db import get_db
-from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus
+from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus, ThemeTemplate
 from app.schemas import (
     OnboardingDataCreate,
     OnboardingDataUpdate,
@@ -558,9 +558,30 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
             "submitted_at": onboarding.submitted_at,
             "missing_fields_eta_json": onboarding.missing_fields_eta_json,
         },
-        "templates": THEME_TEMPLATES,
+        "templates": get_active_templates(db),
         "copy_pricing": COPY_PRICING_TIERS,
     }
+
+def get_active_templates(db: Session):
+    try:
+        db_templates = db.query(ThemeTemplate).filter(ThemeTemplate.is_active == True).all()
+        if db_templates:
+            return [
+                {
+                    "id": t.id,
+                    "name": t.name,
+                    "description": t.description,
+                    "preview_url": t.preview_url,
+                    "colors": t.colors_json,
+                    "features": t.features_json
+                }
+                for t in db_templates
+            ]
+    except Exception:
+        # Fallback if table doesn't exist or DB error
+        pass
+    return THEME_TEMPLATES
+
 
 
 @client_router.put("/{token}")
@@ -1025,7 +1046,7 @@ def list_reminders(
 def toggle_auto_reminder(
     project_id: UUID,
     enabled: bool,
-    interval_hours: Optional[int] = Query(None, description="Reminder interval in hours (6, 12, or 24)"),
+    interval_hours: Optional[int] = Query(None, description="Reminder interval in hours"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -1038,17 +1059,25 @@ def toggle_auto_reminder(
     if not onboarding:
         raise HTTPException(status_code=404, detail="Onboarding data not found")
     
+    # If enabling, check if already 100% complete
+    # Logic to prevent enabling if 100% complete - REMOVED per user request
+    # if enabled and onboarding.completion_percentage >= 100:
+    #     return {
+    #         "success": False, 
+    #         "message": "Cannot enable reminders: Onboarding is already 100% complete.",
+    #         "auto_reminder_enabled": False
+    #     }
+
     onboarding.auto_reminder_enabled = enabled
     
-    # Update interval if provided and valid
-    if interval_hours and interval_hours in [6, 12, 24]:
+    # Update interval if provided (allow any positive integer)
+    if interval_hours and interval_hours > 0:
         onboarding.reminder_interval_hours = interval_hours
     
     if enabled:
         # Schedule next reminder based on interval
         hours = onboarding.reminder_interval_hours or 24
-        if onboarding.completion_percentage < 100:
-            onboarding.next_reminder_at = datetime.utcnow() + timedelta(hours=hours)
+        onboarding.next_reminder_at = datetime.utcnow() + timedelta(hours=hours)
     else:
         onboarding.next_reminder_at = None
     

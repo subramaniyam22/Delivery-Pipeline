@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management
+from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant
 from app.services.config_service import seed_default_configs
 from app.db import SessionLocal
 from app.models import User, Role
@@ -36,6 +36,29 @@ def seed_admin_user(db):
     else:
         logger.info(f"Admin user already exists: {admin_email}")
 
+def seed_manager_users(db):
+    """Seed default manager users if not exist"""
+    managers = [
+        {"email": "subramaniyam@manager.com", "name": "Subramaniyam Manager"},
+        {"email": "alice@manager.com", "name": "Alice Manager"}
+    ]
+    
+    for mgr_data in managers:
+        existing = db.query(User).filter(User.email == mgr_data["email"]).first()
+        if not existing:
+            manager = User(
+                name=mgr_data["name"],
+                email=mgr_data["email"],
+                password_hash=get_password_hash("Admin@123"),
+                role=Role.MANAGER,
+                is_active=True
+            )
+            db.add(manager)
+            db.commit()
+            logger.info(f"Manager user created: {mgr_data['email']}")
+        else:
+            logger.info(f"Manager user already exists: {mgr_data['email']}")
+
 # Create FastAPI app
 app = FastAPI(
     title="Multi-Agent Delivery Pipeline",
@@ -68,6 +91,7 @@ async def startup_event():
         db = SessionLocal()
         seed_default_configs(db)
         seed_admin_user(db)
+        seed_manager_users(db)
         db.close()
         logger.info("Default configurations seeded")
     except Exception as e:
@@ -93,6 +117,8 @@ app.include_router(sla.router)
 app.include_router(client_management.router)
 app.include_router(project_management.router)
 app.include_router(config_admin.router)
+app.include_router(configuration.router)
+app.include_router(ai_consultant.router)
 
 # Serve uploaded files
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
