@@ -108,6 +108,7 @@ def list_projects(
     view_map = {p_id: t for p_id, t in last_views_query}
 
     for p in projects:
+        p.onboarding_updated_at = None
         if p.onboarding_data:
             p.onboarding_updated_at = p.onboarding_data.updated_at
             
@@ -238,6 +239,7 @@ def get_projects(
     
     results = []
     for p in projects:
+        p.onboarding_updated_at = None
         # Calculate completion (reusing logic from get_project is expensive? 
         # For list view we might want to skip full calculation or use stored field if it existed.
         # But we added it to the model instance in get_project only.
