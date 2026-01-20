@@ -337,10 +337,55 @@ const ConsultantChatModal = ({ projectId, onClose }: { projectId: string; onClos
         }
     };
 
+    const setupWebSocket = () => {
+        // Construct WS URL
+        // In local dev: ws://localhost:8000/api/ai/ws/chat/{id}
+        // In prod: wss://delivery-backend-vvbf.onrender.com/api/ai/ws/chat/{id}
+
+        let baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        if (baseUrl.startsWith('http')) {
+            baseUrl = baseUrl.replace(/^http/, 'ws');
+        }
+
+        const wsUrl = `${baseUrl}/api/ai/ws/chat/${projectId}`;
+        console.log('Connecting to WS:', wsUrl);
+
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WS Connected');
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                setLogs(prev => {
+                    // Avoid duplicates
+                    if (prev.find(l => l.id === message.id)) return prev;
+                    return [...prev, message];
+                });
+                // Scroll on new message
+                setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+            } catch (e) {
+                console.error('WS Message Parse Error', e);
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('WS Disconnected');
+            // Optional: Reconnect logic could go here
+        };
+
+        return ws;
+    };
+
     useEffect(() => {
         loadData();
-        const interval = setInterval(loadData, 5000); // Poll every 5s
-        return () => clearInterval(interval);
+        const ws = setupWebSocket();
+
+        return () => {
+            if (ws) ws.close();
+        };
     }, [projectId]);
 
     useEffect(() => {

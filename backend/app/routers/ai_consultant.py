@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
@@ -11,11 +11,47 @@ from langchain_core.messages import HumanMessage, SystemMessage
 import logging
 import uuid
 import re
+import asyncio
+import json
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ai", tags=["AI Consultant"])
 
+# --- WebSocket Connection Manager ---
+class ConnectionManager:
+    def __init__(self):
+        # Map project_id -> List[WebSocket]
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, project_id: str):
+        await websocket.accept()
+        if project_id not in self.active_connections:
+            self.active_connections[project_id] = []
+        self.active_connections[project_id].append(websocket)
+        logger.info(f"WS Connected: {project_id}. Total clients: {len(self.active_connections[project_id])}")
+
+    def disconnect(self, websocket: WebSocket, project_id: str):
+        if project_id in self.active_connections:
+            if websocket in self.active_connections[project_id]:
+                self.active_connections[project_id].remove(websocket)
+            if not self.active_connections[project_id]:
+                del self.active_connections[project_id]
+        logger.info(f"WS Disconnected: {project_id}")
+
+    async def broadcast(self, message: dict, project_id: str):
+        if project_id in self.active_connections:
+            # Convert to JSON string for sending
+            # Ensure datetime is serializable if present, but we construct dict manually usually
+            for connection in self.active_connections[project_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.error(f"Failed to send WS message: {e}")
+
+manager = ConnectionManager()
+
+# --- Schemas ---
 class ChatRequest(BaseModel):
     message: str
     context: Optional[Dict[str, Any]] = None
@@ -29,6 +65,24 @@ class ToggleAIRequest(BaseModel):
     project_id: str
     enabled: bool
 
+# --- WebSocket Endpoint ---
+@router.websocket("/ws/chat/{project_id}")
+async def websocket_endpoint(websocket: WebSocket, project_id: str, db: Session = Depends(get_db)):
+    await manager.connect(websocket, project_id)
+    try:
+        while True:
+            # We keep the connection open. Clients can send messages here too if we want full duplex.
+            # For now, we mainly use it for receiving updates, but let's handle incoming just in case.
+            # Or just wait for disconnect.
+            data = await websocket.receive_text()
+            # If client sends "ping", we can pong, but usually not needed.
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, project_id)
+    except Exception as e:
+        logger.error(f"WS Error: {e}")
+        manager.disconnect(websocket, project_id)
+
+
 @router.post("/consult")
 async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
     if not settings.OPENAI_API_KEY:
@@ -41,8 +95,19 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
     if project_id:
         try:
             uuid.UUID(str(project_id))
-            db.add(ChatLog(project_id=project_id, sender="user", message=request.message))
+            # Log message
+            new_log = ChatLog(project_id=project_id, sender="user", message=request.message)
+            db.add(new_log)
             db.commit()
+            db.refresh(new_log)
+            
+            # Broadcast User Message
+            await manager.broadcast({
+                "id": str(new_log.id),
+                "sender": "user",
+                "message": request.message,
+                "created_at": new_log.created_at.isoformat()
+            }, project_id)
             
             # Check if AI is enabled
             project = db.query(Project).filter(Project.id == project_id).first()
@@ -50,7 +115,6 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
                 ai_enabled = project.features_json.get('ai_enabled', True)
                 if not ai_enabled:
                     # AI is disabled (Consultant taken over)
-                    # We just return a specific action so frontend knows not to expect AI reply
                     return {"response": "", "action": "human_mode"}
                     
         except Exception as e:
@@ -112,8 +176,19 @@ Guidelines:
         # 2. Log Bot Response
         if project_id:
             try:
-                db.add(ChatLog(project_id=project_id, sender="bot", message=content))
+                new_bot_log = ChatLog(project_id=project_id, sender="bot", message=content)
+                db.add(new_bot_log)
                 db.commit()
+                db.refresh(new_bot_log)
+                
+                # Broadcast Bot Message
+                await manager.broadcast({
+                    "id": str(new_bot_log.id),
+                    "sender": "bot",
+                    "message": content,
+                    "created_at": new_bot_log.created_at.isoformat()
+                }, project_id)
+                
             except Exception as e:
                 logger.error(f"Failed to log bot chat: {e}")
         
@@ -147,8 +222,19 @@ async def get_chat_logs(project_id: str, db: Session = Depends(get_db)):
 async def send_consultant_message(data: ConsultantMessageRequest, db: Session = Depends(get_db)):
     try:
         uuid.UUID(str(data.project_id))
-        db.add(ChatLog(project_id=data.project_id, sender="consultant", message=data.message))
+        new_log = ChatLog(project_id=data.project_id, sender="consultant", message=data.message)
+        db.add(new_log)
         db.commit()
+        db.refresh(new_log)
+        
+        # Broadcast Consultant Message
+        await manager.broadcast({
+            "id": str(new_log.id),
+            "sender": "consultant",
+            "message": data.message,
+            "created_at": new_log.created_at.isoformat()
+        }, data.project_id)
+        
         return {"status": "sent"}
     except Exception as e:
         logger.error(f"Error sending consultant message: {e}")

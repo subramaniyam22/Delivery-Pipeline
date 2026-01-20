@@ -328,8 +328,57 @@ export default function ClientOnboardingPage() {
         { text: "👋 Hi there! I'm here to help you complete your onboarding. Do you have any questions about the form or requirements?", isBot: true, sender: 'bot' }
     ]);
 
+    const setupWebSocket = () => {
+        if (!formData?.project_id) return null;
+
+        // Construct WS URL
+        // In local dev: ws://localhost:8000/api/ai/ws/chat/{id}
+        // In prod: wss://delivery-backend-vvbf.onrender.com/api/ai/ws/chat/{id}
+
+        let baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        if (baseUrl.startsWith('http')) {
+            baseUrl = baseUrl.replace(/^http/, 'ws');
+        }
+
+        const wsUrl = `${baseUrl}/api/ai/ws/chat/${formData.project_id}`;
+        console.log('Connecting to WS (Client):', wsUrl);
+
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('WS Connected (Client)');
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                setChatMessages(prev => {
+                    // Avoid duplicates
+                    if (prev.find(l => l.id === message.id)) return prev;
+                    return [...prev, {
+                        text: message.message,
+                        isBot: message.sender !== 'user',
+                        sender: message.sender,
+                        id: message.id,
+                        created_at: message.created_at
+                    }];
+                });
+            } catch (e) {
+                console.error('WS Message Parse Error', e);
+            }
+        };
+
+        ws.onclose = () => {
+            console.log('WS Disconnected (Client)');
+        };
+
+        return ws;
+    };
+
     useEffect(() => {
         if (!formData?.project_id) return;
+
+        // Initial Fetch
         const fetchChat = async () => {
             try {
                 const res = await clientAPI.getChatLogs(formData.project_id);
@@ -344,12 +393,17 @@ export default function ClientOnboardingPage() {
                     setChatMessages(mapped);
                 }
             } catch (e) {
-                // Silent fail on poll
+                // Silent fail
             }
         };
         fetchChat();
-        const interval = setInterval(fetchChat, 5000);
-        return () => clearInterval(interval);
+
+        // Setup WebSocket
+        const ws = setupWebSocket();
+
+        return () => {
+            if (ws) ws.close();
+        };
     }, [formData?.project_id]);
 
 
