@@ -8,12 +8,39 @@ import { canCreateProject } from '@/lib/rbac';
 import RoleGuard from '@/components/RoleGuard';
 import Navigation from '@/components/Navigation';
 import { Role } from '@/lib/auth';
+import NotificationToast from '@/components/NotificationToast';
+import { useNotification } from '@/context/NotificationContext';
 
 export default function ProjectsPage() {
     const router = useRouter();
     const [projects, setProjects] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState<any>(null);
+    const { refreshSignal, notifications, markAsRead } = useNotification();
+
+    // Only show urgent details via toast
+    const latestUrgent = notifications.find(n => n.type === 'urgent' && !n.read && (Date.now() - new Date(n.timestamp).getTime() < 10000));
+    const [visibleToast, setVisibleToast] = useState<{ message: string, id: string } | null>(null);
+
+    useEffect(() => {
+        if (latestUrgent) {
+            setVisibleToast({ message: latestUrgent.message, id: latestUrgent.id });
+        }
+    }, [latestUrgent]);
+
+    const handleToastClose = () => {
+        if (visibleToast) {
+            markAsRead(visibleToast.id);
+            setVisibleToast(null);
+        }
+    };
+
+    // Listen to global refresh signal (triggered by NotificationContext)
+    useEffect(() => {
+        if (refreshSignal > 0) {
+            loadProjects();
+        }
+    }, [refreshSignal]);
 
     // UI State
     const [filter, setFilter] = useState('active');
@@ -71,6 +98,18 @@ export default function ProjectsPage() {
         };
     };
 
+    useEffect(() => {
+        if (!isAuthenticated()) {
+            router.push('/login');
+            return;
+        }
+        const currentUser = getCurrentUser();
+        setUser(currentUser);
+        loadProjects();
+    }, []);
+
+    // WS connection is now handled in NotificationContext global provider
+    // We only need to load projects on mount
     useEffect(() => {
         if (!isAuthenticated()) {
             router.push('/login');
@@ -269,6 +308,7 @@ export default function ProjectsPage() {
                         userRole={user.role}
                         requiredRoles={[Role.CONSULTANT, Role.ADMIN, Role.MANAGER]}
                     >
+
                         <button className="btn-create" onClick={() => router.push('/projects/create')}>
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <line x1="12" y1="5" x2="12" y2="19" />
@@ -567,6 +607,14 @@ export default function ProjectsPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {visibleToast && (
+                <NotificationToast
+                    message={visibleToast.message}
+                    type="urgent"
+                    onClose={handleToastClose}
+                />
             )}
 
             <style jsx>{`

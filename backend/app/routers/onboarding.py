@@ -564,7 +564,11 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
 
 def get_active_templates(db: Session):
     try:
-        db_templates = db.query(ThemeTemplate).filter(ThemeTemplate.is_active == True).all()
+        # Only show active AND published templates to clients
+        db_templates = db.query(ThemeTemplate).filter(
+            ThemeTemplate.is_active == True,
+            ThemeTemplate.is_published == True
+        ).all()
         if db_templates:
             return [
                 {
@@ -572,6 +576,7 @@ def get_active_templates(db: Session):
                     "name": t.name,
                     "description": t.description,
                     "preview_url": t.preview_url,
+                    "actual_web_url": t.actual_web_url,
                     "colors": t.colors_json,
                     "features": t.features_json
                 }

@@ -398,7 +398,7 @@ const ConsultantChatModal = ({ projectId, onClose }: { projectId: string; onClos
         try {
             await projectsAPI.sendConsultantMessage({ project_id: projectId, message: input });
             setInput('');
-            await loadData();
+            // await loadData(); // Handled by WebSocket
         } catch (err) {
             console.error('Failed to send message', err);
         } finally {

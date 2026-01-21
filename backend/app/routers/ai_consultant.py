@@ -51,6 +51,37 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# --- Notification WebSocket Manager ---
+class NotificationConnectionManager:
+    def __init__(self):
+        # Map user_id -> List[WebSocket]
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, user_id: str):
+        await websocket.accept()
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(websocket)
+        logger.info(f"Notification WS Connected: {user_id}")
+
+    def disconnect(self, websocket: WebSocket, user_id: str):
+        if user_id in self.active_connections:
+            if websocket in self.active_connections[user_id]:
+                self.active_connections[user_id].remove(websocket)
+            if not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+        logger.info(f"Notification WS Disconnected: {user_id}")
+
+    async def send_personal_message(self, message: dict, user_id: str):
+        if user_id in self.active_connections:
+            for connection in self.active_connections[user_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.error(f"Failed to send Notification WS message to {user_id}: {e}")
+
+notification_manager = NotificationConnectionManager()
+
 # --- Schemas ---
 class ChatRequest(BaseModel):
     message: str
@@ -65,22 +96,32 @@ class ToggleAIRequest(BaseModel):
     project_id: str
     enabled: bool
 
-# --- WebSocket Endpoint ---
+# --- WebSocket Chat Endpoint ---
 @router.websocket("/ws/chat/{project_id}")
 async def websocket_endpoint(websocket: WebSocket, project_id: str, db: Session = Depends(get_db)):
     await manager.connect(websocket, project_id)
     try:
         while True:
-            # We keep the connection open. Clients can send messages here too if we want full duplex.
-            # For now, we mainly use it for receiving updates, but let's handle incoming just in case.
-            # Or just wait for disconnect.
-            data = await websocket.receive_text()
-            # If client sends "ping", we can pong, but usually not needed.
+            await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, project_id)
     except Exception as e:
         logger.error(f"WS Error: {e}")
         manager.disconnect(websocket, project_id)
+
+# --- WebSocket Notification Endpoint ---
+@router.websocket("/ws/notifications/{user_id}")
+async def notification_endpoint(websocket: WebSocket, user_id: str):
+    # In a real app, validate user_id with auth token here or in connection
+    await notification_manager.connect(websocket, user_id)
+    try:
+        while True:
+            await websocket.receive_text() # Keep alive
+    except WebSocketDisconnect:
+        notification_manager.disconnect(websocket, user_id)
+    except Exception as e:
+        logger.error(f"Notification WS Error: {e}")
+        notification_manager.disconnect(websocket, user_id)
 
 
 @router.post("/consult")
@@ -91,17 +132,33 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
     
     project_id = request.context.get("project_id") if request.context else None
     
-    # 1. Log User Message
+    # 1. Log User Message & Notify
     if project_id:
         try:
             uuid.UUID(str(project_id))
+            
+            # Update Project Timestamp for "New Updates" badge
+            from datetime import datetime
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if project:
+                project.onboarding_updated_at = datetime.utcnow()
+                db.commit() # Commit the timestamp update
+                
+                # Notify Consultant
+                if project.consultant_user_id:
+                    # Generic Refresh
+                    await notification_manager.send_personal_message({
+                        "type": "REFRESH_PROJECTS",
+                        "project_id": str(project.id)
+                    }, str(project.consultant_user_id))
+
             # Log message
             new_log = ChatLog(project_id=project_id, sender="user", message=request.message)
             db.add(new_log)
             db.commit()
             db.refresh(new_log)
             
-            # Broadcast User Message
+            # Broadcast User Message to Chat WS
             await manager.broadcast({
                 "id": str(new_log.id),
                 "sender": "user",
@@ -109,12 +166,11 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
                 "created_at": new_log.created_at.isoformat()
             }, project_id)
             
-            # Check if AI is enabled
-            project = db.query(Project).filter(Project.id == project_id).first()
+            # Check if AI is enabled (re-fetch project or use from above)
+            # project already fetched above
             if project and project.features_json:
                 ai_enabled = project.features_json.get('ai_enabled', True)
                 if not ai_enabled:
-                    # AI is disabled (Consultant taken over)
                     return {"response": "", "action": "human_mode"}
                     
         except Exception as e:
@@ -172,6 +228,23 @@ Guidelines:
             parts = content.split("ACTION_REQUEST_HUMAN|")
             action = "handoff"
             content = parts[1].strip() if len(parts) > 1 else "Request sent."
+            
+            # Send URGENT ALERT to Consultant
+            if project_id:
+                try:
+                    # Re-query if specific details needed, but we have project object
+                    if project and project.consultant_user_id:
+                         logger.info(f"Sending Urgent Alert to Consultant ID: {project.consultant_user_id}")
+                         await notification_manager.send_personal_message({
+                            "type": "URGENT_ALERT",
+                            "project_id": str(project.id),
+                            "project_title": project.title,
+                            "message": f"Client for {project.title} requested a human consultant."
+                        }, str(project.consultant_user_id))
+                    else:
+                         logger.warning(f"No consultant assigned for project {project_id}, cannot send alert.")
+                except Exception as e:
+                    logger.error(f"Failed to send urgent alert: {e}")
         
         # 2. Log Bot Response
         if project_id:

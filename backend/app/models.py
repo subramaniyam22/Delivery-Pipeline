@@ -1037,10 +1037,14 @@ class ThemeTemplate(Base):
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     preview_url = Column(String(1000), nullable=True)
+    actual_web_url = Column(String(1000), nullable=True)
+    colors_json = Column(JSONB, default=dict)
+    actual_web_url = Column(String(1000), nullable=True)
     colors_json = Column(JSONB, default=dict)
     features_json = Column(JSONB, default=list)
     created_at = Column(DateTime, default=datetime.utcnow)
-    is_active = Column(Boolean, default=True)
+    is_active = Column(Boolean, default=True) # Used for soft delete
+    is_published = Column(Boolean, default=False) # Used for visibility to clients
 
 
 class ChatLog(Base):

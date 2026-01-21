@@ -308,4 +308,13 @@ export const configurationAPI = {
     getTemplates: () => api.get('/templates'),
     createTemplate: (data: any) => api.post('/templates', data),
     deleteTemplate: (id: string) => api.delete(`/templates/${id}`),
+    uploadBulkTemplates: (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return api.post('/templates/bulk', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
+    togglePublish: (id: string, publish: boolean) =>
+        api.post(`/templates/${id}/publish`, null, { params: { publish } }),
 };

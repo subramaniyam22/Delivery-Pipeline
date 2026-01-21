@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { NotificationProvider } from '@/context/NotificationContext';
 
 // SEO-optimized metadata
 export const metadata: Metadata = {
@@ -72,7 +73,9 @@ export default function RootLayout({
                 </a>
                 {/* Semantic HTML wrapper */}
                 <div id="main-content" role="main">
-                    {children}
+                    <NotificationProvider>
+                        {children}
+                    </NotificationProvider>
                 </div>
             </body>
         </html>

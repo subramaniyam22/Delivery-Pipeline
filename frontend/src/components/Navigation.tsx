@@ -5,7 +5,10 @@ import { getCurrentUser, logout } from '@/lib/auth';
 import { healthAPI } from '@/lib/api';
 import { useEffect, useState } from 'react';
 
+import { useNotification } from '@/context/NotificationContext';
+
 export default function Navigation() {
+    const { unreadCount, toggleDrawer, isDrawerOpen, notifications, markAsRead, clearAll } = useNotification();
     const router = useRouter();
     const pathname = usePathname();
     const [user, setUser] = useState<any>(null);
@@ -94,6 +97,8 @@ export default function Navigation() {
                     ))}
                 </div>
 
+
+
                 <div className="nav-user">
                     <div className="user-avatar" aria-hidden="true">
                         {user.name?.charAt(0).toUpperCase() || 'U'}
@@ -101,6 +106,81 @@ export default function Navigation() {
                     <div className="user-details">
                         <span className="user-name">{user.name}</span>
                         <span className="user-role">{user.role}</span>
+                    </div>
+
+                    <div className="nav-actions" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                        <button
+                            onClick={toggleDrawer}
+                            className="btn-notification"
+                            title="Notifications"
+                            aria-label="Notifications"
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                position: 'relative',
+                                cursor: 'pointer',
+                                padding: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                borderRadius: '50%',
+                                transition: 'background 0.2s',
+                            }}
+                        >
+                            <span style={{ fontSize: '20px', filter: unreadCount === 0 ? 'grayscale(100%) opacity(0.7)' : 'none' }}>🔔</span>
+                            {unreadCount > 0 && (
+                                <span className="notification-badge" style={{
+                                    position: 'absolute',
+                                    top: '-2px',
+                                    right: '-2px',
+                                    background: '#ef4444',
+                                    color: 'white',
+                                    fontSize: '10px',
+                                    fontWeight: 'bold',
+                                    minWidth: '18px',
+                                    height: '18px',
+                                    borderRadius: '50%',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    border: '2px solid var(--nav-bg)',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                }}>
+                                    {unreadCount > 9 ? '9+' : unreadCount}
+                                </span>
+                            )}
+                        </button>
+
+                        {isDrawerOpen && (
+                            <div className="notification-drawer">
+                                <div className="drawer-header">
+                                    <h3>Notifications</h3>
+                                    {notifications.length > 0 && (
+                                        <button onClick={clearAll} className="btn-clear">Clear All</button>
+                                    )}
+                                </div>
+                                <div className="drawer-content">
+                                    {notifications.length === 0 ? (
+                                        <p className="empty-state">No notifications</p>
+                                    ) : (
+                                        notifications.map(n => (
+                                            <div
+                                                key={n.id}
+                                                className={`notification-item ${n.read ? 'read' : 'unread'} ${n.type}`}
+                                                onClick={() => markAsRead(n.id)}
+                                            >
+                                                <div className="item-icon">{n.type === 'urgent' ? '⚠️' : 'ℹ️'}</div>
+                                                <div className="item-body">
+                                                    <p className="item-message">{n.message}</p>
+                                                    <span className="item-time">{new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric' }).format(new Date(n.timestamp))}</span>
+                                                </div>
+                                                {!n.read && <span className="item-dot" />}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <button
                         onClick={logout}
@@ -214,6 +294,104 @@ export default function Navigation() {
                 .nav-label {
                     white-space: nowrap;
                 }
+                .btn-notification span {
+                    filter: none !important;
+                }
+                .notification-drawer {
+                    position: absolute;
+                    top: 100%;
+                    right: 0;
+                    width: 320px;
+                    max-height: 400px;
+                    background: white;
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-lg);
+                    box-shadow: var(--shadow-lg);
+                    z-index: 1000;
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                    margin-top: 8px;
+                    animation: slideDown 0.2s ease-out;
+                }
+                .drawer-header {
+                    padding: 12px 16px;
+                    border-bottom: 1px solid var(--border-light);
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    background: var(--bg-tertiary);
+                }
+                .drawer-header h3 {
+                    margin: 0;
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+                .btn-clear {
+                    font-size: 12px;
+                    color: var(--text-muted);
+                    background: none;
+                    border: none;
+                    cursor: pointer;
+                }
+                .btn-clear:hover {
+                    color: var(--color-error);
+                }
+                .drawer-content {
+                    overflow-y: auto;
+                    max-height: 350px;
+                }
+                .empty-state {
+                    padding: 24px;
+                    text-align: center;
+                    color: var(--text-muted);
+                    font-size: 13px;
+                }
+                .notification-item {
+                    padding: 12px 16px;
+                    border-bottom: 1px solid var(--border-light);
+                    display: flex;
+                    gap: 12px;
+                    cursor: pointer;
+                    transition: background 0.2s;
+                }
+                .notification-item:hover {
+                    background: var(--bg-tertiary);
+                }
+                .notification-item.unread {
+                    background: #f0f9ff;
+                }
+                .notification-item.urgent {
+                    border-left: 3px solid #ef4444;
+                }
+                .item-icon {
+                    font-size: 18px;
+                }
+                .item-body {
+                    flex: 1;
+                }
+                .item-message {
+                    margin: 0 0 4px;
+                    font-size: 13px;
+                    color: var(--text-primary);
+                    line-height: 1.4;
+                }
+                .item-time {
+                    font-size: 11px;
+                    color: var(--text-muted);
+                }
+                .item-dot {
+                    width: 8px;
+                    height: 8px;
+                    background: #3b82f6;
+                    border-radius: 50%;
+                    align-self: center;
+                }
+                @keyframes slideDown {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+
                 .nav-badge {
                     font-size: 9px;
                     padding: 2px 6px;
@@ -224,6 +402,7 @@ export default function Navigation() {
                     text-transform: uppercase;
                     letter-spacing: 0.5px;
                 }
+
                 .nav-user {
                     display: flex;
                     align-items: center;

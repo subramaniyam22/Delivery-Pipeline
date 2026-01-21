@@ -11,6 +11,7 @@ interface Template {
     preview_url: string;
     colors: { primary: string; secondary: string; accent: string };
     features: string[];
+    actual_web_url?: string;
 }
 
 interface PricingTier {
@@ -456,8 +457,8 @@ export default function ClientOnboardingPage() {
         if (!chatInput.trim()) return;
 
         const userMsgText = chatInput;
-        const newUserMsg = { text: userMsgText, isBot: false, sender: 'user' };
-        setChatMessages(prev => [...prev, newUserMsg]);
+        // const newUserMsg = { text: userMsgText, isBot: false, sender: 'user' };
+        // setChatMessages(prev => [...prev, newUserMsg]); // Removed to rely on WebSocket
         setChatInput('');
 
         try {
@@ -470,11 +471,8 @@ export default function ClientOnboardingPage() {
             const response = await clientAPI.consultAI(userMsgText, context);
 
             if (response.data.response) {
-                setChatMessages(prev => [...prev, {
-                    text: response.data.response,
-                    isBot: true,
-                    sender: 'bot'
-                }]);
+                // Do not add manually - wait for WebSocket
+                // setChatMessages...
             }
         } catch (error) {
             console.error("AI Consult Error:", error);
@@ -1293,11 +1291,37 @@ export default function ClientOnboardingPage() {
                                         >
                                             <div className="template-preview">
                                                 {template.preview_url ? (
-                                                    <img src={template.preview_url} alt={template.name} className="template-thumb" />
+                                                    <img
+                                                        src={template.preview_url}
+                                                        alt={template.name}
+                                                        className="template-thumb"
+                                                        onError={(e) => {
+                                                            e.currentTarget.style.display = 'none';
+                                                            const parent = e.currentTarget.parentElement;
+                                                            if (parent) {
+                                                                const div = document.createElement('div');
+                                                                div.className = 'template-thumb-placeholder';
+                                                                div.style.background = `linear-gradient(135deg, ${template.colors.primary} 0%, ${template.colors.secondary} 100%)`;
+                                                                div.style.width = '100%';
+                                                                div.style.height = '100%';
+                                                                div.style.borderRadius = '0'; // Inherit from parent
+                                                                div.style.display = 'flex';
+                                                                div.style.alignItems = 'center';
+                                                                div.style.justifyContent = 'center';
+                                                                div.style.color = 'white';
+                                                                div.style.fontWeight = 'bold';
+                                                                div.textContent = template.name.substring(0, 2).toUpperCase();
+                                                                parent.appendChild(div);
+                                                            }
+                                                        }}
+                                                    />
                                                 ) : (
                                                     <div className="template-thumb-placeholder" style={{
-                                                        background: `linear-gradient(135deg, ${template.colors.primary} 0%, ${template.colors.secondary} 100%)`
-                                                    }} />
+                                                        background: `linear-gradient(135deg, ${template.colors.primary} 0%, ${template.colors.secondary} 100%)`,
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '24px'
+                                                    }}>
+                                                        {template.name.substring(0, 2).toUpperCase()}
+                                                    </div>
                                                 )}
                                                 {formData.data.selected_template_id === template.id && (
                                                     <div className="selected-overlay">✓</div>
@@ -1306,6 +1330,31 @@ export default function ClientOnboardingPage() {
                                             <div className="template-info">
                                                 <h4>{template.name}</h4>
                                                 <p>{template.description}</p>
+                                                {template.actual_web_url && (
+                                                    <div style={{ marginTop: '12px' }}>
+                                                        <a
+                                                            href={template.actual_web_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            style={{
+                                                                display: 'inline-block',
+                                                                fontSize: '12px',
+                                                                color: '#2563eb',
+                                                                fontWeight: 600,
+                                                                textDecoration: 'none',
+                                                                borderBottom: '1px solid transparent'
+                                                            }}
+                                                            onMouseEnter={(e) => e.currentTarget.style.borderBottom = '1px solid #2563eb'}
+                                                            onMouseLeave={(e) => e.currentTarget.style.borderBottom = '1px solid transparent'}
+                                                        >
+                                                            View Demo ↗
+                                                        </a>
+                                                        <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {template.actual_web_url}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -3540,6 +3589,106 @@ export default function ClientOnboardingPage() {
                     from { opacity: 0; transform: translateY(20px) scale(0.95); }
                     to { opacity: 1; transform: translateY(0) scale(1); }
                 }
+                /* Templates Grid */
+                .templates-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                    gap: 24px;
+                    margin-top: 24px;
+                }
+
+                .template-card {
+                    background: white;
+                    border: 2px solid #e2e8f0;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    position: relative;
+                }
+
+                .template-card:hover {
+                    transform: translateY(-4px);
+                    box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.15);
+                    border-color: #93c5fd;
+                }
+
+                .template-card.selected {
+                    border-color: #2563eb;
+                    box-shadow: 0 0 0 2px #2563eb, 0 12px 24px -8px rgba(37, 99, 235, 0.2);
+                }
+
+                .template-preview {
+                    height: 180px;
+                    background: #f1f5f9;
+                    position: relative;
+                    overflow: hidden;
+                }
+
+                .template-thumb {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    transition: transform 0.5s;
+                }
+
+                .template-card:hover .template-thumb {
+                    transform: scale(1.05);
+                }
+
+                .template-thumb-placeholder {
+                    width: 100%;
+                    height: 100%;
+                }
+
+                .selected-overlay {
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(37, 99, 235, 0.1);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: white;
+                    font-size: 32px;
+                    font-weight: bold;
+                    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    backdrop-filter: blur(1px);
+                }
+                
+                .selected-overlay:after {
+                    content: '✓';
+                    background: #2563eb;
+                    width: 48px;
+                    height: 48px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                }
+
+                .template-info {
+                    padding: 16px;
+                }
+
+                .template-info h4 {
+                    margin: 0 0 8px 0;
+                    color: #1e293b;
+                    font-size: 16px;
+                    font-weight: 600;
+                }
+
+                .template-info p {
+                    margin: 0;
+                    color: #64748b;
+                    font-size: 13px;
+                    line-height: 1.5;
+                    display: -webkit-box;
+                    -webkit-line-clamp: 2;
+                    -webkit-box-orient: vertical;
+                    overflow: hidden;
+                }
+
             `}</style>
         </div>
     );
