@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { getCurrentUser, isAuthenticated } from '@/lib/auth';
+import NotificationToast from '@/components/NotificationToast';
 
 interface Notification {
     id: string;
@@ -124,6 +125,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         setNotifications([]);
     };
 
+    const latestUrgent = notifications.find(n => n.type === 'urgent' && !n.read && (Date.now() - new Date(n.timestamp).getTime() < 10000));
+    const [visibleToast, setVisibleToast] = useState<{ message: string, id: string } | null>(null);
+
+    useEffect(() => {
+        if (latestUrgent) {
+            setVisibleToast({ message: latestUrgent.message, id: latestUrgent.id });
+        }
+    }, [latestUrgent]);
+
+    const handleToastClose = () => {
+        if (visibleToast) {
+            markAsRead(visibleToast.id);
+            setVisibleToast(null);
+        }
+    };
+
     return (
         <NotificationContext.Provider value={{
             notifications,
@@ -135,6 +152,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             refreshSignal
         }}>
             {children}
+            {visibleToast && (
+                <div style={{ position: 'fixed', top: 20, right: 20, zIndex: 9999 }}>
+                    {/* Dynamic import or direct usage if imported */}
+                    <NotificationToast
+                        message={visibleToast.message}
+                        type="urgent"
+                        onClose={handleToastClose}
+                    />
+                </div>
+            )}
         </NotificationContext.Provider>
     );
 }

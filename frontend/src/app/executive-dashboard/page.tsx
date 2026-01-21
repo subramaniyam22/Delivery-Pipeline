@@ -36,15 +36,7 @@ interface ExecutiveDashboard {
   delayed_projects: ProjectDelayStatus[];
 }
 
-interface SLAConfig {
-  id: string;
-  stage: string;
-  default_days: number;
-  warning_threshold_days: number;
-  critical_threshold_days: number;
-  description: string;
-  is_active: boolean;
-}
+
 
 const STAGE_LABELS: Record<string, string> = {
   ONBOARDING: 'Onboarding',
@@ -78,10 +70,8 @@ export default function ExecutiveDashboardPage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [dashboard, setDashboard] = useState<ExecutiveDashboard | null>(null);
-  const [slaConfigs, setSlaConfigs] = useState<SLAConfig[]>([]);
-  const [editingSLA, setEditingSLA] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ default_days: 0, warning_threshold_days: 0, critical_threshold_days: 0 });
-  
+
+
   // New state for expandable sections
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [expandedHealthStatus, setExpandedHealthStatus] = useState<string | null>(null);
@@ -90,18 +80,18 @@ export default function ExecutiveDashboardPage() {
   useEffect(() => {
     const userData = localStorage.getItem('user');
     const token = localStorage.getItem('access_token');
-    
+
     if (!userData || !token) {
       router.push('/login');
       return;
     }
-    
+
     const parsed = JSON.parse(userData);
     if (parsed.role !== 'ADMIN') {
       router.push('/dashboard');
       return;
     }
-    
+
     setUser(parsed);
     loadData();
   }, [router]);
@@ -128,17 +118,13 @@ export default function ExecutiveDashboardPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [dashboardRes, slaRes, projectsRes] = await Promise.all([
+      const [dashboardRes, projectsRes] = await Promise.all([
         fetch(`${getApiUrl()}/sla/executive-dashboard`, { headers: getAuthHeaders() }),
-        fetch(`${getApiUrl()}/sla/configurations`, { headers: getAuthHeaders() }),
         fetch(`${getApiUrl()}/projects/`, { headers: getAuthHeaders() })
       ]);
-      
+
       if (dashboardRes.ok) {
         setDashboard(await dashboardRes.json());
-      }
-      if (slaRes.ok) {
-        setSlaConfigs(await slaRes.json());
       }
       if (projectsRes.ok) {
         setAllProjects(await projectsRes.json());
@@ -150,31 +136,7 @@ export default function ExecutiveDashboardPage() {
     }
   };
 
-  const handleSLAUpdate = async (stage: string) => {
-    try {
-      const response = await fetch(`${getApiUrl()}/sla/configurations/${stage}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(editForm)
-      });
-      
-      if (response.ok) {
-        setEditingSLA(null);
-        loadData();
-      }
-    } catch (error) {
-      console.error('Failed to update SLA:', error);
-    }
-  };
 
-  const startEditing = (config: SLAConfig) => {
-    setEditingSLA(config.stage);
-    setEditForm({
-      default_days: config.default_days,
-      warning_threshold_days: config.warning_threshold_days,
-      critical_threshold_days: config.critical_threshold_days
-    });
-  };
 
   const toggleHealthStatus = (status: string) => {
     setExpandedHealthStatus(expandedHealthStatus === status ? null : status);
@@ -188,17 +150,17 @@ export default function ExecutiveDashboardPage() {
 
   const getProjectsByHealthStatus = (status: string): Project[] => {
     if (!dashboard || !allProjects.length) return [];
-    
+
     const delayedProjectIds = dashboard.delayed_projects
       .filter(p => p.status === status)
       .map(p => p.project_id);
-    
+
     if (status === 'ON_TRACK') {
       // Projects not in delayed list
       const delayedIds = dashboard.delayed_projects.map(p => p.project_id);
       return allProjects.filter(p => !delayedIds.includes(p.id));
     }
-    
+
     return allProjects.filter(p => delayedProjectIds.includes(p.id));
   };
 
@@ -214,13 +176,13 @@ export default function ExecutiveDashboardPage() {
     );
   }
 
-  const healthPercentage = dashboard ? 
+  const healthPercentage = dashboard ?
     Math.round(((dashboard.on_track_count) / (dashboard.total_projects || 1)) * 100) : 0;
 
   return (
     <div className="page-container">
       <Navigation />
-      
+
       <main className="main-content">
         <div className="page-header">
           <div>
@@ -241,9 +203,9 @@ export default function ExecutiveDashboardPage() {
               <div className="health-label">Overall Health</div>
               <div className="health-sub">{dashboard?.total_projects || 0} Total Projects</div>
             </div>
-            
+
             <div className="status-cards">
-              <div 
+              <div
                 className={`status-card on-track clickable ${expandedHealthStatus === 'ON_TRACK' ? 'selected' : ''}`}
                 onClick={() => toggleHealthStatus('ON_TRACK')}
               >
@@ -251,7 +213,7 @@ export default function ExecutiveDashboardPage() {
                 <span className="status-count">{dashboard?.on_track_count || 0}</span>
                 <span className="status-label">On Track</span>
               </div>
-              <div 
+              <div
                 className={`status-card warning clickable ${expandedHealthStatus === 'WARNING' ? 'selected' : ''}`}
                 onClick={() => toggleHealthStatus('WARNING')}
               >
@@ -259,7 +221,7 @@ export default function ExecutiveDashboardPage() {
                 <span className="status-count">{dashboard?.warning_count || 0}</span>
                 <span className="status-label">Warning</span>
               </div>
-              <div 
+              <div
                 className={`status-card critical clickable ${expandedHealthStatus === 'CRITICAL' ? 'selected' : ''}`}
                 onClick={() => toggleHealthStatus('CRITICAL')}
               >
@@ -267,7 +229,7 @@ export default function ExecutiveDashboardPage() {
                 <span className="status-count">{dashboard?.critical_count || 0}</span>
                 <span className="status-label">Critical</span>
               </div>
-              <div 
+              <div
                 className={`status-card delayed clickable ${expandedHealthStatus === 'DELAYED' ? 'selected' : ''}`}
                 onClick={() => toggleHealthStatus('DELAYED')}
               >
@@ -289,8 +251,8 @@ export default function ExecutiveDashboardPage() {
               </h3>
               <div className="project-list">
                 {getProjectsByHealthStatus(expandedHealthStatus).map(project => (
-                  <div 
-                    key={project.id} 
+                  <div
+                    key={project.id}
                     className="project-list-item"
                     onClick={() => router.push(`/projects/${project.id}`)}
                   >
@@ -322,8 +284,8 @@ export default function ExecutiveDashboardPage() {
               const count = dashboard?.projects_by_stage[stage] || 0;
               const projects = getProjectsByStage(stage);
               return (
-                <div 
-                  key={stage} 
+                <div
+                  key={stage}
                   className={`pipeline-card ${expandedStage === stage ? 'selected' : ''} ${count > 0 ? 'clickable' : ''}`}
                   onClick={() => count > 0 && toggleStage(stage)}
                 >
@@ -331,8 +293,8 @@ export default function ExecutiveDashboardPage() {
                   <div className="pipeline-count">{count}</div>
                   <div className="pipeline-label">{STAGE_LABELS[stage]}</div>
                   <div className="pipeline-bar">
-                    <div 
-                      className="pipeline-bar-fill" 
+                    <div
+                      className="pipeline-bar-fill"
                       style={{ width: `${(count / (dashboard?.total_projects || 1)) * 100}%` }}
                     />
                   </div>
@@ -413,7 +375,7 @@ export default function ExecutiveDashboardPage() {
                 </thead>
                 <tbody>
                   {dashboard.delayed_projects.map((project) => (
-                    <tr 
+                    <tr
                       key={project.project_id}
                       className="clickable-row"
                       onClick={() => router.push(`/projects/${project.project_id}`)}
@@ -424,9 +386,9 @@ export default function ExecutiveDashboardPage() {
                       <td>{project.days_in_stage} days</td>
                       <td>{project.sla_days} days</td>
                       <td>
-                        <span 
+                        <span
                           className="status-badge"
-                          style={{ 
+                          style={{
                             backgroundColor: STATUS_COLORS[project.status].bg,
                             color: STATUS_COLORS[project.status].text,
                             borderColor: STATUS_COLORS[project.status].border
@@ -443,65 +405,7 @@ export default function ExecutiveDashboardPage() {
           </section>
         )}
 
-        {/* SLA Configuration */}
-        <section className="sla-section">
-          <h2>⚙️ SLA Configuration</h2>
-          <p className="sla-desc">Configure the default time limits for each project phase</p>
-          <div className="sla-grid">
-            {slaConfigs.map((config) => (
-              <div key={config.stage} className="sla-card">
-                {editingSLA === config.stage ? (
-                  <div className="sla-edit">
-                    <h3>{STAGE_LABELS[config.stage] || config.stage}</h3>
-                    <div className="edit-fields">
-                      <label>
-                        Default Days
-                        <input 
-                          type="number" 
-                          value={editForm.default_days}
-                          onChange={(e) => setEditForm({...editForm, default_days: parseInt(e.target.value)})}
-                        />
-                      </label>
-                      <label>
-                        Warning (days before)
-                        <input 
-                          type="number" 
-                          value={editForm.warning_threshold_days}
-                          onChange={(e) => setEditForm({...editForm, warning_threshold_days: parseInt(e.target.value)})}
-                        />
-                      </label>
-                      <label>
-                        Critical (days before)
-                        <input 
-                          type="number" 
-                          value={editForm.critical_threshold_days}
-                          onChange={(e) => setEditForm({...editForm, critical_threshold_days: parseInt(e.target.value)})}
-                        />
-                      </label>
-                    </div>
-                    <div className="edit-actions">
-                      <button className="btn-cancel" onClick={() => setEditingSLA(null)}>Cancel</button>
-                      <button className="btn-save" onClick={() => handleSLAUpdate(config.stage)}>Save</button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="sla-header">
-                      <h3>{STAGE_LABELS[config.stage] || config.stage}</h3>
-                      <button className="btn-edit" onClick={() => startEditing(config)}>✏️</button>
-                    </div>
-                    <div className="sla-value">{config.default_days} days</div>
-                    <div className="sla-thresholds">
-                      <span className="threshold warning">⚠️ {config.warning_threshold_days}d</span>
-                      <span className="threshold critical">🚨 {config.critical_threshold_days}d</span>
-                    </div>
-                    {config.description && <p className="sla-description">{config.description}</p>}
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
+
       </main>
 
       <style jsx>{`
@@ -589,27 +493,6 @@ export default function ExecutiveDashboardPage() {
         .status-badge { padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.75rem; font-weight: 500; border: 1px solid; }
         .btn-view { padding: 6px 14px; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; border-radius: 6px; font-size: 0.75rem; font-weight: 500; cursor: pointer; transition: all 0.2s; }
         .btn-view:hover { background: #0ea5e9; color: white; border-color: #0ea5e9; }
-        
-        .sla-desc { color: #64748b; font-size: 0.9rem; margin-bottom: 1rem; }
-        .sla-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
-        .sla-card { background: #f8fafc; border-radius: 12px; padding: 1.25rem; border: 1px solid #e2e8f0; }
-        .sla-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-        .sla-header h3 { font-size: 1rem; color: #1e293b; margin: 0; }
-        .btn-edit { background: none; border: none; cursor: pointer; font-size: 1rem; }
-        .sla-value { font-size: 1.75rem; font-weight: 700; color: #2563eb; margin-bottom: 0.5rem; }
-        .sla-thresholds { display: flex; gap: 1rem; }
-        .threshold { font-size: 0.8rem; padding: 0.25rem 0.5rem; border-radius: 4px; }
-        .threshold.warning { background: #fef3c7; color: #92400e; }
-        .threshold.critical { background: #fee2e2; color: #991b1b; }
-        .sla-description { font-size: 0.8rem; color: #64748b; margin-top: 0.5rem; }
-        
-        .sla-edit h3 { margin-bottom: 1rem; }
-        .edit-fields { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
-        .edit-fields label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.85rem; color: #64748b; }
-        .edit-fields input { padding: 0.5rem; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 1rem; }
-        .edit-actions { display: flex; gap: 0.5rem; }
-        .btn-cancel { flex: 1; padding: 0.5rem; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; }
-        .btn-save { flex: 1; padding: 0.5rem; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; }
         
         @media (max-width: 1024px) {
           .pipeline-cards { grid-template-columns: repeat(3, 1fr); }

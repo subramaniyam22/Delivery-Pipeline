@@ -56,8 +56,22 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ message, type = '
                     border: 'none',
                     color: '#94a3b8',
                     cursor: 'pointer',
-                    fontSize: '18px',
-                    padding: 0
+                    fontSize: '20px',
+                    padding: '4px',
+                    lineHeight: '1',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#475569';
+                    e.currentTarget.style.background = '#f1f5f9';
+                }}
+                onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#94a3b8';
+                    e.currentTarget.style.background = 'none';
                 }}
             >
                 ×

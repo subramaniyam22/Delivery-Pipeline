@@ -317,4 +317,9 @@ export const configurationAPI = {
     },
     togglePublish: (id: string, publish: boolean) =>
         api.post(`/templates/${id}/publish`, null, { params: { publish } }),
+
+    // SLA Configuration
+    getSLAConfigs: () => api.get('/sla/configurations'),
+    updateSLAConfig: (stage: string, data: any) =>
+        api.put(`/sla/configurations/${stage}`, data),
 };

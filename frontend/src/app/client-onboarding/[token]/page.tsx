@@ -354,8 +354,29 @@ export default function ClientOnboardingPage() {
             try {
                 const message = JSON.parse(event.data);
                 setChatMessages(prev => {
-                    // Avoid duplicates
+                    // Avoid duplicates by ID
                     if (prev.find(l => l.id === message.id)) return prev;
+
+                    // Deduplicate optimistic user messages (match by text and sender)
+                    if (message.sender === 'user') {
+                        const optimisticIndex = prev.findIndex(l =>
+                            l.sender === 'user' &&
+                            l.text === message.message &&
+                            !l.id
+                        );
+
+                        if (optimisticIndex !== -1) {
+                            // Replace optimistic message with real one
+                            const newArr = [...prev];
+                            newArr[optimisticIndex] = {
+                                ...newArr[optimisticIndex],
+                                id: message.id,
+                                created_at: message.created_at
+                            };
+                            return newArr;
+                        }
+                    }
+
                     return [...prev, {
                         text: message.message,
                         isBot: message.sender !== 'user',
@@ -457,8 +478,8 @@ export default function ClientOnboardingPage() {
         if (!chatInput.trim()) return;
 
         const userMsgText = chatInput;
-        // const newUserMsg = { text: userMsgText, isBot: false, sender: 'user' };
-        // setChatMessages(prev => [...prev, newUserMsg]); // Removed to rely on WebSocket
+        const newUserMsg = { text: userMsgText, isBot: false, sender: 'user' };
+        setChatMessages(prev => [...prev, newUserMsg]);
         setChatInput('');
 
         try {
@@ -943,8 +964,18 @@ export default function ClientOnboardingPage() {
             </header>
 
             {/* Alerts */}
-            {error && <div className="alert alert-error">{error}</div>}
-            {success && <div className="alert alert-success">{success}</div>}
+            {error && (
+                <div className="alert alert-error" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{error}</span>
+                    <button onClick={() => setError('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '0 4px' }}>×</button>
+                </div>
+            )}
+            {success && (
+                <div className="alert alert-success" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{success}</span>
+                    <button onClick={() => setSuccess('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '0 4px' }}>×</button>
+                </div>
+            )}
 
             <div className="layout-container">
                 <main className="main-content">
