@@ -11,6 +11,8 @@ import os
 import logging
 from alembic import command
 from alembic.config import Config
+from alembic.config import Config
+# Trigger reload 2
 
 # Configure logging
 logging.basicConfig(

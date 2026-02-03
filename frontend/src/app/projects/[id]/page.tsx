@@ -986,37 +986,45 @@ export default function ProjectDetailPage() {
 
     const getRequirementsChecklistItems = () => {
         const req = onboardingData?.requirements_json || {};
-        const hasValue = (value: any) => value !== undefined && value !== null && value !== '';
-        const hasBoolean = (value: any) => value === true || value === false;
+        const hasValue = (val: any) => {
+            if (val === null || val === undefined) return false;
+            if (typeof val === 'string') return val.trim().length > 0;
+            if (Array.isArray(val)) return val.length > 0;
+            if (typeof val === 'boolean') return true;
+            return true;
+        };
 
         return [
             { label: 'Project Summary', filled: hasValue(req.project_summary) },
             { label: 'Project Notes', filled: hasValue(req.project_notes) },
             { label: 'Phase', filled: hasValue(req.phase_number) },
             { label: 'Template Mode', filled: hasValue(req.template_mode) },
-            { label: 'Template References', filled: hasValue(req.template_references) },
-            { label: 'Brand Guidelines', filled: hasBoolean(req.brand_guidelines_available) },
-            { label: 'Brand Guidelines Details', filled: hasValue(req.brand_guidelines_details) },
+            { label: 'Template References', filled: req.template_mode === 'NEW' ? hasValue(req.template_references) : true },
+            {
+                label: 'Brand Guidelines',
+                filled: req.brand_guidelines_available === true ? hasValue(req.brand_guidelines_details) : req.brand_guidelines_available === false
+            },
             { label: 'Color Selection', filled: hasValue(req.color_selection) },
-            { label: 'Color Notes', filled: hasValue(req.color_notes) },
             { label: 'Font Selection', filled: hasValue(req.font_selection) },
-            { label: 'Font Notes', filled: hasValue(req.font_notes) },
-            { label: 'Custom Graphic Notes', filled: hasBoolean(req.custom_graphic_notes_enabled) },
-            { label: 'Custom Graphic Details', filled: hasValue(req.custom_graphic_notes) },
-            { label: 'Navigation Notes', filled: hasValue(req.navigation_notes_option) },
-            { label: 'Navigation Details', filled: hasValue(req.navigation_notes) },
-            { label: 'Stock Images Reference', filled: hasValue(req.stock_images_reference) },
-            { label: 'Floor Plan Images', filled: hasValue(req.floor_plan_images) },
+            {
+                label: 'Custom Graphics',
+                filled: req.custom_graphic_notes_enabled === true ? hasValue(req.custom_graphic_notes) : req.custom_graphic_notes_enabled === false
+            },
+            { label: 'Navigation', filled: hasValue(req.navigation_notes) },
+            { label: 'Stock Images', filled: hasValue(req.stock_images_reference) },
+            { label: 'Floor Plans', filled: hasValue(req.floor_plan_images) },
             { label: 'Sitemap', filled: hasValue(req.sitemap) },
             { label: 'Virtual Tours', filled: hasValue(req.virtual_tours) },
             { label: 'POI Categories', filled: hasValue(req.poi_categories) },
-            { label: 'Specials', filled: hasBoolean(req.specials_enabled) },
-            { label: 'Specials Details', filled: hasValue(req.specials_details) },
-            { label: 'Copy Scope Notes', filled: hasValue(req.copy_scope_notes) },
+            {
+                label: 'Specials',
+                filled: req.specials_enabled === true ? hasValue(req.specials_details) : req.specials_enabled === false
+            },
+            { label: 'Copy Scope', filled: true },
             { label: 'Pages', filled: hasValue(req.pages) },
             { label: 'Domain Type', filled: hasValue(req.domain_type) },
             { label: 'Vanity Domains', filled: hasValue(req.vanity_domains) },
-            { label: 'Call Tracking Plan', filled: hasValue(req.call_tracking_plan) },
+            { label: 'Call Tracking', filled: hasValue(req.call_tracking_plan) },
         ];
     };
 
@@ -1026,13 +1034,13 @@ export default function ProjectDetailPage() {
 
         // Essential Items (matching Client Onboarding logic)
         const essentialItems = [
-            { label: 'Primary Contact', filled: onboardingData.contacts_json?.some((c: any) => c.is_primary) },
+            { label: 'Primary Contact', filled: (onboardingData.contacts_json?.length || 0) > 0 },
             { label: 'Company Logo', filled: !!(onboardingData.logo_url || onboardingData.logo_file_path) },
             { label: 'Website Images', filled: (onboardingData.images_json?.length || 0) > 0 },
             { label: 'Copy Text', filled: !!(onboardingData.copy_text || onboardingData.use_custom_copy) },
-            { label: 'WCAG Requirements', filled: onboardingData.wcag_confirmed },
+            { label: 'WCAG Requirements', filled: onboardingData.wcag_confirmed !== undefined },
             { label: 'Privacy Policy', filled: !!(onboardingData.privacy_policy_url || onboardingData.privacy_policy_text) },
-            { label: 'Theme / Template', filled: !!(onboardingData.theme_preference || onboardingData.selected_template_id) }
+            { label: 'Theme / Template', filled: !!(onboardingData.selected_template_id) }
         ];
 
         return [...essentialItems, ...req];
@@ -1194,7 +1202,7 @@ export default function ProjectDetailPage() {
                     <div className="readonly-field full-width" style={fieldStyle}>
                         <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}>Theme & Template</label>
                         <div className="theme-display-container" style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
-                            {onboardingData?.selected_template_id && (
+                            {requirements.template_mode !== 'NEW' && onboardingData?.selected_template_id && (
                                 <div className="theme-preview">
                                     {templates.find(t => t.id === onboardingData?.selected_template_id)?.preview_url ? (
                                         <img
@@ -1207,22 +1215,41 @@ export default function ProjectDetailPage() {
                                 </div>
                             )}
                             <div className="theme-info">
-                                {/* Theme & Template Section - Refined */}
-                                <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase' }}>Selected Template</label>
-                                    <div className="template-display" style={{ fontSize: '1.1rem', fontWeight: 600, color: '#0f172a' }}>
-                                        {templates.find(t => t.id === onboardingData?.theme_preference || t.name === onboardingData?.theme_preference)?.name || onboardingData?.theme_preference || 'None'}
-                                    </div>
-                                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                                        (Client Preference)
+                                <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '12px' }}>
+                                    <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase' }}>Template Direction</label>
+                                    <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#0f172a' }}>
+                                        {requirements.template_mode === 'NEW' ? 'New Custom Design' : 'Clone from Validated Template'}
                                     </div>
                                 </div>
-                                <div className="info-row" style={{ marginTop: '8px' }}>
-                                    <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem' }}>References:</label>
-                                    <span className={requirements.template_references ? 'filled' : 'empty'}>
-                                        {requirements.template_references || 'None'}
-                                    </span>
-                                </div>
+
+                                {requirements.template_mode === 'NEW' ? (
+                                    <div className="info-row" style={{ marginTop: '8px' }}>
+                                        <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem' }}>Selected Package / Details:</label>
+                                        <span className={requirements.template_references ? 'filled' : 'empty'} style={{ whiteSpace: 'pre-wrap' }}>
+                                            {(() => {
+                                                let text = requirements.template_references || 'None';
+
+                                                // Feature check for existing data
+                                                if (text && !text.includes('Includes:')) {
+                                                    if (text.includes('Essential')) text += '\nIncludes: Custom Homepage + 5 Inner Pages';
+                                                    else if (text.includes('Professional')) text += '\nIncludes: Custom Homepage + 10 Inner Pages';
+                                                    else if (text.includes('Enterprise')) text += '\nIncludes: Fully Custom UI/UX + Branding';
+                                                }
+                                                return text;
+                                            })()}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <label style={{ fontWeight: 600, color: '#64748b', fontSize: '0.85rem', textTransform: 'uppercase' }}>Selected Template</label>
+                                        <div className="template-display" style={{ fontSize: '1.1rem', fontWeight: 600, color: '#0f172a' }}>
+                                            {templates.find(t => t.id === onboardingData?.theme_preference || t.name === onboardingData?.theme_preference)?.name || onboardingData?.theme_preference || 'None'}
+                                        </div>
+                                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                            (Client Preference)
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1233,15 +1260,19 @@ export default function ProjectDetailPage() {
                     <h4>3. Design Preferences</h4>
                     <div className="requirements-grid">
                         {renderBoolField('Brand Guidelines', requirements.brand_guidelines_available)}
-                        {renderField('Guidelines Details', requirements.brand_guidelines_details)}
+                        {requirements.brand_guidelines_available === true && renderField('Guidelines Details', requirements.brand_guidelines_details)}
+
                         {renderField('Color Selection', requirements.color_selection)}
-                        {renderField('Color Notes', requirements.color_notes)}
+                        {['Color codes', 'Other'].includes(requirements.color_selection) && requirements.color_notes && renderField('Color Notes', requirements.color_notes)}
+
                         {renderField('Font Selection', requirements.font_selection)}
-                        {renderField('Font Notes', requirements.font_notes)}
+                        {requirements.font_selection === 'Other' && requirements.font_notes && renderField('Font Notes', requirements.font_notes)}
+
                         {renderBoolField('Custom Graphic Notes', requirements.custom_graphic_notes_enabled)}
-                        {renderField('Graphic Details', requirements.custom_graphic_notes)}
-                        {renderField('Navigation Option', requirements.navigation_notes_option)}
-                        {renderField('Navigation Details', requirements.navigation_notes)}
+                        {requirements.custom_graphic_notes_enabled === true && renderField('Graphic Details', requirements.custom_graphic_notes)}
+
+                        {renderField('Navigation', requirements.navigation_notes_option)}
+                        {requirements.navigation_notes_option === 'Custom' && renderField('Navigation names', requirements.navigation_notes)}
                     </div>
                 </div>
 
@@ -1255,8 +1286,8 @@ export default function ProjectDetailPage() {
                         {renderField('Virtual Tours', requirements.virtual_tours)}
                         {renderField('POI Categories', requirements.poi_categories)}
                         {renderBoolField('Specials Enabled', requirements.specials_enabled)}
-                        {renderField('Specials Details', requirements.specials_details)}
-                        {renderField('Copy Scope Notes', requirements.copy_scope_notes)}
+                        {requirements.specials_enabled === true && renderField('Specials Details', requirements.specials_details)}
+                        {requirements.copy_scope_notes && renderField('Copy Scope Notes', requirements.copy_scope_notes)}
                     </div>
                 </div>
 
@@ -1304,7 +1335,7 @@ export default function ProjectDetailPage() {
                         {renderField('Call Tracking', requirements.call_tracking_plan)}
                     </div>
                 </div>
-            </div>
+            </div >
         );
     };
 

@@ -549,6 +549,7 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
             "custom_copy_final_price": onboarding.custom_copy_final_price,
             "wcag_compliance_required": onboarding.wcag_compliance_required,
             "wcag_level": onboarding.wcag_level,
+            "wcag_confirmed": onboarding.wcag_confirmed,
             "privacy_policy_url": onboarding.privacy_policy_url,
             "privacy_policy_text": onboarding.privacy_policy_text,
             "selected_template_id": onboarding.selected_template_id,

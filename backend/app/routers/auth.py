@@ -50,16 +50,22 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive"
-        )
-    
-    # Create access token
-    access_token = create_access_token(data={"sub": user.email})
-    
-    return Token(access_token=access_token)
+    try:
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is inactive"
+            )
+        
+        # Create access token
+        access_token = create_access_token(data={"sub": user.email})
+        
+        return Token(access_token=access_token)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[LOGIN ERROR] {str(e)}")
+        raise e
 
 
 @router.post("/forgot-password", response_model=MessageResponse)

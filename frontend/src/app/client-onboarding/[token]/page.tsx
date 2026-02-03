@@ -155,8 +155,8 @@ const ReviewModal = ({ onClose, onConfirm, phases, requirements }: any) => {
 };
 
 const PHASE_DEFINITIONS = [
-    { id: 'phase-1', title: 'Project Basics', fields: ['project_summary', 'project_notes', 'phase_number'] },
-    { id: 'phase-2', title: 'Brand & Visual Assets', fields: ['logo', 'images', 'copy', 'theme'] },
+    { id: 'phase-1', title: 'Project Basics', fields: ['project_summary', 'project_notes', 'phase_number', 'contacts'] },
+    { id: 'phase-2', title: 'Brand & Visual Assets', fields: ['logo', 'images', 'copy', 'copy_scope', 'theme', 'template_mode', 'template_references'] },
     { id: 'phase-3', title: 'Design Preferences', fields: ['brand_guidelines', 'color_selection', 'font_selection', 'custom_graphics', 'navigation'] },
     { id: 'phase-4', title: 'Property Content', fields: ['floor_plans', 'virtual_tours', 'poi', 'stock_images', 'sitemap', 'specials'] },
     { id: 'phase-5', title: 'Compliance & Legal', fields: ['wcag', 'privacy'] },
@@ -668,7 +668,7 @@ export default function ClientOnboardingPage() {
             { id: 'project_notes', label: 'Project Notes', provided: hasValue(req.project_notes), eta: missingFieldsEta['Project Notes'] },
             { id: 'phase_number', label: 'Phase', provided: hasValue(req.phase_number), eta: missingFieldsEta['Phase'] },
             { id: 'template_mode', label: 'Template Mode', provided: hasValue(req.template_mode), eta: missingFieldsEta['Template Mode'] },
-            { id: 'template_references', label: 'Template References', provided: hasValue(req.template_references), eta: missingFieldsEta['Template References'] },
+            { id: 'template_references', label: 'Template References', provided: req.template_mode === 'NEW' ? hasValue(req.template_references) : true, eta: missingFieldsEta['Template References'] },
             { id: 'brand_guidelines', label: 'Brand Guidelines', provided: data.requirements?.brand_guidelines_available === true ? hasValue(req.brand_guidelines_details) : data.requirements?.brand_guidelines_available === false, eta: missingFieldsEta['Brand Guidelines'] },
             { id: 'color_selection', label: 'Color Selection', provided: hasValue(req.color_selection), eta: missingFieldsEta['Color Selection'] },
             { id: 'font_selection', label: 'Font Selection', provided: hasValue(req.font_selection), eta: missingFieldsEta['Font Selection'] },
@@ -680,7 +680,7 @@ export default function ClientOnboardingPage() {
             { id: 'virtual_tours', label: 'Virtual Tours', provided: hasValue(req.virtual_tours), eta: missingFieldsEta['Virtual Tours'] },
             { id: 'poi', label: 'POI Categories', provided: hasValue(req.poi_categories), eta: missingFieldsEta['POI Categories'] },
             { id: 'specials', label: 'Specials', provided: data.requirements?.specials_enabled === true ? hasValue(req.specials_details) : data.requirements?.specials_enabled === false, eta: missingFieldsEta['Specials'] },
-            { id: 'copy_scope', label: 'Copy Scope', provided: hasValue(req.copy_scope_notes), eta: missingFieldsEta['Copy Scope'] },
+            { id: 'copy_scope', label: 'Copy Scope', provided: true, eta: missingFieldsEta['Copy Scope'] },
             { id: 'pages', label: 'Pages', provided: hasValue(req.pages), eta: missingFieldsEta['Pages'] },
             { id: 'domain', label: 'Domain Type', provided: hasValue(req.domain_type), eta: missingFieldsEta['Domain Type'] },
             { id: 'vanity', label: 'Vanity Domains', provided: hasValue(req.vanity_domains), eta: missingFieldsEta['Vanity Domains'] },
@@ -1071,6 +1071,7 @@ export default function ClientOnboardingPage() {
                                                 onClick={() => setPreviewImage(getAssetUrl(formData.data.logo_url || formData.data.logo_file_path))}
                                                 title="Click to preview"
                                                 style={{ maxWidth: '100%', maxHeight: '120px', objectFit: 'contain', marginBottom: '12px' }}
+                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                             />
                                             <div className="logo-actions" style={{ width: '100%', textAlign: 'center' }}>
                                                 <div className="preview-badge" style={{ fontSize: '12px', color: '#10b981', fontWeight: 600, marginBottom: '8px' }}>✓ Logo Uploaded</div>
@@ -1101,7 +1102,13 @@ export default function ClientOnboardingPage() {
                                                             const realIndex = formData.data.images.findIndex(x => x === img);
                                                             return (
                                                                 <div key={i} style={{ position: 'relative', width: '60px', height: '60px', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '4px' }}>
-                                                                    <img src={url} alt="Variant" onClick={() => setPreviewImage(url)} style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }} />
+                                                                    <img
+                                                                        src={url}
+                                                                        alt="Variant"
+                                                                        onClick={() => setPreviewImage(url)}
+                                                                        style={{ width: '100%', height: '100%', objectFit: 'contain', cursor: 'pointer' }}
+                                                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                                    />
                                                                     <button onClick={() => handleDeleteImage(realIndex)} style={{
                                                                         position: 'absolute', top: '-6px', right: '-6px', width: '16px', height: '16px', background: '#ef4444', color: 'white',
                                                                         borderRadius: '50%', border: 'none', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
@@ -1178,6 +1185,7 @@ export default function ClientOnboardingPage() {
                                                     onClick={() => setPreviewImage(url)}
                                                     style={{ cursor: 'pointer' }}
                                                     title="Click to preview"
+                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                                 />
                                                 <button
                                                     className="btn-delete"
@@ -1269,7 +1277,8 @@ export default function ClientOnboardingPage() {
                                 <label>Copy Text Scope – Additional Notes</label>
                                 <textarea
                                     value={formData.data.requirements?.copy_scope_notes || ''}
-                                    onChange={(e) => updateRequirements({ copy_scope_notes: e.target.value })}
+                                    onChange={(e) => updateRequirementsLocal({ copy_scope_notes: e.target.value })}
+                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
                                     onFocus={() => handleFieldFocus('copy_scope_notes', 'Copy Scope Notes')}
                                     rows={3}
                                     placeholder="Additional notes about copy scope..."
@@ -1403,7 +1412,7 @@ export default function ClientOnboardingPage() {
                                                 key={tier.name}
                                                 className={`pricing-card`}
                                                 style={{ border: '1px solid #cbd5e1', padding: '16px', borderRadius: '8px', cursor: 'pointer', background: 'white' }}
-                                                onClick={() => updateRequirements({ template_references: `Selected Package: ${tier.name} ($${tier.price})` })}
+                                                onClick={() => updateRequirements({ template_references: `Selected Package: ${tier.name} ($${tier.price})\nIncludes: ${tier.features}` })}
                                             >
                                                 <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>${tier.price}</div>
                                                 <div style={{ fontWeight: 600, color: '#334155', marginBottom: '4px' }}>{tier.name}</div>
@@ -1491,17 +1500,19 @@ export default function ClientOnboardingPage() {
                                 ))}
                             </select>
                         </div>
-                        <div className="form-group">
-                            <label>Color Notes / Codes</label>
-                            <input
-                                type="text"
-                                value={formData.data.requirements?.color_notes || ''}
-                                onChange={(e) => updateRequirementsLocal({ color_notes: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                                onFocus={() => handleFieldFocus('color_notes', 'Color Notes')}
-                                placeholder="Hex codes or color notes"
-                            />
-                        </div>
+                        {['Color codes', 'Other'].includes(formData.data.requirements?.color_selection || '') && (
+                            <div className="form-group">
+                                <label>Color Notes / Codes</label>
+                                <input
+                                    type="text"
+                                    value={formData.data.requirements?.color_notes || ''}
+                                    onChange={(e) => updateRequirementsLocal({ color_notes: e.target.value })}
+                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onFocus={() => handleFieldFocus('color_notes', 'Color Notes')}
+                                    placeholder="Hex codes or color notes"
+                                />
+                            </div>
+                        )}
 
                         <div className="select-group">
                             <label>Font Selection</label>
@@ -1515,17 +1526,19 @@ export default function ClientOnboardingPage() {
                                 ))}
                             </select>
                         </div>
-                        <div className="form-group">
-                            <label>Font Notes</label>
-                            <input
-                                type="text"
-                                value={formData.data.requirements?.font_notes || ''}
-                                onChange={(e) => updateRequirementsLocal({ font_notes: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                                onFocus={() => handleFieldFocus('font_notes', 'Font Notes')}
-                                placeholder="Font details or links"
-                            />
-                        </div>
+                        {formData.data.requirements?.font_selection === 'Other' && (
+                            <div className="form-group">
+                                <label>Font Notes</label>
+                                <input
+                                    type="text"
+                                    value={formData.data.requirements?.font_notes || ''}
+                                    onChange={(e) => updateRequirementsLocal({ font_notes: e.target.value })}
+                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onFocus={() => handleFieldFocus('font_notes', 'Font Notes')}
+                                    placeholder="Font details or links"
+                                />
+                            </div>
+                        )}
 
                         <div className="form-group">
                             <label>Custom Graphic Notes</label>
@@ -1562,7 +1575,7 @@ export default function ClientOnboardingPage() {
                         </div>
 
                         <div className="select-group">
-                            <label>Navigation Notes</label>
+                            <label>Navigation</label>
                             <select
                                 value={formData.data.requirements?.navigation_notes_option || ''}
                                 onChange={(e) => updateRequirements({ navigation_notes_option: e.target.value })}
@@ -1573,38 +1586,41 @@ export default function ClientOnboardingPage() {
                                 ))}
                             </select>
                         </div>
-                        <div className="form-group">
-                            <label>Navigation & Sitemap Requests</label>
-                            <div className="mb-2" style={{ marginBottom: '8px' }}>
-                                <span style={{ fontSize: '12px', color: '#64748b' }}>Quick Presets:</span>
-                                <div className="chip-group" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
-                                    {['Home', 'Apartments', 'Amenities', 'Neighborhood', 'Gallery', 'Contact Us', 'Apply Now', 'Residents'].map(preset => (
-                                        <button
-                                            key={preset}
-                                            className="chip-btn"
-                                            onClick={() => handleSitemapPreset(preset)}
-                                            style={{
-                                                padding: '4px 12px',
-                                                borderRadius: '16px',
-                                                border: '1px solid #cbd5e1',
-                                                background: 'white',
-                                                fontSize: '12px',
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            + {preset}
-                                        </button>
-                                    ))}
+                        {formData.data.requirements?.navigation_notes_option === 'Custom' && (
+                            <div className="form-group">
+                                <label>Navigation names</label>
+                                <div className="mb-2" style={{ marginBottom: '8px' }}>
+                                    <span style={{ fontSize: '12px', color: '#64748b' }}>Quick Presets:</span>
+                                    <div className="chip-group" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                                        {['Home', 'Apartments', 'Amenities', 'Neighborhood', 'Gallery', 'Contact Us', 'Apply Now', 'Residents'].map(preset => (
+                                            <button
+                                                key={preset}
+                                                className="chip-btn"
+                                                onClick={() => handleSitemapPreset(preset)}
+                                                style={{
+                                                    padding: '4px 12px',
+                                                    borderRadius: '16px',
+                                                    border: '1px solid #cbd5e1',
+                                                    background: 'white',
+                                                    fontSize: '12px',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                + {preset}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
+                                <textarea
+                                    value={formData.data.requirements?.navigation_notes || ''}
+                                    onChange={(e) => updateRequirementsLocal({ navigation_notes: e.target.value })}
+                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    rows={4}
+                                    placeholder="List the pages you want on your menu..."
+                                />
                             </div>
-                            <textarea
-                                value={formData.data.requirements?.navigation_notes || ''}
-                                onChange={(e) => updateRequirementsLocal({ navigation_notes: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                                rows={4}
-                                placeholder="List the pages you want on your menu..."
-                            />
-                        </div>
+                        )}
+
                     </PhaseSection>
 
                     {/* Phase 4: Property Content */}
@@ -1629,7 +1645,9 @@ export default function ClientOnboardingPage() {
                             <label>Floor Plan Images</label>
                             <textarea
                                 value={formData.data.requirements?.floor_plan_images || ''}
-                                onChange={(e) => updateRequirements({ floor_plan_images: e.target.value })}
+                                onChange={(e) => updateRequirementsLocal({ floor_plan_images: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onFocus={() => handleFieldFocus('floor_plan_images', 'Floor Plan Images')}
                                 rows={2}
                                 placeholder="Links or notes for floor plan images..."
                             />
@@ -1638,7 +1656,9 @@ export default function ClientOnboardingPage() {
                             <label>Sitemap</label>
                             <textarea
                                 value={formData.data.requirements?.sitemap || ''}
-                                onChange={(e) => updateRequirements({ sitemap: e.target.value })}
+                                onChange={(e) => updateRequirementsLocal({ sitemap: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onFocus={() => handleFieldFocus('sitemap', 'Sitemap')}
                                 rows={2}
                                 placeholder="Sitemap links or details..."
                             />
@@ -1647,7 +1667,9 @@ export default function ClientOnboardingPage() {
                             <label>Virtual Tours</label>
                             <textarea
                                 value={formData.data.requirements?.virtual_tours || ''}
-                                onChange={(e) => updateRequirements({ virtual_tours: e.target.value })}
+                                onChange={(e) => updateRequirementsLocal({ virtual_tours: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onFocus={() => handleFieldFocus('virtual_tours', 'Virtual Tours')}
                                 rows={2}
                                 placeholder="Virtual tour links..."
                             />
@@ -1656,7 +1678,9 @@ export default function ClientOnboardingPage() {
                             <label>Point of Interest Categories & Details</label>
                             <textarea
                                 value={formData.data.requirements?.poi_categories || ''}
-                                onChange={(e) => updateRequirements({ poi_categories: e.target.value })}
+                                onChange={(e) => updateRequirementsLocal({ poi_categories: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onFocus={() => handleFieldFocus('poi_categories', 'POI Categories')}
                                 rows={3}
                                 placeholder="POI categories and details..."
                             />
@@ -1687,7 +1711,9 @@ export default function ClientOnboardingPage() {
                             {formData.data.requirements?.specials_enabled && (
                                 <textarea
                                     value={formData.data.requirements?.specials_details || ''}
-                                    onChange={(e) => updateRequirements({ specials_details: e.target.value })}
+                                    onChange={(e) => updateRequirementsLocal({ specials_details: e.target.value })}
+                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onFocus={() => handleFieldFocus('specials_details', 'Specials Details')}
                                     rows={2}
                                     placeholder="Describe specials to add..."
                                 />
@@ -1779,7 +1805,9 @@ export default function ClientOnboardingPage() {
                             <label>Pages for the Website</label>
                             <textarea
                                 value={formData.data.requirements?.pages || ''}
-                                onChange={(e) => updateRequirements({ pages: e.target.value })}
+                                onChange={(e) => updateRequirementsLocal({ pages: e.target.value })}
+                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onFocus={() => handleFieldFocus('pages', 'Pages')}
                                 rows={2}
                                 placeholder="List pages (comma-separated)..."
                             />
@@ -1824,7 +1852,7 @@ export default function ClientOnboardingPage() {
 
                     {/* Spacer for fixed bottom bar */}
 
-                </main>
+                </main >
 
                 <aside className="sidebar">
                     <ChecklistPanel
@@ -1832,26 +1860,28 @@ export default function ClientOnboardingPage() {
                         onScrollTo={scrollToPhase}
                     />
                 </aside>
-            </div>
+            </div >
 
             {/* Fixed Bottom Action Bar */}
-            <div className="bottom-action-bar">
+            < div className="bottom-action-bar" >
                 <div style={{ color: '#64748b', fontSize: '14px' }}>
                     {saving ? 'Saving changes...' : 'Changes saved automatically'}
                 </div>
                 <button className="btn-submit-form" onClick={handleInitialSubmit}>
                     Review & Submit
                 </button>
-            </div>
+            </div >
 
-            {showReviewModal && (
-                <ReviewModal
-                    onClose={() => setShowReviewModal(false)}
-                    onConfirm={confirmSubmit}
-                    phases={PHASE_DEFINITIONS}
-                    requirements={getAllRequirements()}
-                />
-            )}
+            {
+                showReviewModal && (
+                    <ReviewModal
+                        onClose={() => setShowReviewModal(false)}
+                        onConfirm={confirmSubmit}
+                        phases={PHASE_DEFINITIONS}
+                        requirements={getAllRequirements()}
+                    />
+                )
+            }
 
             {/* Chatbot Container Removed - Moved to End */}
 
@@ -3721,6 +3751,6 @@ export default function ClientOnboardingPage() {
                 }
 
             `}</style>
-        </div>
+        </div >
     );
 }

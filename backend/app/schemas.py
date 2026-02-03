@@ -278,6 +278,7 @@ class OnboardingDataCreate(BaseModel):
     use_custom_copy: bool = False
     wcag_compliance_required: bool = True
     wcag_level: str = "AA"
+    wcag_confirmed: bool = False
     privacy_policy_url: Optional[str] = None
     privacy_policy_text: Optional[str] = None
     theme_preference: Optional[str] = None
@@ -299,6 +300,7 @@ class OnboardingDataUpdate(BaseModel):
     custom_copy_notes: Optional[str] = None
     wcag_compliance_required: Optional[bool] = None
     wcag_level: Optional[str] = None
+    wcag_confirmed: Optional[bool] = None
     privacy_policy_url: Optional[str] = None
     privacy_policy_text: Optional[str] = None
     theme_preference: Optional[str] = None
@@ -327,6 +329,7 @@ class OnboardingDataResponse(BaseModel):
     custom_copy_notes: Optional[str]
     wcag_compliance_required: bool
     wcag_level: str
+    wcag_confirmed: Optional[bool] = None
     privacy_policy_url: Optional[str]
     privacy_policy_text: Optional[str]
     theme_preference: Optional[str]
