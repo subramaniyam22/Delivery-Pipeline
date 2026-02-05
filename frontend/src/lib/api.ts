@@ -29,7 +29,7 @@ const api = axios.create({
         'Content-Type': 'application/json',
     },
     withCredentials: true,  // Enable sending cookies with requests
-    timeout: 30000,  // 30 second timeout
+    timeout: 120000,  // 120 second timeout for Render cold starts
 });
 
 // Add request interceptor to send token in Authorization header
