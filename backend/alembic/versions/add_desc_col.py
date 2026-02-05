@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'add_desc_col'
-down_revision = 'fix_sales_role_enum'
+down_revision = 'fix_sales_enum'
 branch_labels = None
 depends_on = None
 
