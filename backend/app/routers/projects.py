@@ -254,50 +254,66 @@ def get_projects(
     skip: int = 0,
     limit: int = 100,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)  # Changed from project_service.get_db to standard Depends
+    db: Session = Depends(get_db)
 ):
     """
     Get all projects visible to the current user
     """
-    # 1. Get projects based on role/permissions (Simplified for now - get all)
-    # Ideally should use service to filter by user role
-    # For now assuming service doesn't have list filtering, implementing here or reuse service?
-    # Service doesn't have get_projects exposed with filters in the snippet I saw.
-    # But usually it's better to fetch all and filter or query directly.
-    # Let's query directly for read receipt efficiency.
-    
-    query = db.query(Project)
-    projects = query.offset(skip).limit(limit).all()
-    
-    # 2. Get last view timestamps for this user for these projects
-    project_ids = [p.id for p in projects]
-    last_views_query = db.query(
-        AuditLog.project_id, 
-        func.max(AuditLog.created_at)
-    ).filter(
-        AuditLog.actor_user_id == current_user.id,
-        AuditLog.action == "PROJECT_VIEWED",
-        AuditLog.project_id.in_(project_ids)
-    ).group_by(AuditLog.project_id).all()
-    
-    view_map = {p_id: t for p_id, t in last_views_query}
-    
-    results = []
-    for p in projects:
-        p.onboarding_updated_at = None
-        # Calculate completion (reusing logic from get_project is expensive? 
-        # For list view we might want to skip full calculation or use stored field if it existed.
-        # But we added it to the model instance in get_project only.
-        # Let's simple-calc or 0.
-        # User only asked for Read Receipt logic here.
+    try:
+        # 1. Get projects directly
+        query = db.query(Project)
+        projects = query.offset(skip).limit(limit).all()
         
-        # Read Receipt Logic
-        last_view = view_map.get(p.id)
-        has_updates = False
+        # 2. AuditLog logic DISABLED for debugging
+        # project_ids = [p.id for p in projects]
+        view_map = {} 
+        # last_views_query = db.query(
+        #     AuditLog.project_id, 
+        #     func.max(AuditLog.created_at)
+        # ).filter(
+        #     AuditLog.actor_user_id == current_user.id,
+        #     AuditLog.action == "PROJECT_VIEWED",
+        #     AuditLog.project_id.in_(project_ids)
+        # ).group_by(AuditLog.project_id).all()
+        # view_map = {p_id: t for p_id, t in last_views_query}
         
-        # Check for updates to onboarding data
-        if p.onboarding_updated_at:
-             if not last_view:
+        results = []
+        for p in projects:
+            p.onboarding_updated_at = None
+            
+            # Read Receipt Logic
+            last_view = view_map.get(p.id)
+            has_updates = False
+            
+            # Check for updates to onboarding data
+            if p.onboarding_data: 
+                # Ensure we handle potential lazy load error by accessing safely?
+                # accessing p.onboarding_data triggers usage.
+                p.onboarding_updated_at = p.onboarding_data.updated_at
+                
+                if p.onboarding_updated_at:
+                     if not last_view:
+                         if (p.onboarding_updated_at - p.created_at).total_seconds() > 60:
+                             has_updates = True
+                     else:
+                         if p.onboarding_updated_at > last_view:
+                             has_updates = True
+            
+            # Restriction checks... simplified
+            is_assigned = True # Default to true for now to avoid role logic crash
+            
+            setattr(p, 'has_new_updates', has_updates)
+            
+        return projects
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[PROJECTS_ERROR] {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list projects: {str(e)}"
+        )
                  # If never viewed, but created > 60s ago (to avoid "New" on just created)
                  # Wait, user said "If I have seen the updates...".
                  if (p.onboarding_updated_at - p.created_at).total_seconds() > 60:
