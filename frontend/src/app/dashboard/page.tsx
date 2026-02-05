@@ -24,6 +24,7 @@ export default function DashboardPage() {
     const [user, setUser] = useState<any>(null);
 
     const stageConfig = [
+        { key: 'SALES', label: 'Sales Handover', color: 'var(--stage-sales, #9333ea)', icon: '🤝' },
         { key: 'ONBOARDING', label: 'Project Onboarding', color: 'var(--stage-onboarding)', icon: '📋' },
         { key: 'ASSIGNMENT', label: 'Project Assignment', color: 'var(--stage-assignment)', icon: '📤' },
         { key: 'BUILD', label: 'Build', color: 'var(--stage-build)', icon: '🔨' },
@@ -39,13 +40,13 @@ export default function DashboardPage() {
         }
         const currentUser = getCurrentUser();
         setUser(currentUser);
-        
+
         // Redirect ADMIN to executive dashboard
         if (currentUser?.role === 'ADMIN') {
             router.push('/executive-dashboard');
             return;
         }
-        
+
         loadProjects(currentUser);
     }, [router]);
 
@@ -55,11 +56,17 @@ export default function DashboardPage() {
             const allProjects = response.data;
             let visibleProjects = allProjects;
 
-            if (currentUser?.role === 'CONSULTANT') {
+            if (currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER') {
+                visibleProjects = allProjects;
+            } else if (currentUser?.role === 'SALES') {
+                visibleProjects = allProjects.filter(
+                    (p: any) => p.sales_user_id === currentUser.id || p.creator_user_id === currentUser.id
+                );
+            } else if (currentUser?.role === 'CONSULTANT') {
                 visibleProjects = allProjects.filter(
                     (p: any) => p.consultant_user_id === currentUser.id || p.consultant?.id === currentUser.id
                 );
-            } else if (!['ADMIN', 'MANAGER'].includes(currentUser?.role)) {
+            } else {
                 visibleProjects = allProjects.filter(
                     (p: any) =>
                         p.pc_user_id === currentUser.id ||

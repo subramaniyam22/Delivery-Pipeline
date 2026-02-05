@@ -47,6 +47,7 @@
   --color-info-border: #bfdbfe;
   
   /* Stage Colors - Darker for WCAG compliance */
+  --stage-sales: #9333ea;         /* Purple */
   --stage-onboarding: #2563eb;
   --stage-assignment: #7c3aed;
   --stage-build: #ca8a04;
@@ -56,6 +57,7 @@
   
   /* Role Colors - Darker for WCAG compliance */
   --role-admin: #dc2626;
+  --role-sales: #9333ea;
   --role-manager: #7c3aed;
   --role-consultant: #2563eb;
   --role-pc: #16a34a;

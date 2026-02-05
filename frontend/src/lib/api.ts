@@ -22,34 +22,44 @@ const getApiUrl = () => {
 
 const API_BASE_URL = getApiUrl();
 
-// Create axios instance
+// Create axios instance with cookie support
 const api = axios.create({
     baseURL: API_BASE_URL,
     headers: {
         'Content-Type': 'application/json',
     },
+    withCredentials: true,  // Enable sending cookies with requests
+    timeout: 30000,  // 30 second timeout
 });
 
-// Request interceptor to add token
-api.interceptors.request.use(
-    (config) => {
-        const token = localStorage.getItem('access_token');
+// Add request interceptor to send token in Authorization header
+api.interceptors.request.use((config) => {
+    // Check if we are in a browser environment
+    if (typeof window !== 'undefined') {
+        // First try to get token from localStorage (most reliable for JS)
+        let token: string | null | undefined = localStorage.getItem('access_token');
+
+        // If not in localStorage, attempt to get from cookie (only works if NOT httponly)
+        if (!token) {
+            token = document.cookie
+                .split('; ')
+                .find(row => row.startsWith('access_token='))
+                ?.split('=')[1];
+        }
+
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
-        return config;
-    },
-    (error) => {
-        return Promise.reject(error);
     }
-);
+    return config;
+});
 
 // Response interceptor to handle 401
 api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Clear token and redirect to login
+            // Clear any legacy localStorage data and redirect to login
             localStorage.removeItem('access_token');
             localStorage.removeItem('user');
             window.location.href = '/login';
@@ -58,12 +68,15 @@ api.interceptors.response.use(
     }
 );
 
+
 export default api;
 
 // API methods
 export const authAPI = {
     login: (email: string, password: string) =>
         api.post('/auth/login', { email, password }),
+    logout: () =>
+        api.post('/auth/logout'),
     forgotPassword: (email: string) =>
         api.post('/auth/forgot-password', { email }),
     resetPassword: (token: string, newPassword: string) =>
@@ -84,6 +97,7 @@ export const usersAPI = {
     archive: (id: string) => api.delete(`/users/${id}`),
     reactivate: (id: string) => api.post(`/users/${id}/reactivate`),
     seedAdmin: () => api.post('/users/seed'),
+    getUsersByRole: (role: string) => api.get(`/users/by-role/${role}`),
 };
 
 export const projectsAPI = {
@@ -111,6 +125,13 @@ export const projectsAPI = {
     assignTeam: (id: string, data: any) => api.post(`/projects/${id}/team/assign`, data),
     getTeam: (id: string) => api.get(`/projects/${id}/team`),
     getAvailableUsersByRole: (role: string) => api.get(`/projects/available-users/${role}`),
+    reviewOnboarding: (id: string, action: string, notes?: string) =>
+        api.post(`/projects/${id}/onboarding/review`, { action, notes }),
+    toggleHITL: (id: string, enabled: boolean) =>
+        api.post(`/projects/${id}/hitl-toggle?enabled=${enabled}`),
+    pause: (id: string, reason: string) => api.post(`/projects/${id}/pause`, { reason }),
+    archive: (id: string, reason: string) => api.post(`/projects/${id}/archive`, { reason }),
+    delete: (id: string) => api.delete(`/projects/${id}`),
 };
 
 export const workflowAPI = {
@@ -176,6 +197,8 @@ export const onboardingAPI = {
         }),
     sendReminder: (projectId: string, data: { recipient_email: string; recipient_name: string; message: string }) =>
         api.post(`/projects/${projectId}/send-reminder`, data),
+    sendManualReminder: (projectId: string) =>
+        api.post(`/projects/${projectId}/onboarding-data/remind`),
 };
 
 // Client API (no auth required)

@@ -39,6 +39,7 @@ interface ExecutiveDashboard {
 
 
 const STAGE_LABELS: Record<string, string> = {
+  SALES: 'Sales Handover',
   ONBOARDING: 'Onboarding',
   ASSIGNMENT: 'Assignment',
   BUILD: 'Build',
@@ -48,6 +49,7 @@ const STAGE_LABELS: Record<string, string> = {
 };
 
 const STAGE_ICONS: Record<string, string> = {
+  SALES: '🤝',
   ONBOARDING: '📋',
   ASSIGNMENT: '📤',
   BUILD: '🔨',
@@ -56,7 +58,7 @@ const STAGE_ICONS: Record<string, string> = {
   COMPLETE: '✅'
 };
 
-const STAGE_ORDER = ['ONBOARDING', 'ASSIGNMENT', 'BUILD', 'TEST', 'DEFECT_VALIDATION', 'COMPLETE'];
+const STAGE_ORDER = ['SALES', 'ONBOARDING', 'ASSIGNMENT', 'BUILD', 'TEST', 'DEFECT_VALIDATION', 'COMPLETE'];
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   ON_TRACK: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
@@ -469,7 +471,7 @@ export default function ExecutiveDashboardPage() {
         
         /* Pipeline Stages */
         .pipeline-section { }
-        .pipeline-cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1rem; }
+        .pipeline-cards { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1rem; }
         .pipeline-card { background: #f8fafc; border-radius: 12px; padding: 1.25rem; text-align: center; transition: all 0.2s; border: 2px solid transparent; }
         .pipeline-card.clickable { cursor: pointer; }
         .pipeline-card.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); border-color: #3b82f6; }

@@ -45,6 +45,9 @@ interface OnboardingData {
     submitted_at?: string | null;
     missing_fields_eta_json?: Record<string, string> | null;
     updated_at?: string;
+    review_status?: string;
+    ai_review_notes?: string | null;
+    consultant_review_notes?: string | null;
 }
 
 interface Template {
@@ -630,6 +633,9 @@ export default function ProjectDetailPage() {
     const [showChatLogs, setShowChatLogs] = useState(false);
     const [chatLogs, setChatLogs] = useState<any[]>([]);
 
+
+
+
     const handleViewChatLogs = async () => {
         try {
             const res = await projectsAPI.getChatLogs(projectId);
@@ -990,7 +996,7 @@ export default function ProjectDetailPage() {
             if (val === null || val === undefined) return false;
             if (typeof val === 'string') return val.trim().length > 0;
             if (Array.isArray(val)) return val.length > 0;
-            if (typeof val === 'boolean') return true;
+            if (typeof val === 'boolean') return val === true;
             return true;
         };
 
@@ -999,7 +1005,7 @@ export default function ProjectDetailPage() {
             { label: 'Project Notes', filled: hasValue(req.project_notes) },
             { label: 'Phase', filled: hasValue(req.phase_number) },
             { label: 'Template Mode', filled: hasValue(req.template_mode) },
-            { label: 'Template References', filled: req.template_mode === 'NEW' ? hasValue(req.template_references) : true },
+            { label: 'Template References', filled: req.template_mode === 'NEW' ? hasValue(req.template_references) : hasValue(onboardingData?.selected_template_id) },
             {
                 label: 'Brand Guidelines',
                 filled: req.brand_guidelines_available === true ? hasValue(req.brand_guidelines_details) : req.brand_guidelines_available === false
@@ -1020,7 +1026,7 @@ export default function ProjectDetailPage() {
                 label: 'Specials',
                 filled: req.specials_enabled === true ? hasValue(req.specials_details) : req.specials_enabled === false
             },
-            { label: 'Copy Scope', filled: true },
+            { label: 'Copy Scope', filled: hasValue(req.copy_scope_notes) },
             { label: 'Pages', filled: hasValue(req.pages) },
             { label: 'Domain Type', filled: hasValue(req.domain_type) },
             { label: 'Vanity Domains', filled: hasValue(req.vanity_domains) },
@@ -1038,7 +1044,7 @@ export default function ProjectDetailPage() {
             { label: 'Company Logo', filled: !!(onboardingData.logo_url || onboardingData.logo_file_path) },
             { label: 'Website Images', filled: (onboardingData.images_json?.length || 0) > 0 },
             { label: 'Copy Text', filled: !!(onboardingData.copy_text || onboardingData.use_custom_copy) },
-            { label: 'WCAG Requirements', filled: onboardingData.wcag_confirmed !== undefined },
+            { label: 'WCAG Requirements', filled: !!onboardingData.wcag_confirmed },
             { label: 'Privacy Policy', filled: !!(onboardingData.privacy_policy_url || onboardingData.privacy_policy_text) },
             { label: 'Theme / Template', filled: !!(onboardingData.selected_template_id) }
         ];
@@ -1129,6 +1135,24 @@ export default function ProjectDetailPage() {
                 <div className="section-badge">
                     <span className="badge-readonly">👀 Read-only (Client fills via form)</span>
                 </div>
+
+                {/* Sales & Project Context */}
+                {(project?.pmc_name || project?.location || project?.client_email_ids || project?.sales_user_id) && (
+                    <div className="readonly-group project-context-group" style={{ marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #e2e8f0' }}>
+                        <h4 style={{ color: '#0ea5e9', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            🏢 Project Requirements
+                        </h4>
+                        <div className="requirements-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+                            {/* Manager if assigned */}
+                            {project.manager_chk && (
+                                <div className="readonly-item">
+                                    <label>Assigned Manager</label>
+                                    <span className="value-text">{project.manager_chk.name}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                 {/* Phase 1: Project Basics */}
                 <div className="readonly-group">
@@ -1255,6 +1279,8 @@ export default function ProjectDetailPage() {
                     </div>
                 </div>
 
+                {/* Phase 1: Project Basics */}
+
                 {/* Phase 3: Design Preferences */}
                 <div className="readonly-group">
                     <h4>3. Design Preferences</h4>
@@ -1374,6 +1400,8 @@ export default function ProjectDetailPage() {
             return null;
         }
     };
+
+
 
     const loadTasks = async (stage: string) => {
         try {
@@ -1799,6 +1827,7 @@ export default function ProjectDetailPage() {
                             <span className="status">{project.status}</span>
                         </div>
                     </div>
+
                     {isProjectOwner && (
                         <div className="header-actions" style={{ marginLeft: 'auto', marginRight: '24px' }}>
                             <button
@@ -1838,6 +1867,58 @@ export default function ProjectDetailPage() {
                         </div>
                     )}
                 </header>
+
+                {/* Sales Information Section - Only show for SALES stage */}
+                {project.current_stage === 'SALES' && (
+                    <div className="sales-info-section" style={{
+                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                        padding: '24px',
+                        borderRadius: '12px',
+                        marginBottom: '24px',
+                        color: 'white',
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+                    }}>
+                        <h2 style={{ margin: '0 0 20px 0', fontSize: '20px', fontWeight: 600 }}>
+                            🤝 Sales Handover Information
+                        </h2>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+                            <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>PMC Name</div>
+                                <div style={{ fontSize: '16px', fontWeight: 500 }}>{project.pmc_name || 'Not specified'}</div>
+                            </div>
+                            <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Location</div>
+                                <div style={{ fontSize: '16px', fontWeight: 500 }}>{project.location || 'Not specified'}</div>
+                            </div>
+                            <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Client Email IDs</div>
+                                <div style={{ fontSize: '14px', fontWeight: 500, wordBreak: 'break-word' }}>
+                                    {project.client_email_ids || 'Not specified'}
+                                </div>
+                            </div>
+                            <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px' }}>
+                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Assigned Manager</div>
+                                <div style={{ fontSize: '16px', fontWeight: 500 }}>
+                                    {project.manager_chk?.name || 'Not assigned'}
+                                </div>
+                                {project.manager_chk?.email && (
+                                    <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>
+                                        {project.manager_chk.email}
+                                    </div>
+                                )}
+                            </div>
+                            {project.description && (
+                                <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px', gridColumn: '1 / -1' }}>
+                                    <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Description</div>
+                                    <div style={{ fontSize: '14px', lineHeight: '1.6' }}>{project.description}</div>
+                                </div>
+                            )}
+                        </div>
+                        <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(255, 255, 255, 0.15)', borderRadius: '8px', fontSize: '13px' }}>
+                            <strong>Next Step:</strong> Once the manager reviews this information, they can move the project to the Onboarding stage to begin client onboarding.
+                        </div>
+                    </div>
+                )}
 
                 {/* Stage Timeline */}
                 <div className="stage-timeline">
@@ -2188,18 +2269,20 @@ export default function ProjectDetailPage() {
                             )}
                         </div>
                         <div className="team-grid">
-                            <div className={`team-card ${teamAssignments.consultant ? 'assigned' : 'unassigned'}`}>
-                                <div className="team-role-icon">💼</div>
-                                <div className="team-role-label">Consultant</div>
-                                {teamAssignments.consultant ? (
-                                    <div className="team-member-info">
-                                        <span className="member-name">{teamAssignments.consultant.name}</span>
-                                        <span className="member-email">{teamAssignments.consultant.email}</span>
-                                    </div>
-                                ) : (
-                                    <div className="unassigned-label">Not assigned</div>
-                                )}
-                            </div>
+                            {project.require_manual_review && (
+                                <div className={`team-card ${teamAssignments.consultant ? 'assigned' : 'unassigned'}`}>
+                                    <div className="team-role-icon">💼</div>
+                                    <div className="team-role-label">Consultant</div>
+                                    {teamAssignments.consultant ? (
+                                        <div className="team-member-info">
+                                            <span className="member-name">{teamAssignments.consultant.name}</span>
+                                            <span className="member-email">{teamAssignments.consultant.email}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="unassigned-label">Not assigned</div>
+                                    )}
+                                </div>
+                            )}
                             <div className={`team-card ${teamAssignments.pc ? 'assigned' : 'unassigned'}`}>
                                 <div className="team-role-icon">🎯</div>
                                 <div className="team-role-label">Project Coordinator (PC)</div>
@@ -2247,16 +2330,164 @@ export default function ProjectDetailPage() {
                 )}
 
                 {/* Onboarding Section - Unified View for All Roles */}
-                {project.current_stage === 'ONBOARDING' && onboardingData && (
+                {project.current_stage === 'ONBOARDING' && project.current_stage !== 'SALES' && onboardingData && (
                     <div className="onboarding-section">
                         <div className="section-header">
                             <h2>📋 {user?.role === 'ADMIN' ? 'Project Requirement Progress' : 'Project Onboarding Details'}</h2>
-                            {completionStatus?.can_auto_advance && hasFullEditAccess && (
-                                <button className="btn-auto-advance" onClick={handleAutoAdvance} disabled={advancing}>
-                                    🚀 Auto-Advance
-                                </button>
-                            )}
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                {isAdmin && (
+                                    <div className={`hitl-banner ${project.require_manual_review ? 'hitl-on' : 'hitl-off'}`} style={{
+                                        display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 20px',
+                                        borderRadius: '12px', border: '1px solid',
+                                        background: project.require_manual_review ? '#fef2f2' : '#f0fdf4',
+                                        borderColor: project.require_manual_review ? '#fecaca' : '#bbf7d0',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                                        flex: 1
+                                    }}>
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                                                <span style={{ fontSize: '18px' }}>{project.require_manual_review ? '👤' : '🤖'}</span>
+                                                <span style={{ fontWeight: 700, fontSize: '14px', color: project.require_manual_review ? '#991b1b' : '#166534' }}>
+                                                    {project.require_manual_review ? 'Manual Review Enabled (HITL)' : 'Onboarder AI Agent Active'}
+                                                </span>
+                                            </div>
+                                            <p style={{ margin: 0, fontSize: '12px', color: project.require_manual_review ? '#b91c1c' : '#15803d', lineHeight: '1.4' }}>
+                                                {project.require_manual_review
+                                                    ? 'A Consultant must manually review and approve all client data before the project advances.'
+                                                    : 'The AI Agent automatically sends reminders every 24hrs and will advance the project once all data is verified.'}
+                                            </p>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingLeft: '16px', borderLeft: '1px solid', borderColor: project.require_manual_review ? '#fecaca' : '#bbf7d0' }}>
+                                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>Toggle Mode:</span>
+                                            <label className="switch">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={project.require_manual_review}
+                                                    onChange={async (e) => {
+                                                        try {
+                                                            await projectsAPI.toggleHITL(projectId, e.target.checked);
+                                                            setSuccess(`Mode switched to ${e.target.checked ? 'Manual Review' : 'AI Agent'}`);
+                                                            await loadAllData();
+                                                        } catch (err) {
+                                                            setError('Failed to toggle review mode');
+                                                        }
+                                                    }}
+                                                />
+                                                <span className="slider round"></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
+                                {project.require_manual_review && (user?.role === 'CONSULTANT' || user?.role === 'PC' || user?.role === 'ADMIN') && (
+                                    <button
+                                        className="btn-send-reminder-now"
+                                        onClick={async () => {
+                                            try {
+                                                await onboardingAPI.sendManualReminder(projectId as string);
+                                                setSuccess('Manual reminder sent to client');
+                                                setTimeout(() => setSuccess(''), 3000);
+                                            } catch (err) {
+                                                console.error('Failed to send reminder', err);
+                                                setError('Failed to send reminder');
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '8px 16px', background: '#3b82f6', color: 'white', border: 'none',
+                                        }}
+                                    >
+                                        🔔 Send Reminder Now
+                                    </button>
+                                )}
+
+
+
+                            </div>
                         </div>
+
+                        {/* Project Information Summary (Shared by Sales) */}
+                        <div className="project-summary-box" style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+                            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>Project Information Summary</h3>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+                                <div className="summary-field">
+                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Name</label>
+                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.client_name || '—'}</div>
+                                </div>
+                                <div className="summary-field">
+                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>PMC Name</label>
+                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.pmc_name || '—'}</div>
+                                </div>
+                                <div className="summary-field">
+                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Location</label>
+                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.location || '—'}</div>
+                                </div>
+                                <div className="summary-field" style={{ minWidth: 0 }}>
+                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Emails</label>
+                                    <div style={{ fontSize: '14px', fontWeight: 500, wordBreak: 'break-all' }}>{project.client_email_ids || '—'}</div>
+                                </div>
+                                <div className="summary-field">
+                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Priority</label>
+                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.priority}</div>
+                                </div>
+                                {project.sales_rep && (
+                                    <div className="summary-field" style={{ minWidth: 0 }}>
+                                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Sales Rep</label>
+                                        <div style={{ fontSize: '14px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={project.sales_rep.name}>{project.sales_rep.name}</div>
+                                    </div>
+                                )}
+                                {project.description && (
+                                    <div className="summary-field" style={{ gridColumn: '1 / -1' }}>
+                                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Description</label>
+                                        <div style={{ fontSize: '14px', lineHeight: '1.5' }}>{project.description}</div>
+                                    </div>
+                                )}
+                                <div className="summary-field">
+                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Notification</label>
+                                    <div style={{ fontSize: '14px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {onboardingData?.review_status === 'NEEDS_CHANGES' ? (
+                                            <><span style={{ color: '#ef4444' }}>❌</span> Failed (Missing Info)</>
+                                        ) : onboardingData?.review_status === 'PENDING' || onboardingData?.review_status === 'APPROVED' ? (
+                                            <><span style={{ color: '#10b981' }}>✅</span> Sent</>
+                                        ) : (
+                                            <><span style={{ color: '#f59e0b' }}>⏳</span> Pending</>
+                                        )}
+
+                                        {/* Manual Resend Button */}
+                                        {(onboardingData?.review_status === 'PENDING' || onboardingData?.review_status === 'APPROVED') && (
+                                            <button
+                                                onClick={async () => {
+                                                    try {
+                                                        const btn = document.getElementById('resend-btn');
+                                                        if (btn) btn.innerText = 'Sending...';
+                                                        const response = await onboardingAPI.sendManualReminder(projectId);
+                                                        // Show actual message from backend
+                                                        console.log(response.data.message || 'Notification resent successfully!');
+                                                    } catch (err: any) {
+                                                        const errMsg = err.response?.data?.detail || err.response?.data?.message || err.message;
+                                                        alert('Failed to resend notification. ' + errMsg);
+                                                        console.error(err);
+                                                    } finally {
+                                                        const btn = document.getElementById('resend-btn');
+                                                        if (btn) btn.innerText = '↺ Resend';
+                                                    }
+                                                }}
+                                                id="resend-btn"
+                                                style={{
+                                                    fontSize: '11px', padding: '2px 8px', borderRadius: '4px',
+                                                    border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer',
+                                                    color: '#64748b'
+                                                }}
+                                                title="Resend email notification"
+                                            >
+                                                ↺ Resend
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Onboarder Agent Analysis - Moved to Top */}
+
 
                         {/* Requirements Summary Dashboard - Visible to Everyone */}
                         <div className="summary-card">
@@ -2338,7 +2569,7 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
-                {project.current_stage !== 'ONBOARDING' && onboardingData && hasDetailedViewAccess && !isExecutiveView && user?.role !== 'ADMIN' && (
+                {project.current_stage !== 'ONBOARDING' && project.current_stage !== 'SALES' && onboardingData && hasDetailedViewAccess && !isExecutiveView && user?.role !== 'ADMIN' && (
                     <div className="requirements-section">
                         <div className="section-header">
                             <h2>📋 {user?.role === 'ADMIN' ? 'Project Requirement Progress' : 'Project Onboarding Details'}</h2>
@@ -3225,11 +3456,15 @@ export default function ProjectDetailPage() {
 
                             {/* Assignment Progress */}
                             <div className="assignment-progress">
-                                <div className={`progress-step ${assignmentSequence.consultant_assigned ? 'completed' : assignmentSequence.next_to_assign === 'consultant' ? 'current' : ''}`}>
-                                    <span className="step-number">1</span>
-                                    <span className="step-label">Consultant</span>
-                                </div>
-                                <div className="progress-line" />
+                                {project.require_manual_review && (
+                                    <>
+                                        <div className={`progress-step ${assignmentSequence.consultant_assigned ? 'completed' : assignmentSequence.next_to_assign === 'consultant' ? 'current' : ''}`}>
+                                            <span className="step-number">1</span>
+                                            <span className="step-label">Consultant</span>
+                                        </div>
+                                        <div className="progress-line" />
+                                    </>
+                                )}
                                 <div className={`progress-step ${assignmentSequence.pc_assigned ? 'completed' : assignmentSequence.next_to_assign === 'pc' ? 'current' : ''}`}>
                                     <span className="step-number">2</span>
                                     <span className="step-label">PC</span>
@@ -3260,7 +3495,7 @@ export default function ProjectDetailPage() {
                             )}
 
                             {/* Role Selection Cards - Order: CONSULTANT, PC, BUILDER, TESTER */}
-                            {['CONSULTANT', 'PC', 'BUILDER', 'TESTER'].map((role) => {
+                            {['CONSULTANT', 'PC', 'BUILDER', 'TESTER'].filter(role => role !== 'CONSULTANT' || project.require_manual_review).map((role) => {
                                 // Permission check
                                 const canAssignThisRole =
                                     (role === 'CONSULTANT' && canAssignConsultant) ||

@@ -15,7 +15,8 @@ from app.models import (
     User, Role, Region, UserLeave, LeaveType, LeaveStatus,
     RegionHoliday, CompanyHoliday, LeaveEntitlementType,
     LeaveEntitlementPolicy, UserLeaveBalance, CalendarProvider,
-    CalendarConnection, MeetingBlock, TimeEntry, CapacityAdjustment
+    CalendarConnection, MeetingBlock, TimeEntry, CapacityAdjustment,
+    CapacityAllocation
 )
 from app.rbac import check_admin_or_manager
 from app.services.capacity_service import CapacityService
@@ -1164,18 +1165,8 @@ def get_detailed_capacity(
         CapacityAllocation.user_id == user_id,
         CapacityAllocation.date >= start_date,
         CapacityAllocation.date <= end_date
-    ).all() if hasattr(db.query(CapacityAllocation), 'filter') else []
-    
-    try:
-        from app.models import CapacityAllocation
-        allocations = db.query(CapacityAllocation).filter(
-            CapacityAllocation.user_id == user_id,
-            CapacityAllocation.date >= start_date,
-            CapacityAllocation.date <= end_date
-        ).all()
-        allocated_hours = sum(a.allocated_hours for a in allocations)
-    except:
-        allocated_hours = 0
+    ).all()
+    allocated_hours = sum(a.allocated_hours for a in allocations)
     
     remaining_capacity = max(0, net_capacity - allocated_hours)
     

@@ -108,18 +108,6 @@ export default function ProjectsPage() {
         loadProjects();
     }, []);
 
-    // WS connection is now handled in NotificationContext global provider
-    // We only need to load projects on mount
-    useEffect(() => {
-        if (!isAuthenticated()) {
-            router.push('/login');
-            return;
-        }
-        const currentUser = getCurrentUser();
-        setUser(currentUser);
-        loadProjects();
-    }, []);
-
     const loadProjects = async () => {
         try {
             const response = await projectsAPI.list();
@@ -148,7 +136,12 @@ export default function ProjectsPage() {
             project.consultant_user_id === user.id ||
             project.pc_user_id === user.id ||
             project.builder_user_id === user.id ||
-            project.tester_user_id === user.id
+            project.consultant_user_id === user.id ||
+            project.pc_user_id === user.id ||
+            project.builder_user_id === user.id ||
+            project.tester_user_id === user.id ||
+            project.manager_user_id === user.id ||
+            project.sales_user_id === user.id
         ) {
             return true;
         }
@@ -235,21 +228,29 @@ export default function ProjectsPage() {
         setSubmitting(true);
 
         try {
-            const response = await fetch(`${getApiUrl()}/project-management/${actionType}/${selectedProject.id}`, {
-                method: 'POST',
-                headers: getAuthHeaders(),
-                body: JSON.stringify({ reason: actionReason || null })
-            });
-
-            if (response.ok) {
-                setShowActionModal(false);
-                loadProjects();
+            if (actionType === 'pause') {
+                await projectsAPI.pause(selectedProject.id, actionReason);
+            } else if (actionType === 'archive') {
+                await projectsAPI.archive(selectedProject.id, actionReason);
             } else {
-                const error = await response.json();
-                alert(error.detail || `Failed to ${actionType} project`);
+                // Fallback for legacy actions like resume/complete if not in projectsAPI yet
+                // Or if actionType is 'resume'
+                const response = await fetch(`${getApiUrl()}/project-management/${actionType}/${selectedProject.id}`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ reason: actionReason || null })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || `Failed to ${actionType} project`);
+                }
             }
-        } catch (error) {
+
+            setShowActionModal(false);
+            loadProjects();
+        } catch (error: any) {
             console.error(`Error ${actionType}ing project:`, error);
+            alert(error.message || `Failed to ${actionType} project`);
         } finally {
             setSubmitting(false);
         }
@@ -306,7 +307,7 @@ export default function ProjectsPage() {
                     </div>
                     <RoleGuard
                         userRole={user.role}
-                        requiredRoles={[Role.CONSULTANT, Role.ADMIN, Role.MANAGER]}
+                        requiredRoles={[Role.SALES]}
                     >
 
                         <button className="btn-create" onClick={() => router.push('/projects/create')}>
@@ -427,7 +428,7 @@ export default function ProjectsPage() {
                                 <th>Project</th>
                                 <th>Client</th>
                                 <th>Created By</th>
-                                <th>Assigned To</th>
+                                {user?.role !== 'SALES' && <th>Assigned To</th>}
                                 <th>Priority</th>
                                 <th>Stage</th>
                                 <th>Status</th>
@@ -457,21 +458,28 @@ export default function ProjectsPage() {
                                             <span className="not-assigned">—</span>
                                         )}
                                     </td>
-                                    <td className="cell-user">
-                                        {project.consultant ? (
-                                            <div className="user-info-cell">
-                                                <span className="user-name">{project.consultant.name}</span>
-                                                <span className="user-role">Consultant</span>
-                                            </div>
-                                        ) : project.pc ? (
-                                            <div className="user-info-cell">
-                                                <span className="user-name">{project.pc.name}</span>
-                                                <span className="user-role">PC</span>
-                                            </div>
-                                        ) : (
-                                            <span className="not-assigned">Not assigned</span>
-                                        )}
-                                    </td>
+                                    {user?.role !== 'SALES' && (
+                                        <td className="cell-user">
+                                            {project.current_stage === 'SALES' && project.manager_chk ? (
+                                                <div className="user-info-cell">
+                                                    <span className="user-name">{project.manager_chk.name}</span>
+                                                    <span className="user-role">Manager</span>
+                                                </div>
+                                            ) : project.consultant ? (
+                                                <div className="user-info-cell">
+                                                    <span className="user-name">{project.consultant.name}</span>
+                                                    <span className="user-role">Consultant</span>
+                                                </div>
+                                            ) : project.pc ? (
+                                                <div className="user-info-cell">
+                                                    <span className="user-name">{project.pc.name}</span>
+                                                    <span className="user-role">PC</span>
+                                                </div>
+                                            ) : (
+                                                <span className="not-assigned">Not assigned</span>
+                                            )}
+                                        </td>
+                                    )}
                                     <td>
                                         <span className={`badge badge-priority badge-${project.priority?.toLowerCase()}`}>
                                             {project.priority}
@@ -494,6 +502,8 @@ export default function ProjectsPage() {
                                     </td>
                                     {user?.role !== 'ADMIN' && (
                                         <td>
+                                            {project.sales_user_id === user?.id && <span className="my-role-tag sales">🤝 Sales</span>}
+                                            {project.manager_user_id === user?.id && <span className="my-role-tag manager">👔 Manager</span>}
                                             {project.consultant_user_id === user?.id && <span className="my-role-tag consultant">💼 Consultant</span>}
                                             {project.pc_user_id === user?.id && <span className="my-role-tag pc">🎯 PC</span>}
                                             {project.builder_user_id === user?.id && <span className="my-role-tag builder">🔨 Builder</span>}
@@ -503,56 +513,90 @@ export default function ProjectsPage() {
                                     )}
                                     <td>
                                         <div className="action-buttons">
+                                            {/* Standard View Button for All Users */}
                                             <button
                                                 className="btn-view"
                                                 onClick={() => router.push(`/projects/${project.id}`)}
+                                                title="View Details"
                                             >
-                                                {isAssignedToProject(project) || user?.role === 'ADMIN' || user?.role === 'MANAGER' ? 'View' : 'Overview'}
+                                                👁️
                                             </button>
-                                            {canManageProject(project) && project.status === 'ACTIVE' && (
+
+                                            {/* Manage Actions for Sales, Admin, Manager, Assigned */}
+                                            {(canManageProject(project) || (user?.role === 'SALES' && (project.sales_user_id === user.id || project.status === 'DRAFT'))) && (
                                                 <>
+                                                    {/* Pause Button */}
+                                                    {(project.status === 'ACTIVE' || project.status === 'DRAFT') && (
+                                                        <button
+                                                            className="btn-pause"
+                                                            onClick={() => handlePause(project)}
+                                                            title="Pause Project"
+                                                            disabled={user?.role === 'SALES' && project.status !== 'DRAFT' && project.status !== 'ACTIVE'}
+                                                        >
+                                                            ⏸️
+                                                        </button>
+                                                    )}
+
+                                                    {/* Resume Button */}
+                                                    {project.status === 'PAUSED' && (
+                                                        <button
+                                                            className="btn-resume"
+                                                            onClick={() => handleResume(project)}
+                                                            title="Resume Project"
+                                                        >
+                                                            ▶️
+                                                        </button>
+                                                    )}
+
+                                                    {/* Archive Button */}
+                                                    {project.status !== 'ARCHIVED' && (
+                                                        <button
+                                                            className="btn-archive"
+                                                            onClick={() => handleArchive(project)}
+                                                            title="Archive Project"
+                                                        >
+                                                            📦
+                                                        </button>
+                                                    )}
+
+                                                    {/* Unarchive Button */}
+                                                    {project.status === 'ARCHIVED' && ['ADMIN', 'MANAGER'].includes(user?.role) && (
+                                                        <button
+                                                            className="btn-unarchive"
+                                                            onClick={() => handleUnarchive(project)}
+                                                            title="Unarchive Project"
+                                                        >
+                                                            📤
+                                                        </button>
+                                                    )}
+
+                                                    {/* Delete Button */}
                                                     <button
-                                                        className="btn-pause"
-                                                        onClick={() => handlePause(project)}
-                                                        title="Pause Project"
+                                                        className="btn-delete"
+                                                        onClick={() => {
+                                                            if (confirm("Are you sure you want to DELETE this project?")) {
+                                                                fetch(`${getApiUrl()}/projects/${project.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+                                                                    .then(() => loadProjects())
+                                                                    .catch(err => alert("Failed to delete"));
+                                                            }
+                                                        }}
+                                                        title="Delete Project"
+                                                        style={{ color: '#ef4444' }}
                                                     >
-                                                        ⏸️
+                                                        🗑️
                                                     </button>
-                                                    <button
-                                                        className="btn-archive"
-                                                        onClick={() => handleArchive(project)}
-                                                        title="Archive Project"
-                                                    >
-                                                        📦
-                                                    </button>
+
+                                                    {/* Edit Button (Sales Drafts only) - Moved to End */}
+                                                    {user?.role === 'SALES' && project.status === 'DRAFT' && (
+                                                        <button
+                                                            className="btn-edit"
+                                                            onClick={() => router.push(`/projects/create?edit=${project.id}`)}
+                                                            title="Edit Project"
+                                                        >
+                                                            ✏️
+                                                        </button>
+                                                    )}
                                                 </>
-                                            )}
-                                            {canManageProject(project) && project.status === 'PAUSED' && (
-                                                <>
-                                                    <button
-                                                        className="btn-resume"
-                                                        onClick={() => handleResume(project)}
-                                                        title="Resume Project"
-                                                    >
-                                                        ▶️
-                                                    </button>
-                                                    <button
-                                                        className="btn-archive"
-                                                        onClick={() => handleArchive(project)}
-                                                        title="Archive Project"
-                                                    >
-                                                        📦
-                                                    </button>
-                                                </>
-                                            )}
-                                            {canManageProject(project) && project.status === 'ARCHIVED' && ['ADMIN', 'MANAGER'].includes(user?.role) && (
-                                                <button
-                                                    className="btn-unarchive"
-                                                    onClick={() => handleUnarchive(project)}
-                                                    title="Unarchive Project"
-                                                >
-                                                    📤
-                                                </button>
                                             )}
                                         </div>
                                     </td>

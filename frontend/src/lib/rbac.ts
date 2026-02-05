@@ -1,6 +1,7 @@
 import { Role } from './auth';
 
 export enum Stage {
+    SALES = 'SALES',
     ONBOARDING = 'ONBOARDING',
     ASSIGNMENT = 'ASSIGNMENT',
     BUILD = 'BUILD',
@@ -8,6 +9,7 @@ export enum Stage {
     DEFECT_VALIDATION = 'DEFECT_VALIDATION',
     COMPLETE = 'COMPLETE',
 }
+
 
 export const hasRole = (userRole: Role, requiredRole: Role): boolean => {
     // Admin and Manager have access to everything
@@ -47,7 +49,7 @@ export const canAccessStage = (userRole: Role, stage: Stage): boolean => {
 };
 
 export const canCreateProject = (userRole: Role): boolean => {
-    return hasAnyRole(userRole, [Role.CONSULTANT, Role.ADMIN, Role.MANAGER]);
+    return userRole === Role.SALES;
 };
 
 export const canManageUsers = (userRole: Role): boolean => {

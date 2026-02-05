@@ -14,6 +14,7 @@ class Role(str, enum.Enum):
     PC = "PC"
     BUILDER = "BUILDER"
     TESTER = "TESTER"
+    SALES = "SALES"
 
 
 class Region(str, enum.Enum):
@@ -31,7 +32,17 @@ class ProjectStatus(str, enum.Enum):
     CANCELLED = "CANCELLED"
 
 
+class OnboardingReviewStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    AI_REVIEWED = "AI_REVIEWED"
+    WAITING_FOR_CONSULTANT = "WAITING_FOR_CONSULTANT"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    NEEDS_CHANGES = "NEEDS_CHANGES"
+
+
 class Stage(str, enum.Enum):
+    SALES = "SALES"
     ONBOARDING = "ONBOARDING"
     ASSIGNMENT = "ASSIGNMENT"
     BUILD = "BUILD"
@@ -116,8 +127,9 @@ class Project(Base):
     title = Column(String(500), nullable=False)
     client_name = Column(String(255), nullable=False)
     priority = Column(String(50), default="MEDIUM")
-    status = Column(Enum(ProjectStatus), default=ProjectStatus.DRAFT, nullable=False)
-    current_stage = Column(Enum(Stage), default=Stage.ONBOARDING, nullable=False)
+    status = Column(Enum(ProjectStatus), default=ProjectStatus.DRAFT, nullable=False, index=True)
+    project_type = Column(String(50), nullable=True)  # Full Website, Landing Page, etc.
+    current_stage = Column(Enum(Stage), default=Stage.ONBOARDING, nullable=False, index=True)
     created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -145,8 +157,16 @@ class Project(Base):
     # Minimum requirements overrides (Admin-configurable)
     minimum_requirements_override = Column(JSONB, nullable=True)  # List of required onboarding fields
     allow_requirements_exceptions = Column(Boolean, default=False)
+    require_manual_review = Column(Boolean, default=False)  # HITL: If True, consultant must approve before assignment
+    
+    # Sales Fields
+    pmc_name = Column(String(255), nullable=True)
+    location = Column(String(255), nullable=True)
+    client_email_ids = Column(Text, nullable=True)
+    sales_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     
     # Team Assignments
+    manager_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     pc_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     consultant_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     builder_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -154,6 +174,8 @@ class Project(Base):
     
     # Relationships
     creator = relationship("User", back_populates="created_projects", foreign_keys=[created_by_user_id])
+    sales_rep = relationship("User", foreign_keys=[sales_user_id])
+    manager_chk = relationship("User", foreign_keys=[manager_user_id])
     pc = relationship("User", foreign_keys=[pc_user_id])
     consultant = relationship("User", foreign_keys=[consultant_user_id])
     builder = relationship("User", foreign_keys=[builder_user_id])
@@ -344,6 +366,11 @@ class OnboardingData(Base):
     # Client submission tracking
     submitted_at = Column(DateTime, nullable=True)
     missing_fields_eta_json = Column(JSONB, nullable=True)  # { field_key: "2026-01-18" }
+
+    # Review Process
+    review_status = Column(Enum(OnboardingReviewStatus), default=OnboardingReviewStatus.PENDING)
+    ai_review_notes = Column(Text, nullable=True)
+    consultant_review_notes = Column(Text, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

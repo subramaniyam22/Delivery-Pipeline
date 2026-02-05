@@ -226,6 +226,7 @@ export default function UsersPage() {
     const getRoleColor = (role: string) => {
         const colors: Record<string, string> = {
             ADMIN: 'var(--role-admin)',
+            SALES: 'var(--role-sales)',
             MANAGER: 'var(--role-manager)',
             CONSULTANT: 'var(--role-consultant)',
             PC: 'var(--role-pc)',
@@ -473,6 +474,7 @@ export default function UsersPage() {
                     <div className="permissions-grid">
                         {[
                             { role: 'ADMIN', desc: 'Full access - Create, edit, deactivate, and archive users' },
+                            { role: 'SALES', desc: 'Create new projects, assign to Managers' },
                             { role: 'MANAGER', desc: 'Create, edit, and deactivate users (no archive)' },
                             { role: 'CONSULTANT', desc: 'Create projects, update onboarding, view status' },
                             { role: 'PC', desc: 'Task assignment access, manage assignment stage' },
@@ -539,6 +541,7 @@ export default function UsersPage() {
                                         disabled={processing}
                                     >
                                         <option value="ADMIN">Admin</option>
+                                        <option value="SALES">Sales</option>
                                         <option value="MANAGER">Manager</option>
                                         <option value="CONSULTANT">Consultant</option>
                                         <option value="PC">PC</option>

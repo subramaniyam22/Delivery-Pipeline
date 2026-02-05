@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.db import get_db
-from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus, ThemeTemplate
+from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus, ThemeTemplate, OnboardingReviewStatus
 from app.schemas import (
     OnboardingDataCreate,
     OnboardingDataUpdate,
@@ -22,12 +22,13 @@ import secrets
 import os
 import boto3
 import logging
-from app.config import settings
+from app.config import Settings
 
 logger = logging.getLogger(__name__)
 from app.services.email_service import send_client_reminder_email
 from app.services.config_service import get_config
 from app.services.storage_service import s3_enabled, upload_bytes_to_s3
+from app.services.onboarding_agent import validate_onboarding_submission
 
 router = APIRouter(prefix="/projects", tags=["onboarding"])
 
@@ -363,6 +364,14 @@ def get_onboarding_data(
     onboarding = db.query(OnboardingData).filter(OnboardingData.project_id == project_id).first()
     
     if not onboarding:
+        # Only create onboarding data if project is in ONBOARDING stage or later
+        # Don't create for SALES stage projects
+        if project.current_stage == Stage.SALES:
+            raise HTTPException(
+                status_code=404, 
+                detail="Onboarding data not available for projects in SALES stage"
+            )
+        
         # Create empty onboarding data with client token
         onboarding = OnboardingData(
             project_id=project_id,
@@ -401,6 +410,14 @@ def update_onboarding_data(
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+        
+    # HITL check: Only Admins can update by default. Others need require_manual_review=True
+    if current_user.role != Role.ADMIN:
+        if not project.require_manual_review:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manual updates are restricted. This project is being handled by the Onboarder Agent. Contact an Admin to enable Human-in-the-Loop (HITL) mode."
+            )
     
     onboarding = db.query(OnboardingData).filter(OnboardingData.project_id == project_id).first()
     
@@ -452,9 +469,128 @@ def update_onboarding_data(
     # Auto-update task status based on filled fields
     auto_update_task_status(db, project_id, onboarding)
     
+    # Trigger auto-advance if HITL is disabled (AI Agent Mode)
+    if not project.require_manual_review:
+        from app.services.onboarding_agent_service import OnboarderAgentService
+        agent_service = OnboarderAgentService(db)
+        # We can run this in background or synchronously here
+        background_tasks.add_task(agent_service.check_and_automate_onboarding, project_id)
+    
     db.refresh(onboarding)
     
     return onboarding
+
+
+@router.post("/{project_id}/onboarding-data/remind")
+def send_manual_reminder(
+    project_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Manually trigger a reminder email to the client"""
+    # Check permissions (Added SALES)
+    if current_user.role not in [Role.ADMIN, Role.CONSULTANT, Role.PC, Role.MANAGER, Role.SALES]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    onboarding = db.query(OnboardingData).filter(OnboardingData.project_id == project_id).first()
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Onboarding data not found")
+
+    # Get primary contact or fallback to project client emails
+    primary_contact = None
+    recipient_email = None
+    recipient_name = "Client"
+
+    # 1. Try to find implicit primary contact in onboarding data
+    for contact in (onboarding.contacts_json or []):
+        if contact.get('is_primary'):
+            primary_contact = contact
+            break
+    
+    if primary_contact:
+        recipient_email = primary_contact.get('email')
+        recipient_name = primary_contact.get('name') or "Client"
+    else:
+        # 2. Fallback to Project Client Emails
+        if project.client_email_ids:
+            # client_email_ids is comma separated string
+            emails = [e.strip() for e in project.client_email_ids.split(',') if e.strip()]
+            if emails:
+                recipient_email = emails[0]
+                recipient_name = project.client_name or "Client"
+
+    if not recipient_email:
+        raise HTTPException(status_code=400, detail="No valid email found in primary contact or project client emails")
+
+    # Construct message
+    required_fields = resolve_required_fields(db, project)
+    missing_fields = get_missing_fields(onboarding, required_fields)
+    
+    # Construct message
+    
+    # Re-instantiate settings locally to avoid module-level issues
+    local_settings = Settings()
+    frontend_url = local_settings.FRONTEND_URL
+    
+    access_token = onboarding.client_access_token
+    link = f"{frontend_url}/client-onboarding/{access_token}"
+    
+    message = f"Hi {project.client_name},<br><br>Welcome aboard! We’ve reviewed the initial details for {project.title}, and everything looks on track so far.<br><br>To help us move faster and avoid back-and-forth later, could you complete the onboarding form below? This will give our team the clarity we need to set things up right from day one.<br><br>👉 Onboarding form:<br><a href='{link}'>{link}</a><br><br>If anything feels unclear, just use the chat option on the onboarding page. You’ll be connected to our team while you fill it out.<br><br>Once you’re done, we’ll review your inputs and come back with the next steps and timelines.<br><br>Excited to get started with you.<br><br>Warm regards,<br>Project Onboarding Team"
+
+    # Record it
+    try:
+        reminder = ClientReminder(
+            project_id=project_id,
+            recipient_email=recipient_email,
+            recipient_name=recipient_name,
+            reminder_type="manual_reminder",
+            message=message,
+            status="sent"
+        )
+        db.add(reminder)
+        
+        onboarding.last_reminder_sent = datetime.utcnow()
+        onboarding.reminder_count = (onboarding.reminder_count or 0) + 1
+        
+        db.commit()
+    except Exception as db_exc:
+        logger.error(f"Database error recording reminder: {db_exc}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(db_exc)}")
+    
+    # Send email (Real Implementation)
+    try:
+        # Use the module-level function imported at top of file
+        # ensure allow fallbacks for sender name
+        sender = f"{current_user.full_name} (via Delivery Pipeline)" if hasattr(current_user, 'full_name') and current_user.full_name else "Delivery Pipeline Team"
+        
+        # Now returns (success, message/error)
+        email_success, email_msg = send_client_reminder_email(
+            to_emails=[recipient_email],
+            subject=f"Let’s get your project moving 🚀",
+            message=message,
+            project_title=project.title,
+            sender_name="Project Onboarding Team",
+            return_details=True
+        )
+        
+        if email_success:
+            logger.info(f"[MANUAL-REMINDER] Email sent successfully to {recipient_email}. Msg: {email_msg}")
+            return {"success": True, "message": f"Reminder email result: {email_msg}"}
+        else:
+            logger.error(f"[MANUAL-REMINDER] Failed to send email to {recipient_email}. Error: {email_msg}")
+            # We still return success regarding the DB record, but warn about email failure
+            return {"success": True, "message": f"Reminder saved, but email failed: {email_msg}"}
+            
+    except Exception as e:
+        logger.error(f"[MANUAL-REMINDER] Exception sending email: {str(e)}")
+        # Don't fail the request if DB success, but inform user
+        return {"success": True, "message": f"Reminder saved, but email failed: {str(e)}"}
+
 
 
 @router.get("/{project_id}/onboarding-data/completion")
@@ -639,8 +775,8 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
 
 
 @client_router.post("/{token}/submit")
-def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
-    """Submit onboarding form and notify the assigned consultant"""
+async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """Submit onboarding form and notify the assigned consultant with AI Review"""
     onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
 
     if not onboarding:
@@ -656,6 +792,41 @@ def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db: Sessi
         onboarding.missing_fields_eta_json = missing_fields_eta
 
     onboarding.submitted_at = datetime.utcnow()
+    
+    # --- AI REVIEW & HITL LOGIC ---
+    try:
+        # 1. Run AI Validation
+        review_result = await validate_onboarding_submission(db, str(project.id), onboarding)
+        ai_approved = review_result.get("approved", False)
+        ai_feedback = review_result.get("feedback", "No feedback generated.")
+        
+        onboarding.ai_review_notes = ai_feedback
+        
+        # 2. Determine Status
+        if ai_approved:
+            # AI thinks it's good. Check if Manual Review is required.
+            if project.require_manual_review:
+                onboarding.review_status = OnboardingReviewStatus.WAITING_FOR_CONSULTANT
+            else:
+                # Auto-Approve!
+                onboarding.review_status = OnboardingReviewStatus.APPROVED
+                project.current_stage = Stage.ASSIGNMENT
+        else:
+            # AI flagged issues
+            onboarding.review_status = OnboardingReviewStatus.NEEDS_CHANGES
+            # Even if manual review is off, if AI fails it, we likely want a human to check?
+            # Or strict reject? "Consultant can be considered as human in the loop".
+            # Let's verify: if AI fails, it definitely needs human attention.
+            if not project.require_manual_review:
+                 # If full auto was expected but failed, fallback to consultant
+                 onboarding.review_status = OnboardingReviewStatus.WAITING_FOR_CONSULTANT
+    
+    except Exception as e:
+        logger.error(f"Error during AI review process: {e}")
+        # Fallback to manual
+        onboarding.review_status = OnboardingReviewStatus.WAITING_FOR_CONSULTANT
+        onboarding.ai_review_notes = f"AI Review Failed: {str(e)}"
+
     db.commit()
 
     notification_sent = False
@@ -669,7 +840,12 @@ def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db: Sessi
                 for field, eta in missing_fields_eta.items():
                     eta_lines.append(f"- {field}: {eta}")
 
-            message = "The client submitted the onboarding form."
+            status_msg = f"Review Status: {onboarding.review_status.value}"
+            if onboarding.review_status == OnboardingReviewStatus.APPROVED:
+                status_msg += " (Auto-Approved by AI)"
+            
+            message = f"The client submitted the onboarding form.\n{status_msg}\nAI Feedback: {onboarding.ai_review_notes}"
+            
             if missing_fields:
                 message += "\n\nMissing information:\n" + "\n".join([f"- {f}" for f in missing_fields])
             if eta_lines:
@@ -683,7 +859,7 @@ def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db: Sessi
                 sender_name="Delivery Management"
             )
 
-    return {"success": True, "notification_sent": notification_sent}
+    return {"success": True, "notification_sent": notification_sent, "review_status": onboarding.review_status}
 
 
 @client_router.post("/{token}/upload-logo")

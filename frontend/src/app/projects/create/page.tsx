@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { projectsAPI } from '@/lib/api';
+import { projectsAPI, usersAPI } from '@/lib/api';
 import { getCurrentUser, isAuthenticated } from '@/lib/auth';
 import { canCreateProject } from '@/lib/rbac';
+import { Role } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
 
 export default function CreateProjectPage() {
@@ -13,22 +14,33 @@ export default function CreateProjectPage() {
     const [clientName, setClientName] = useState('');
     const [description, setDescription] = useState('');
     const [priority, setPriority] = useState('MEDIUM');
+
+    // Sales Fields
+    const [pmcName, setPmcName] = useState('');
+    const [location, setLocation] = useState('');
+    const [clientEmailIds, setClientEmailIds] = useState('');
+
+    // New Field
+    const [projectType, setProjectType] = useState('Full Website');
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [user, setUser] = useState<any>(null);
 
     useEffect(() => {
         if (!isAuthenticated()) {
             router.push('/login');
             return;
         }
-        const user = getCurrentUser();
-        if (user && !canCreateProject(user.role)) {
+        const currentUser = getCurrentUser();
+        setUser(currentUser);
+
+        if (currentUser && !canCreateProject(currentUser.role)) {
             router.push('/dashboard');
         }
     }, [router]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleCreate = async (status: 'DRAFT' | 'ACTIVE') => {
         setError('');
         setLoading(true);
 
@@ -38,12 +50,21 @@ export default function CreateProjectPage() {
                 client_name: clientName,
                 description,
                 priority,
+                pmc_name: pmcName || undefined,
+                location: location || undefined,
+                client_email_ids: clientEmailIds || undefined,
+                project_type: projectType,
+                status: status
             });
             router.push('/projects');
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to create project');
             setLoading(false);
         }
+    };
+
+    const isFormValid = () => {
+        return title && clientName && pmcName && location && clientEmailIds && projectType;
     };
 
     const priorities = [
@@ -53,18 +74,26 @@ export default function CreateProjectPage() {
         { key: 'CRITICAL', label: 'Critical', color: 'var(--color-error)' },
     ];
 
+    const projectTypes = [
+        "Full Website",
+        "Partial Website",
+        "Landing Page",
+        "DA Landing Page",
+        "Rapid Landing Page"
+    ];
+
     return (
         <div className="page-wrapper">
             <Navigation />
             <main className="create-page">
-                <button onClick={() => router.push('/projects')} className="btn-back">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M19 12H5M12 19l-7-7 7-7" />
-                    </svg>
-                    Back to Projects
-                </button>
-
                 <div className="form-card">
+                    <button onClick={() => router.push('/projects')} className="btn-close-icon" title="Cancel">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+
                     <div className="card-header">
                         <div className="header-icon">📁</div>
                         <div className="header-text">
@@ -73,9 +102,9 @@ export default function CreateProjectPage() {
                         </div>
                     </div>
 
-                    <form onSubmit={handleSubmit}>
+                    <form onSubmit={(e) => e.preventDefault()}>
                         <div className="form-group">
-                            <label htmlFor="title">Project Title</label>
+                            <label htmlFor="title">Project Title <span className="required">*</span></label>
                             <input
                                 id="title"
                                 type="text"
@@ -88,7 +117,7 @@ export default function CreateProjectPage() {
                         </div>
 
                         <div className="form-group">
-                            <label htmlFor="client">Client Name</label>
+                            <label htmlFor="client">Client Name <span className="required">*</span></label>
                             <input
                                 id="client"
                                 type="text"
@@ -99,6 +128,71 @@ export default function CreateProjectPage() {
                                 placeholder="Enter client name"
                             />
                         </div>
+
+                        {(user?.role === Role.SALES || user?.role === Role.ADMIN) && (
+                            <>
+                                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+                                    <div className="form-group">
+                                        <label htmlFor="pmcName">PMC Name <span className="required">*</span></label>
+                                        <input
+                                            id="pmcName"
+                                            type="text"
+                                            value={pmcName}
+                                            onChange={(e) => setPmcName(e.target.value)}
+                                            disabled={loading}
+                                            placeholder="Property Management Company"
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="location">Location <span className="required">*</span></label>
+                                        <input
+                                            id="location"
+                                            type="text"
+                                            value={location}
+                                            onChange={(e) => setLocation(e.target.value)}
+                                            disabled={loading}
+                                            placeholder="Project Location"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+                                    <div className="form-group">
+                                        <label htmlFor="clientEmails">Client Email IDs <span className="required">*</span></label>
+                                        <input
+                                            id="clientEmails"
+                                            type="text"
+                                            value={clientEmailIds}
+                                            onChange={(e) => setClientEmailIds(e.target.value)}
+                                            disabled={loading}
+                                            placeholder="email1@example.com, email2@example.com"
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="projectType">Project Type <span className="required">*</span></label>
+                                        <select
+                                            id="projectType"
+                                            value={projectType}
+                                            onChange={(e) => setProjectType(e.target.value)}
+                                            disabled={loading}
+                                            style={{
+                                                width: '100%',
+                                                padding: '14px var(--space-md)',
+                                                background: 'var(--bg-input)',
+                                                border: '1px solid var(--border-medium)',
+                                                borderRadius: 'var(--radius-md)',
+                                                color: 'var(--text-primary)',
+                                                fontSize: '15px'
+                                            }}
+                                        >
+                                            {projectTypes.map((type) => (
+                                                <option key={type} value={type}>{type}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </>
+                        )}
 
                         <div className="form-group">
                             <label htmlFor="description">Description</label>
@@ -132,23 +226,41 @@ export default function CreateProjectPage() {
 
                         {error && <div className="error-message">{error}</div>}
 
-                        <div className="form-actions">
-                            <button 
-                                type="button" 
-                                onClick={() => router.push('/projects')}
-                                className="btn-cancel"
+                        <div className="form-actions" style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '16px' }}>
+                            <button
+                                type="button"
+                                onClick={() => handleCreate('DRAFT')}
+                                className="btn-draft"
                                 disabled={loading}
+                                style={{
+                                    padding: '14px',
+                                    background: 'var(--bg-input)',
+                                    color: 'var(--text-secondary)',
+                                    border: '1px solid var(--border-medium)',
+                                    borderRadius: 'var(--radius-md)',
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer'
+                                }}
                             >
-                                Cancel
+                                {loading ? 'Saving...' : 'Save as Draft'}
                             </button>
-                            <button type="submit" disabled={loading} className="btn-submit">
+
+                            <button
+                                type="button"
+                                disabled={loading || !isFormValid()}
+                                className="btn-submit"
+                                onClick={() => handleCreate('ACTIVE')}
+                                title={!isFormValid() ? "Please fill all required fields" : ""}
+                                style={{ opacity: !isFormValid() ? 0.6 : 1, cursor: !isFormValid() ? 'not-allowed' : 'pointer' }}
+                            >
                                 {loading ? (
                                     <>
                                         <span className="btn-spinner" />
                                         Creating...
                                     </>
                                 ) : (
-                                    'Create Project'
+                                    'Create Active Project'
                                 )}
                             </button>
                         </div>
@@ -163,30 +275,53 @@ export default function CreateProjectPage() {
                     padding: var(--space-xl);
                 }
                 
-                .btn-back {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: var(--space-sm);
-                    padding: var(--space-sm) var(--space-md);
-                    background: transparent;
-                    color: var(--text-muted);
-                    border: 1px solid var(--border-light);
-                    border-radius: var(--radius-md);
-                    font-size: 13px;
-                    margin-bottom: var(--space-lg);
-                    transition: all var(--transition-fast);
+                .required {
+                    color: var(--color-error);
+                    margin-left: 2px;
                 }
-                
-                .btn-back:hover {
-                    background: var(--bg-card);
+
+                .btn-close-icon {
+                    position: absolute;
+                    top: 20px;
+                    right: 20px;
+                    background: transparent;
+                    border: none;
+                    color: var(--text-muted);
+                    cursor: pointer;
+                    padding: 4px;
+                    border-radius: 50%;
+                    transition: all 0.2s;
+                }
+
+                .btn-close-icon:hover {
+                    background: var(--bg-secondary);
                     color: var(--text-primary);
                 }
-                
+
                 .form-card {
+                    position: relative;
                     background: var(--bg-card);
                     border: 1px solid var(--border-light);
                     border-radius: var(--radius-xl);
                     padding: var(--space-xl);
+                }
+
+                .btn-draft {
+                    flex: 1;
+                    padding: 14px;
+                    background: var(--bg-input);
+                    color: var(--text-secondary);
+                    border: 1px solid var(--border-medium);
+                    border-radius: var(--radius-md);
+                    font-size: 14px;
+                    font-weight: 500;
+                    transition: all var(--transition-fast);
+                }
+                
+                .btn-draft:hover:not(:disabled) {
+                    background: var(--bg-card-hover);
+                    color: var(--text-primary);
+                    border-color: var(--text-secondary);
                 }
                 
                 .card-header {

@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.db import get_db
@@ -6,15 +6,28 @@ from app.auth import decode_access_token
 from app.models import User
 from typing import Optional
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
-    """Get current user from JWT token"""
-    token = credentials.credentials
+    """Get current user from JWT token (header or cookie)"""
+    token = None
+    if credentials:
+        token = credentials.credentials
+    else:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     payload = decode_access_token(token)
     
     if payload is None:
@@ -51,3 +64,16 @@ def get_current_active_user(current_user: User = Depends(get_current_user)) -> U
             detail="Inactive user"
         )
     return current_user
+
+
+def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
+    """Get user from token string (for WebSockets)"""
+    payload = decode_access_token(token)
+    if not payload:
+        return None
+        
+    email: str = payload.get("sub")
+    if not email:
+        return None
+        
+    return db.query(User).filter(User.email == email).first()

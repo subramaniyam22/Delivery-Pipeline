@@ -40,6 +40,10 @@ ROLE_PERMISSIONS = {
         "allowed_stages": [Stage.TEST],
         "create_defects": True,
     },
+    Role.SALES: {
+        "view_all": True,
+        "allowed_stages": [Stage.SALES, Stage.ONBOARDING],
+    },
 }
 
 
@@ -103,8 +107,8 @@ def check_full_access(user_role: Role) -> bool:
 
 
 def check_can_manage_projects(user_role: Role) -> bool:
-    """Check if user can manage projects (Admin, Manager, Consultant, PC, Tester)"""
-    return user_role in [Role.ADMIN, Role.MANAGER, Role.CONSULTANT, Role.PC, Role.TESTER]
+    """Check if user can manage projects (Admin, Manager, Consultant, PC, Tester, Sales)"""
+    return user_role in [Role.ADMIN, Role.MANAGER, Role.CONSULTANT, Role.PC, Role.TESTER, Role.SALES]
 
 
 def check_admin_or_manager(current_user) -> bool:

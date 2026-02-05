@@ -1,18 +1,52 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 from app.config import settings
-from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant
+from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant, cache, analytics, websocket
 from app.services.config_service import seed_default_configs
 from app.db import SessionLocal
 from app.models import User, Role
 from app.auth import get_password_hash
+from app.deps import get_db
+from sqlalchemy.orm import Session
+
+# Import error handling and rate limiting
+from app.exceptions import (
+    AppException,
+    app_exception_handler,
+    http_exception_handler,
+    general_exception_handler
+)
+from app.rate_limit import limiter, rate_limit_exceeded_handler
+
 import os
 import logging
 from alembic import command
 from alembic.config import Config
-from alembic.config import Config
-# Trigger reload 2
+
+# Sentry integration (optional)
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+    
+    # Only initialize if DSN is provided
+    SENTRY_DSN = os.getenv("SENTRY_DSN")
+    if SENTRY_DSN:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[
+                FastApiIntegration(),
+                SqlalchemyIntegration(),
+            ],
+            traces_sample_rate=0.1,  # 10% of transactions for performance monitoring
+            environment=os.getenv("ENVIRONMENT", "development"),
+        )
+        logging.info("Sentry error tracking initialized")
+except ImportError:
+    logging.warning("Sentry SDK not installed, skipping error tracking")
 
 # Configure logging
 logging.basicConfig(
@@ -43,8 +77,6 @@ def run_migrations():
         logger.info("DB migrations completed successfully")
     except Exception as e:
         logger.error(f"Failed to run DB migrations: {e}")
-        # We don't raise here to allow app to start even if migration fails (though risky)
-        # But for 'features_json' missing, app might fail later anyway.
 
 
 def seed_admin_user(db):
@@ -78,30 +110,38 @@ def seed_manager_users(db):
             manager = User(
                 name=mgr_data["name"],
                 email=mgr_data["email"],
-                password_hash=get_password_hash("Admin@123"),
+                password_hash=get_password_hash("manager123"),
                 role=Role.MANAGER,
                 is_active=True
             )
             db.add(manager)
             db.commit()
             logger.info(f"Manager user created: {mgr_data['email']}")
-        else:
-            logger.info(f"Manager user already exists: {mgr_data['email']}")
+
 
 # Create FastAPI app
 app = FastAPI(
     title="Multi-Agent Delivery Pipeline",
-    description="Production-ready MVP with FastAPI + LangGraph + Next.js",
+    description="Production-ready delivery management system with AI agents",
     version="1.0.0"
 )
 
-# CORS middleware
+# Add rate limiting state
+app.state.limiter = limiter
+
+# Register exception handlers
+app.add_exception_handler(AppException, app_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 
@@ -110,9 +150,6 @@ app.add_middleware(
 async def startup_event():
     """Initialize application on startup"""
     logger.info("Starting Multi-Agent Delivery Pipeline...")
-    
-    # 1. Run Migrations
-    run_migrations()
     
     # Create upload directory
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -132,8 +169,6 @@ async def startup_event():
 
 # Register routers
 # NOTE: onboarding router must come BEFORE projects router
-# because onboarding has /projects/templates and /projects/copy-pricing
-# which would otherwise match projects' /{project_id} route and fail UUID validation
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(onboarding.router)  # Must be before projects router
@@ -151,6 +186,9 @@ app.include_router(project_management.router)
 app.include_router(config_admin.router)
 app.include_router(configuration.router)
 app.include_router(ai_consultant.router)
+app.include_router(cache.router)
+app.include_router(analytics.router)
+app.include_router(websocket.router)
 
 # Serve uploaded files
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -168,6 +206,31 @@ def root():
 
 
 @app.get("/health")
-def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy"}
+async def health_check(db: Session = Depends(get_db)):
+    """Enhanced health check with dependency verification"""
+    from sqlalchemy import text
+    health_status = {"status": "ok", "checks": {}}
+    
+    # Check database
+    try:
+        db.execute(text("SELECT 1"))
+        health_status["checks"]["database"] = "ok"
+    except Exception as e:
+        health_status["checks"]["database"] = "error"
+        health_status["status"] = "degraded"
+        logger.error(f"Database health check failed: {e}")
+    
+    # Check Redis
+    try:
+        from app.utils.cache import cache
+        if cache.client:
+            cache.client.ping()
+            health_status["checks"]["redis"] = "ok"
+        else:
+            health_status["checks"]["redis"] = "not_configured"
+    except Exception as e:
+        health_status["checks"]["redis"] = "error"
+        health_status["status"] = "degraded"
+        logger.error(f"Redis health check failed: {e}")
+    
+    return health_status

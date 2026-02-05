@@ -94,11 +94,11 @@ def list_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """List all active (non-archived) users (Admin/Manager only)"""
-    if not check_full_access(current_user.role):
+    """List all active (non-archived) users (Admin/Manager/Sales only for view)"""
+    if not check_full_access(current_user.role) and current_user.role != Role.SALES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin and Manager can list users"
+            detail="Only Admin, Manager, and Sales can list users"
         )
     
     users = db.query(User).filter(User.is_archived == False).all()
@@ -246,6 +246,31 @@ def reactivate_user(
 
 
 # ============== Manager Assignment Endpoints ==============
+
+@router.get("/by-role/{role}")
+def get_users_by_role(
+    role: Role,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get all active users by role"""
+    users = db.query(User).filter(
+        User.role == role,
+        User.is_active == True,
+        User.is_archived == False
+    ).all()
+    
+    return [
+        {
+            "id": str(u.id),
+            "name": u.name,
+            "email": u.email,
+            "role": u.role.value,
+            "region": u.region.value if u.region else None
+        }
+        for u in users
+    ]
+
 
 @router.get("/managers/list")
 def list_managers(

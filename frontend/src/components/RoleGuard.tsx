@@ -16,13 +16,13 @@ export default function RoleGuard({
     requiredRoles,
     fallback = null,
 }: RoleGuardProps) {
-    // Admin and Manager have access to everything
-    if (userRole === Role.ADMIN || userRole === Role.MANAGER) {
+    // If no required roles specified, allow access
+    if (!requiredRoles || requiredRoles.length === 0) {
         return <>{children}</>;
     }
 
     // Check if user has required role
-    if (requiredRoles && !requiredRoles.includes(userRole)) {
+    if (!requiredRoles.includes(userRole)) {
         return <>{fallback}</>;
     }
 

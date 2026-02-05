@@ -8,16 +8,18 @@ from app.schemas import (
     ProjectUpdate,
     OnboardingUpdateRequest,
     StageStatusUpdateRequest,
-    TeamAssignmentRequest
+    TeamAssignmentRequest,
+    OnboardingReviewAction
 )
 from app.deps import get_current_active_user
 from app.services import project_service
 from app.rbac import check_full_access, can_access_stage
-from app.models import Stage, TaskStatus, AuditLog
+from app.models import Stage, TaskStatus, AuditLog, OnboardingReviewStatus
 from sqlalchemy import func
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -58,38 +60,81 @@ def calculate_project_health(project: Project, sla_configs: Dict[str, SLAConfigu
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
-def create_project(
+async def create_project(
     data: ProjectCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Create a new project (Consultant/Admin/Manager)"""
-    allowed_roles = [Role.CONSULTANT, Role.ADMIN, Role.MANAGER]
+    """Create a new project (Sales Only)"""
+    allowed_roles = [Role.SALES, Role.ADMIN]
     if current_user.role not in allowed_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Consultant, Admin, and Manager can create projects"
+            detail="Only Sales users can create projects"
         )
     
+    # Validation Logic
+    if data.status == "ACTIVE": # Create Project clicked
+        missing_fields = []
+        if not data.pmc_name: missing_fields.append("pmc_name")
+        if not data.location: missing_fields.append("location")
+        if not data.client_email_ids: missing_fields.append("client_email_ids")
+        if not data.project_type: missing_fields.append("project_type")
+        
+        if missing_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Missing mandatory fields for active project: {', '.join(missing_fields)}"
+            )
+    else:
+        # For DRAFT, minimal validation is handled by Schema (Title, Client Name required)
+        pass
+
     project = project_service.create_project(db, data, current_user)
+    
+    # Notify Manager if assigned
+    if project.manager_user_id:
+        try:
+            from app.routers.ai_consultant import notification_manager
+            await notification_manager.send_personal_message(
+                {
+                    "type": "URGENT_ALERT",
+                    "message": f"New Project Handover: {project.title}",
+                    "project_id": str(project.id)
+                },
+                str(project.manager_user_id)
+            )
+        except Exception as e:
+            # Don't fail request if notification fails
+            print(f"Failed to send manager notification: {e}")
+            
     return project
 
 
 @router.get("", response_model=List[ProjectResponse])
 def list_projects(
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """List all projects (all authenticated users)"""
+    """List all projects with pagination (all authenticated users)"""
     from sqlalchemy.orm import joinedload
+    
+    # Calculate offset for pagination
+    offset = (page - 1) * page_size
+    
+    # Query with pagination
     projects = db.query(Project).options(
         joinedload(Project.creator),
+        joinedload(Project.sales_rep),
+        joinedload(Project.manager_chk),
         joinedload(Project.consultant),
         joinedload(Project.pc),
         joinedload(Project.builder),
         joinedload(Project.tester),
         joinedload(Project.onboarding_data)
-    ).all()
+    ).offset(offset).limit(page_size).all()
     
     # attach onboarding_updated_at for schema
     # attach onboarding_updated_at for schema AND checked for new updates
@@ -283,9 +328,10 @@ def get_project(
         
     # Calculate completion percentage
     # Calculate completion percentage (Weighted across all stages)
-    # Stages: ONBOARDING -> ASSIGNMENT -> BUILD -> TEST -> DEFECT_VALIDATION -> COMPLETE
+    # Stages: SALES -> ONBOARDING -> ASSIGNMENT -> BUILD -> TEST -> DEFECT_VALIDATION -> COMPLETE
     # We assign a weight to each completed stage.
     stage_order = [
+         Stage.SALES,
          Stage.ONBOARDING,
          Stage.ASSIGNMENT,
          Stage.BUILD,
@@ -317,7 +363,7 @@ def get_project(
         if total_tasks > 0:
             completed_tasks = db.query(ProjectTask).filter(
                 ProjectTask.project_id == project.id, 
-                ProjectTask.status == 'COMPLETED'
+                ProjectTask.status == TaskStatus.DONE
             ).count()
             stage_progress = int((completed_tasks / total_tasks) * 100)
             
@@ -361,20 +407,90 @@ def update_project(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Update project metadata (Admin/Manager only)"""
-    if not check_full_access(current_user.role):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin and Manager can update project metadata"
-        )
+    """Update project metadata"""
+    # RBAC: Admin/Manager can update anytime. Sales can update ONLY if Draft.
+    is_admin_manager = check_full_access(current_user.role)
+    is_sales = current_user.role == Role.SALES
     
-    project = project_service.update_project(db, project_id, data, current_user)
+    project = project_service.get_project(db, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Project not found"
         )
+
+    if not is_admin_manager:
+        if is_sales:
+            # Sales can only update their own drafts
+            if project.status == ProjectStatus.DRAFT:
+                pass # Allowed
+            else:
+                 raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Sales users can only edit DRAFT projects."
+                )
+        else:
+             raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Admin, Manager, and Sales (Drafts) can update project metadata"
+            )
+    
+    project = project_service.update_project(db, project_id, data, current_user)
     return project
+
+
+class ActionReason(BaseModel):
+    reason: str
+
+@router.post("/{project_id}/pause")
+def pause_project_endpoint(
+    project_id: UUID,
+    data: ActionReason,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Pause Project (Sales/Admin/Manager)"""
+    allowed = [Role.SALES, Role.ADMIN, Role.MANAGER]
+    if current_user.role not in allowed:
+         raise HTTPException(status_code=403, detail="Not authorized to pause projects")
+         
+    project = project_service.pause_project(db, project_id, data.reason, current_user)
+    if not project:
+         raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+@router.post("/{project_id}/archive")
+def archive_project_endpoint(
+    project_id: UUID,
+    data: ActionReason,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Archive Project (Sales/Admin/Manager)"""
+    allowed = [Role.SALES, Role.ADMIN, Role.MANAGER]
+    if current_user.role not in allowed:
+         raise HTTPException(status_code=403, detail="Not authorized to archive projects")
+         
+    project = project_service.archive_project(db, project_id, data.reason, current_user)
+    if not project:
+         raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+@router.delete("/{project_id}")
+def delete_project_endpoint(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete Project (Sales/Admin/Manager)"""
+    allowed = [Role.SALES, Role.ADMIN, Role.MANAGER]
+    if current_user.role not in allowed:
+         raise HTTPException(status_code=403, detail="Not authorized to delete projects")
+         
+    result = project_service.delete_project(db, project_id, current_user)
+    if not result:
+         raise HTTPException(status_code=404, detail="Project not found")
+    return {"success": True, "message": "Project deleted"}
 
 
 @router.post("/{project_id}/onboarding/update")
@@ -399,9 +515,81 @@ def update_onboarding(
             detail="Project not found"
         )
     
-    # Store onboarding data in project context (could be a separate table in production)
+    # HITL check
+    if current_user.role != Role.ADMIN:
+        if not project.require_manual_review:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Manual updates restricted for Onboarder Agent projects. Contact Admin for HITL access."
+            )
     # For MVP, we'll use the workflow context
     return {"success": True, "message": "Onboarding data updated"}
+
+
+@router.post("/{project_id}/hitl-toggle")
+def toggle_project_hitl(
+    project_id: UUID,
+    enabled: bool,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Toggle HITL for a project (Admin only)"""
+    if current_user.role != Role.ADMIN:
+        raise HTTPException(status_code=403, detail="Only Admins can toggle HITL")
+    
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    project.require_manual_review = enabled
+    db.commit()
+    return {"success": True, "hitl_enabled": project.require_manual_review}
+
+
+@router.post("/{project_id}/onboarding/review")
+def review_onboarding(
+    project_id: UUID,
+    data: OnboardingReviewAction,  # Use the schema from schemas.py
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Review onboarding submission (Consultant/Admin/Manager)"""
+    # Import here to avoid circulars if any, though schemas is safe
+    from app.schemas import OnboardingReviewAction
+    from app.models import OnboardingReviewStatus
+
+    allowed_roles = [Role.CONSULTANT, Role.ADMIN, Role.MANAGER]
+    if current_user.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Consultant, Admin, and Manager can review onboarding"
+        )
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    onboarding = db.query(OnboardingData).filter(OnboardingData.project_id == project_id).first()
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Onboarding data not found")
+
+    if data.action == "APPROVE":
+        onboarding.review_status = OnboardingReviewStatus.APPROVED
+        onboarding.consultant_review_notes = data.notes
+        # Advance Stage
+        if project.current_stage == Stage.ONBOARDING:
+            project.current_stage = Stage.ASSIGNMENT
+        
+    elif data.action in ["REJECT", "REQUEST_CHANGES"]:
+        onboarding.review_status = OnboardingReviewStatus.NEEDS_CHANGES
+        onboarding.consultant_review_notes = data.notes
+        # Logic to notify client would go here
+        
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    db.commit()
+    return {"success": True, "status": onboarding.review_status}
 
 
 @router.post("/{project_id}/assignment/publish")
@@ -658,6 +846,11 @@ def assign_team(
     
     # Validate Consultant assignment
     if data.consultant_user_id:
+        if not project.require_manual_review:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Consultant cannot be assigned when Manual Review (HITL) is disabled. AI Agent handles this phase."
+            )
         consultant = db.query(User).filter(User.id == data.consultant_user_id).first()
         if not consultant:
             raise HTTPException(status_code=404, detail="Consultant not found")
@@ -665,13 +858,21 @@ def assign_team(
             raise HTTPException(status_code=400, detail="Selected user is not a Consultant")
         check_manager_region(consultant, "Consultant")
         project.consultant_user_id = data.consultant_user_id
+        
+        # If project is in SALES stage and Consultant is assigned, move to ONBOARDING
+        if project.current_stage == Stage.SALES:
+            project.current_stage = Stage.ONBOARDING
+            # Set Phase Start Date for Onboarding
+            if not project.phase_start_dates:
+                project.phase_start_dates = {}
+            project.phase_start_dates[Stage.ONBOARDING.value] = datetime.utcnow().isoformat()
     
-    # Validate PC assignment - requires Consultant to be assigned first
+    # Validate PC assignment - requires Consultant to be assigned first OR HITL to be disabled
     if data.pc_user_id:
-        if not project.consultant_user_id and not data.consultant_user_id:
+        if project.require_manual_review and not project.consultant_user_id and not data.consultant_user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Consultant must be assigned before PC"
+                detail="Consultant must be assigned before PC (when Manual Review is enabled)"
             )
         pc_user = db.query(User).filter(User.id == data.pc_user_id).first()
         if not pc_user:

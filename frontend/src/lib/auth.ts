@@ -15,6 +15,7 @@ export enum Role {
     PC = 'PC',
     BUILDER = 'BUILDER',
     TESTER = 'TESTER',
+    SALES = 'SALES',
 }
 
 export const login = async (email: string, password: string): Promise<string> => {
@@ -29,9 +30,9 @@ export const login = async (email: string, password: string): Promise<string> =>
 
     // Decode token to get email for immediate user storage
     const payload = JSON.parse(atob(token.split('.')[1]));
-    
+
     // Store minimal user immediately to ensure redirect works
-    localStorage.setItem('user', JSON.stringify({ 
+    localStorage.setItem('user', JSON.stringify({
         email: payload.sub,
         role: 'ADMIN' // Default, will be updated
     }));

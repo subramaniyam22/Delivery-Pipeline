@@ -1,23 +1,60 @@
+# Core Framework
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-sqlalchemy==2.0.25
-alembic==1.13.1
 pydantic==2.5.3
 pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.25
+alembic==1.13.1
 psycopg2-binary==2.9.9
+
+# Authentication & Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
 python-multipart==0.0.6
-langchain==0.1.4
-langchain-openai==0.0.5
-langgraph==0.0.20
-python-dotenv==1.0.0
-email-validator==2.1.0
-resend==2.0.0
-boto3==1.34.7
-pandas==2.2.0
-openpyxl==3.1.2
-python-docx==1.1.0
-pdfplumber==0.10.3
 
+# LangGraph & AI
+langgraph==0.0.20
+langchain==0.1.0
+langchain-openai==0.0.2
+openai==1.7.2
+
+# HTTP & API
+httpx==0.26.0
+requests==2.31.0
+
+# Email Service (Resend)
+resend==0.7.0
+
+# AWS S3
+boto3==1.34.34
+botocore==1.34.34
+
+# Redis & Rate Limiting
+redis==5.0.1
+slowapi==0.1.9
+
+# Error Tracking
+sentry-sdk[fastapi]==1.40.0
+
+# File Validation
+python-magic==0.4.27
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.26.0
+
+# GraphQL
+strawberry-graphql[fastapi]==0.216.0
+
+# Analytics
+pandas==2.1.4
+
+# Templates
+jinja2==3.1.2
+
+# Utilities
+python-dotenv==1.0.0

@@ -2,17 +2,31 @@ from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from uuid import UUID
-from app.models import Role, Region, ProjectStatus, Stage, TaskStatus, StageStatus, DefectSeverity, DefectStatus
+from app.models import Role, Region, ProjectStatus, Stage, TaskStatus, StageStatus, DefectSeverity, DefectStatus, OnboardingReviewStatus
 
 
 # ============= User Schemas =============
 class UserCreate(BaseModel):
-    name: str
+    name: str = Field(..., min_length=2, max_length=255, description="User's full name")
     email: EmailStr
-    password: str
+    password: str = Field(..., min_length=8, max_length=100, description="Password (min 8 characters)")
     role: Role
     region: Optional[Region] = Region.INDIA
     date_of_joining: Optional[date] = None
+    
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError('Name cannot be empty or whitespace')
+        return v.strip()
+    
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('Password must contain at least one digit')
+        return v
 
 
 class UserUpdate(BaseModel):
@@ -58,9 +72,26 @@ class LoginRequest(BaseModel):
 
 # ============= Project Schemas =============
 class ProjectCreate(BaseModel):
-    title: str
-    client_name: str
-    priority: str = "MEDIUM"
+    title: str = Field(..., min_length=3, max_length=500, description="Project title")
+    client_name: str = Field(..., min_length=2, max_length=255, description="Client name")
+    priority: str = Field(default="MEDIUM", pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
+    pmc_name: Optional[str] = Field(None, max_length=255)
+    location: Optional[str] = Field(None, max_length=255)
+    client_email_ids: Optional[str] = Field(None, max_length=1000)
+    project_type: Optional[str] = Field(None, max_length=50)
+    status: Optional[ProjectStatus] = ProjectStatus.DRAFT
+    
+    @classmethod
+    def validate_title(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError('Title cannot be empty or whitespace')
+        return v.strip()
+    
+    @classmethod
+    def validate_client_name(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError('Client name cannot be empty or whitespace')
+        return v.strip()
 
 
 class ProjectUpdate(BaseModel):
@@ -70,6 +101,11 @@ class ProjectUpdate(BaseModel):
     status: Optional[ProjectStatus] = None
     minimum_requirements_override: Optional[List[str]] = None
     allow_requirements_exceptions: Optional[bool] = None
+    require_manual_review: Optional[bool] = None
+    pmc_name: Optional[str] = None
+    location: Optional[str] = None
+    client_email_ids: Optional[str] = None
+    manager_user_id: Optional[UUID] = None
 
 
 class TeamAssignmentRequest(BaseModel):
@@ -97,6 +133,7 @@ class ProjectResponse(BaseModel):
     client_name: str
     priority: str
     status: ProjectStatus
+    project_type: Optional[str] = None
     current_stage: Stage
     region: Optional[Region] = None
     created_by_user_id: UUID
@@ -118,6 +155,16 @@ class ProjectResponse(BaseModel):
     pc: Optional[UserBrief] = None
     builder: Optional[UserBrief] = None
     tester: Optional[UserBrief] = None
+    
+    # Sales Fields
+    pmc_name: Optional[str] = None
+    location: Optional[str] = None
+    client_email_ids: Optional[str] = None
+    sales_user_id: Optional[UUID] = None
+    manager_user_id: Optional[UUID] = None
+    
+    sales_rep: Optional[UserBrief] = None
+    manager_chk: Optional[UserBrief] = None
 
 
 class OnboardingUpdateRequest(BaseModel):
@@ -287,6 +334,11 @@ class OnboardingDataCreate(BaseModel):
     requirements: Optional[Dict[str, Any]] = None
 
 
+class OnboardingReviewAction(BaseModel):
+    action: str  # APPROVE, REJECT, REQUEST_CHANGES
+    notes: Optional[str] = None
+
+
 class OnboardingDataUpdate(BaseModel):
     contacts: Optional[List[ContactInfo]] = None
     logo_url: Optional[str] = None
@@ -345,6 +397,11 @@ class OnboardingDataResponse(BaseModel):
     reminder_interval_hours: Optional[int] = 24
     submitted_at: Optional[datetime] = None
     missing_fields_eta_json: Optional[Dict[str, str]] = None
+    
+    review_status: OnboardingReviewStatus = OnboardingReviewStatus.PENDING
+    ai_review_notes: Optional[str] = None
+    consultant_review_notes: Optional[str] = None
+    
     created_at: datetime
     updated_at: datetime
 

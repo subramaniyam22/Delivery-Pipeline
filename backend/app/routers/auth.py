@@ -9,6 +9,9 @@ from app.models import User, PasswordResetToken
 from app.schemas import LoginRequest, Token
 from app.auth import verify_password, create_access_token, get_password_hash
 from app.services.email_service import send_password_reset_email
+from app.rate_limit import limiter, AUTH_RATE_LIMIT
+from app.utils.cookie_auth import set_auth_cookie, clear_auth_cookie
+from fastapi import Request, Response
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -28,22 +31,23 @@ class MessageResponse(BaseModel):
 
 
 @router.post("/login", response_model=Token)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit(AUTH_RATE_LIMIT)
+def login(login_data: LoginRequest, response: Response, request: Request, db: Session = Depends(get_db)):
     """Login with email and password"""
-    user = db.query(User).filter(User.email == request.email).first()
+    user = db.query(User).filter(User.email == login_data.email).first()
     
     # Debug logging
-    print(f"[LOGIN] Attempting login for: {request.email}")
+    print(f"[LOGIN] Attempting login for: {login_data.email}")
     print(f"[LOGIN] User found: {user is not None}")
     if user:
         print(f"[LOGIN] User active: {user.is_active}")
-        password_valid = verify_password(request.password, user.password_hash)
+        password_valid = verify_password(login_data.password, user.password_hash)
         print(f"[LOGIN] Password valid: {password_valid}")
         if not password_valid:
-            print(f"[LOGIN] Received password repr: {repr(request.password)}")
+            print(f"[LOGIN] Received password repr: {repr(login_data.password)}")
             print(f"[LOGIN] User hash: {user.password_hash}")
     
-    if not user or not verify_password(request.password, user.password_hash):
+    if not user or not verify_password(login_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -57,8 +61,10 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
                 detail="User account is inactive"
             )
         
-        # Create access token
-        access_token = create_access_token(data={"sub": user.email})
+        # Create access token and set httpOnly cookie
+        access_token = set_auth_cookie(response, user.email)
+        
+        logger.info(f"User logged in successfully: {user.email}")
         
         return Token(access_token=access_token)
     except Exception as e:
@@ -69,15 +75,16 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
-def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")  # Stricter limit for password reset
+def forgot_password(password_data: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
     """Request a password reset email"""
-    logger.info(f"[AUTH] Password reset requested for email: {request.email}")
+    logger.info(f"[AUTH] Password reset requested for email: {password_data.email}")
     
-    user = db.query(User).filter(User.email == request.email).first()
+    user = db.query(User).filter(User.email == password_data.email).first()
     
     # Always return success message to prevent email enumeration
     if not user:
-        logger.info(f"[AUTH] No user found with email: {request.email}")
+        logger.info(f"[AUTH] No user found with email: {password_data.email}")
         return MessageResponse(message="If the email exists, a password reset link has been sent")
     
     logger.info(f"[AUTH] User found: {user.name} ({user.email})")
@@ -146,3 +153,10 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
     db.commit()
     
     return MessageResponse(message="Password has been reset successfully")
+
+
+@router.post("/logout", response_model=MessageResponse)
+def logout(response: Response):
+    """Logout user by clearing auth cookie"""
+    clear_auth_cookie(response)
+    return MessageResponse(message="Logged out successfully")

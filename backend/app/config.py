@@ -20,8 +20,11 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     AWS_REGION: Optional[str] = None
-    S3_BUCKET: Optional[str] = None
+    AWS_S3_BUCKET: Optional[str] = None
     S3_PUBLIC_BASE_URL: Optional[str] = None
+    
+    # Redis (for rate limiting and caching)
+    REDIS_URL: str = "redis://localhost:6379"
     
     # OpenAI (optional)
     OPENAI_API_KEY: Optional[str] = None
@@ -36,6 +39,10 @@ class Settings(BaseSettings):
     RESEND_API_KEY: Optional[str] = None
     EMAIL_FROM: str = "Delivery Management <noreply@resend.dev>"
     APP_NAME: str = "Delivery Management"
+    
+    # Error Tracking (Sentry)
+    SENTRY_DSN: Optional[str] = None
+    ENVIRONMENT: str = "development"
     
     @property
     def database_url_fixed(self) -> str:

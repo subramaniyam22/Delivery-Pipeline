@@ -65,7 +65,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             baseUrl = baseUrl.replace(/^http/, 'ws');
         }
 
-        const wsUrl = `${baseUrl}/api/ai/ws/notifications/${user.id}`;
+        // Fixed: Backend WebSocket endpoint is /ws/notifications/{user_id}
+        const wsUrl = `${baseUrl}/ws/notifications/${user.id}`;
         console.log('Connecting to Global Notification WS:', wsUrl);
 
         if (wsRef.current) {
