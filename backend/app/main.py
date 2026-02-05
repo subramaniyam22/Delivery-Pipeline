@@ -234,3 +234,28 @@ async def health_check(db: Session = Depends(get_db)):
         logger.error(f"Redis health check failed: {e}")
     
     return health_status
+
+@app.get("/debug-db")
+def debug_database():
+    from app.models import Project
+    from app.db import SessionLocal
+    try:
+        db = SessionLocal()
+        # Try simple query
+        count = db.query(Project).count()
+        # Try fetching one to check columns
+        first = db.query(Project).first()
+        data = {}
+        if first:
+            data = {
+                "id": str(first.id), 
+                "title": first.title,
+                # Access potentially problematic columns to trigger load
+                "manager_user_id": str(first.manager_user_id) if first.manager_user_id else None
+            }
+        return {"status": "ok", "count": count, "first_project": data}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "message": str(e), "trace": traceback.format_exc()}
+    finally:
+        db.close()
