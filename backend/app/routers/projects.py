@@ -464,8 +464,17 @@ def update_project(
                 detail=f"Missing mandatory fields for active project: {', '.join(missing_fields)}"
             )
 
-    project = project_service.update_project(db, project_id, data, current_user)
-    return project
+    try:
+        project = project_service.update_project(db, project_id, data, current_user)
+        return project
+    except Exception as e:
+        import traceback
+        trace = traceback.format_exc()
+        print(f"Error updating project: {e}\n{trace}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update project: {str(e)}"
+        )
 
 
 class ActionReason(BaseModel):

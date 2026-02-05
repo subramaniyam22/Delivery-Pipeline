@@ -77,7 +77,8 @@ def update_project(db: Session, project_id: UUID, data: ProjectUpdate, user) -> 
     if not project:
         return None
     
-    update_data = data.model_dump(mode='json', exclude_unset=True)
+    # Data for DB update (keep Enums as objects)
+    update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(project, key, value)
     
@@ -90,12 +91,14 @@ def update_project(db: Session, project_id: UUID, data: ProjectUpdate, user) -> 
     db.commit()
     db.refresh(project)
     
-    # Create audit log
+    # Create audit log (convert Enums to strings for JSON)
+    json_payload = data.model_dump(mode='json', exclude_unset=True)
+    
     audit = AuditLog(
         project_id=project.id,
         actor_user_id=user.id,
         action="PROJECT_UPDATED",
-        payload_json=update_data
+        payload_json=json_payload
     )
     db.add(audit)
     db.commit()
