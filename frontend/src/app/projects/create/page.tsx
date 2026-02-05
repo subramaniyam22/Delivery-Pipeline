@@ -91,7 +91,11 @@ export default function CreateProjectPage() {
             }
             router.push('/projects');
         } catch (err: any) {
-            setError(err.response?.data?.detail || `Failed to ${editId ? 'update' : 'create'} project`);
+            console.error("Project Create/Update Error:", err);
+            const errorDetail = err.response?.data?.detail ||
+                (typeof err.response?.data === 'string' ? err.response.data : JSON.stringify(err.response?.data)) ||
+                err.message;
+            setError(errorDetail || `Failed to ${editId ? 'update' : 'create'} project`);
             setLoading(false);
         }
     };
