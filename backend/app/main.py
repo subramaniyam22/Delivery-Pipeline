@@ -265,48 +265,16 @@ def debug_delete_projects(secret: str):
     if secret != "clean_render_db_now":
         return JSONResponse(status_code=403, content={"error": "Invalid secret"})
         
-    from app.models import (
-        Project, AuditLog, Task, Defect, Artifact, StageOutput, 
-        ProjectTask, ClientReminder, TestScenario, TestExecution, 
-        OnboardingData, BuilderWorkHistory
-    )
     from app.db import SessionLocal
+    from sqlalchemy import text
     try:
         db = SessionLocal()
-        # Fetch all projects
-        projects = db.query(Project).all()
-        count = len(projects)
-        
-        # Delete dependencies manually to avoid cascade issues
-        for p in projects:
-            # 1. Audit Logs
-            db.query(AuditLog).filter(AuditLog.project_id == p.id).delete()
-            # 2. Tasks
-            db.query(Task).filter(Task.project_id == p.id).delete()
-            # 3. Defects
-            db.query(Defect).filter(Defect.project_id == p.id).delete()
-            # 4. Artifacts
-            db.query(Artifact).filter(Artifact.project_id == p.id).delete()
-            # 5. Stage Outputs
-            db.query(StageOutput).filter(StageOutput.project_id == p.id).delete()
-            # 6. Project Tasks (Template-based)
-            db.query(ProjectTask).filter(ProjectTask.project_id == p.id).delete()
-            # 7. Client Reminders
-            db.query(ClientReminder).filter(ClientReminder.project_id == p.id).delete()
-            # 8. Test Scenarios
-            db.query(TestScenario).filter(TestScenario.project_id == p.id).delete()
-            # 9. Test Executions
-            db.query(TestExecution).filter(TestExecution.project_id == p.id).delete()
-            # 10. Onboarding Data
-            db.query(OnboardingData).filter(OnboardingData.project_id == p.id).delete()
-             # 11. Builder Work History
-            db.query(BuilderWorkHistory).filter(BuilderWorkHistory.project_id == p.id).delete()
-            
-            # Finally delete the project
-            db.delete(p)
-            
+        # Use TRUNCATE CASCADE to clean projects and all dependent tables (tasks, logs, etc.)
+        # This assumes no Foreign Keys point TO projects from tables we want to keep (like Users).
+        # Users -> Projects (FK in Project). So Projects depends on Users. Truncating Projects is fine.
+        db.execute(text("TRUNCATE TABLE projects CASCADE"))
         db.commit()
-        return {"status": "ok", "deleted_count": count, "message": "All projects and dependencies wiped."}
+        return {"status": "ok", "message": "All projects and dependencies wiped via TRUNCATE CASCADE."}
     except Exception as e:
         import traceback
         return {"status": "error", "message": str(e), "trace": traceback.format_exc()}
