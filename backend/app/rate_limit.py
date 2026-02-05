@@ -11,10 +11,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Initialize rate limiter
+import os
+from app.config import settings
+
+# Use Redis if explicitly configured, otherwise fallback to memory
+redis_url = os.environ.get("REDIS_URL")
+storage_uri = redis_url if redis_url else "memory://"
+
+if not redis_url:
+    logger.warning("REDIS_URL not set using memory storage for rate limiting")
+
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["100/minute"],  # Default: 100 requests per minute
-    storage_uri="redis://localhost:6379",  # Will use REDIS_URL from env
+    storage_uri=storage_uri,
     strategy="fixed-window"
 )
 
