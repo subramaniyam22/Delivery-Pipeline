@@ -77,7 +77,7 @@ def update_project(db: Session, project_id: UUID, data: ProjectUpdate, user) -> 
     if not project:
         return None
     
-    update_data = data.model_dump(exclude_unset=True)
+    update_data = data.model_dump(mode='json', exclude_unset=True)
     for key, value in update_data.items():
         setattr(project, key, value)
     
