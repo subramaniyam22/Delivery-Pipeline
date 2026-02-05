@@ -11,8 +11,9 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers
+# revision identifiers
 revision = 'add_indexes_soft_delete'
-down_revision = None  # Update with actual previous revision
+down_revision = '8cf57896ef1a'  # Linearize history
 branch_labels = None
 depends_on = None
 
@@ -21,10 +22,8 @@ def upgrade():
     """Add indexes for performance and soft delete columns"""
     
     # Add indexes to Project table for frequently queried columns
-    op.create_index('idx_project_status', 'projects', ['status'])
-    op.create_index('idx_project_current_stage', 'projects', ['current_stage'])
-    op.create_index('idx_project_manager_user_id', 'projects', ['manager_user_id'])
-    op.create_index('idx_project_sales_user_id', 'projects', ['sales_user_id'])
+    # Note: status, current_stage, manager, sales are indexed in 8cf57896ef1a
+    
     op.create_index('idx_project_consultant_user_id', 'projects', ['consultant_user_id'])
     op.create_index('idx_project_builder_user_id', 'projects', ['builder_user_id'])
     op.create_index('idx_project_tester_user_id', 'projects', ['tester_user_id'])
@@ -80,15 +79,13 @@ def downgrade():
     """Remove indexes and soft delete columns"""
     
     # Drop indexes from Project table
-    op.drop_index('idx_project_status', table_name='projects')
-    op.drop_index('idx_project_current_stage', table_name='projects')
-    op.drop_index('idx_project_manager_user_id', table_name='projects')
-    op.drop_index('idx_project_sales_user_id', table_name='projects')
+    # op.drop_index('idx_project_status', table_name='projects')
+    # op.drop_index('idx_project_current_stage', table_name='projects')
+    # op.drop_index('idx_project_manager_user_id', table_name='projects')
+    # op.drop_index('idx_project_sales_user_id', table_name='projects')
     op.drop_index('idx_project_consultant_user_id', table_name='projects')
     op.drop_index('idx_project_builder_user_id', table_name='projects')
     op.drop_index('idx_project_tester_user_id', table_name='projects')
-    op.drop_index('idx_project_pc_user_id', table_name='projects')
-    op.drop_index('idx_project_status_stage', table_name='projects')
     op.drop_index('idx_project_created_at', table_name='projects')
     op.drop_index('idx_project_updated_at', table_name='projects')
     op.drop_index('idx_project_is_deleted', table_name='projects')
