@@ -34,27 +34,19 @@ class MessageResponse(BaseModel):
 @limiter.limit(AUTH_RATE_LIMIT)
 def login(login_data: LoginRequest, response: Response, request: Request, db: Session = Depends(get_db)):
     """Login with email and password"""
-    user = db.query(User).filter(User.email == login_data.email).first()
-    
-    # Debug logging
-    print(f"[LOGIN] Attempting login for: {login_data.email}")
-    print(f"[LOGIN] User found: {user is not None}")
-    if user:
-        print(f"[LOGIN] User active: {user.is_active}")
-        password_valid = verify_password(login_data.password, user.password_hash)
-        print(f"[LOGIN] Password valid: {password_valid}")
-        if not password_valid:
-            print(f"[LOGIN] Received password repr: {repr(login_data.password)}")
-            print(f"[LOGIN] User hash: {user.password_hash}")
-    
-    if not user or not verify_password(login_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
     try:
+        user = db.query(User).filter(User.email == login_data.email).first()
+        
+        # Debug logging
+        print(f"[LOGIN] Attempting login for: {login_data.email}")
+        
+        if not user or not verify_password(login_data.password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -67,11 +59,17 @@ def login(login_data: LoginRequest, response: Response, request: Request, db: Se
         logger.info(f"User logged in successfully: {user.email}")
         
         return Token(access_token=access_token)
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"[LOGIN ERROR] {str(e)}")
-        raise e
+        # Return the error details to the client for debugging
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Login failed: {str(e)}"
+        )
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
