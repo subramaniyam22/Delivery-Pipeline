@@ -440,6 +440,30 @@ def update_project(
                 detail="Only Admin, Manager, and Sales (Drafts) can update project metadata"
             )
     
+    # Validation Logic for moving to ACTIVE
+    if data.status == ProjectStatus.ACTIVE:
+        if isinstance(data.status, str):
+             # pydantic handles enum conversion usually, but just in case
+             pass
+        
+        # Check current values combined with update values
+        pmc_name = data.pmc_name or project.pmc_name
+        location = data.location or project.location
+        client_email_ids = data.client_email_ids or project.client_email_ids
+        project_type = data.project_type or project.project_type
+        
+        missing_fields = []
+        if not pmc_name: missing_fields.append("pmc_name")
+        if not location: missing_fields.append("location")
+        if not client_email_ids: missing_fields.append("client_email_ids")
+        if not project_type: missing_fields.append("project_type")
+        
+        if missing_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Missing mandatory fields for active project: {', '.join(missing_fields)}"
+            )
+
     project = project_service.update_project(db, project_id, data, current_user)
     return project
 

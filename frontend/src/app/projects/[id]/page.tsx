@@ -1949,15 +1949,10 @@ export default function ProjectDetailPage() {
                                 </div>
                             </div>
                             <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Assigned Manager</div>
+                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Project Type</div>
                                 <div style={{ fontSize: '16px', fontWeight: 500 }}>
-                                    {project.manager_chk?.name || 'Not assigned'}
+                                    {project.project_type || 'Full Website'}
                                 </div>
-                                {project.manager_chk?.email && (
-                                    <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>
-                                        {project.manager_chk.email}
-                                    </div>
-                                )}
                             </div>
                             {project.description && (
                                 <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px', gridColumn: '1 / -1' }}>
@@ -1966,9 +1961,7 @@ export default function ProjectDetailPage() {
                                 </div>
                             )}
                         </div>
-                        <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(255, 255, 255, 0.15)', borderRadius: '8px', fontSize: '13px' }}>
-                            <strong>Next Step:</strong> Once the manager reviews this information, they can move the project to the Onboarding stage to begin client onboarding.
-                        </div>
+                        {/* Manager info removed as per request */}
                     </div>
                 )}
 

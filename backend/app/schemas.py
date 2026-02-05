@@ -96,9 +96,12 @@ class ProjectCreate(BaseModel):
 
 class ProjectUpdate(BaseModel):
     title: Optional[str] = None
+    description: Optional[str] = None
     client_name: Optional[str] = None
     priority: Optional[str] = None
     status: Optional[ProjectStatus] = None
+    current_stage: Optional[Stage] = None
+    project_type: Optional[str] = None
     minimum_requirements_override: Optional[List[str]] = None
     allow_requirements_exceptions: Optional[bool] = None
     require_manual_review: Optional[bool] = None
