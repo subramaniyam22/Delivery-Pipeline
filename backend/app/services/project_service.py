@@ -82,17 +82,12 @@ def update_project(db: Session, project_id: UUID, data: ProjectUpdate, user) -> 
     for key, value in update_data.items():
         setattr(project, key, value)
     
-    project.updated_at = datetime.utcnow()
-    
-    # Invalidate cache BEFORE commit to prevent race condition
-    try:
-        cache_service.invalidate_project(str(project.id))
-        cache_service.invalidate_all_projects()
-    except Exception as e:
-        import traceback
-        # Log error but don't block update
-        print(f"Cache invalidation failed: {e}")
-        traceback.print_exc()
+    # CACHE DISABLED FOR DEBUGGING
+    # try:
+    #     cache_service.invalidate_project(str(project.id))
+    #     cache_service.invalidate_all_projects()
+    # except Exception as e:
+    #     print(f"Cache error: {e}")
     
     db.commit()
     db.refresh(project)

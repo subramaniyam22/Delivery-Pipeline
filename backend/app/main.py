@@ -195,6 +195,10 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
+@app.get("/version")
+def get_version():
+    return {"version": "1.0.1-debug-cache-disabled", "timestamp": "2026-02-06"}
+
 @app.get("/debug-schema")
 def debug_schema(db: Session = Depends(get_db)):
     from sqlalchemy import text
