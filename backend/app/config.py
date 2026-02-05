@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     
     # CORS - parse from environment variable
-    CORS_ORIGINS: str = "http://localhost:3000,http://frontend:3000"
+    CORS_ORIGINS: str = "http://localhost:3000,http://frontend:3000,https://delivery-frontend-60cf.onrender.com"
     
     # Frontend URL for client links
     FRONTEND_URL: str = "http://localhost:3000"
