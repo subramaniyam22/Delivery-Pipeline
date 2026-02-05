@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { projectsAPI, usersAPI } from '@/lib/api';
 import { getCurrentUser, isAuthenticated } from '@/lib/auth';
 import { canCreateProject } from '@/lib/rbac';
