@@ -314,18 +314,7 @@ def get_projects(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to list projects: {str(e)}"
         )
-                 # If never viewed, but created > 60s ago (to avoid "New" on just created)
-                 # Wait, user said "If I have seen the updates...".
-                 if (p.onboarding_updated_at - p.created_at).total_seconds() > 60:
-                     has_updates = True
-             else:
-                 if p.onboarding_updated_at > last_view:
-                     has_updates = True
-        
-        setattr(p, 'has_new_updates', has_updates)
-        results.append(p)
-        
-    return results
+
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
