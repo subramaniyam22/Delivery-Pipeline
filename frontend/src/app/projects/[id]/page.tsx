@@ -1828,7 +1828,59 @@ export default function ProjectDetailPage() {
                         </div>
                     </div>
 
-                    {isProjectOwner && (
+                    {/* Draft Actions */}
+                    {project.status === 'DRAFT' && (
+                        <div className="header-actions" style={{ marginLeft: 'auto', marginRight: '24px', display: 'flex', gap: '12px' }}>
+                            <button
+                                onClick={() => router.push(`/projects/create?edit=${projectId}`)}
+                                style={{
+                                    background: 'white',
+                                    color: '#475569',
+                                    border: '1px solid #cbd5e1',
+                                    padding: '8px 16px',
+                                    borderRadius: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    cursor: 'pointer',
+                                    fontWeight: 500
+                                }}
+                            >
+                                <span>✏️</span> Edit Project
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (!confirm('Move project to Onboarding stage? This will activate the project.')) return;
+                                    try {
+                                        setLoading(true);
+                                        await projectsAPI.update(projectId, { status: 'ACTIVE', current_stage: 'ONBOARDING' });
+                                        await loadAllData();
+                                    } catch (e) {
+                                        console.error(e);
+                                        alert('Failed to activate project');
+                                        setLoading(false);
+                                    }
+                                }}
+                                style={{
+                                    background: '#10b981',
+                                    color: 'white',
+                                    border: 'none',
+                                    padding: '8px 16px',
+                                    borderRadius: '8px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    cursor: 'pointer',
+                                    fontWeight: 500,
+                                    boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)'
+                                }}
+                            >
+                                <span>🚀</span> Move to Onboarding
+                            </button>
+                        </div>
+                    )}
+
+                    {isProjectOwner && project.status !== 'DRAFT' && (
                         <div className="header-actions" style={{ marginLeft: 'auto', marginRight: '24px' }}>
                             <button
                                 onClick={handleViewChatLogs}

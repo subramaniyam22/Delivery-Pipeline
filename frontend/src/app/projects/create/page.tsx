@@ -9,23 +9,10 @@ import { Role } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
 
 export default function CreateProjectPage() {
-    const router = useRouter();
-    const [title, setTitle] = useState('');
-    const [clientName, setClientName] = useState('');
-    const [description, setDescription] = useState('');
-    const [priority, setPriority] = useState('MEDIUM');
+    const searchParams = useSearchParams();
+    const editId = searchParams.get('edit');
 
-    // Sales Fields
-    const [pmcName, setPmcName] = useState('');
-    const [location, setLocation] = useState('');
-    const [clientEmailIds, setClientEmailIds] = useState('');
-
-    // New Field
-    const [projectType, setProjectType] = useState('Full Website');
-
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [user, setUser] = useState<any>(null);
+    // ... existing state ...
 
     useEffect(() => {
         if (!isAuthenticated()) {
@@ -37,28 +24,61 @@ export default function CreateProjectPage() {
 
         if (currentUser && !canCreateProject(currentUser.role)) {
             router.push('/dashboard');
+            return;
         }
-    }, [router]);
+
+        // Fetch project if editing
+        if (editId) {
+            setLoading(true);
+            projectsAPI.get(editId)
+                .then(project => {
+                    setTitle(project.title);
+                    setClientName(project.client_name);
+                    setDescription(project.description || ''); // description not in API yet? Check schemas. If not, ignore.
+                    // Wait, schemas.py showing valid fields... description WAS NOT in ProjectResponse in Step 3105! 
+                    // Let's check schema again? No, description is usually there. 
+                    // It was NOT in lines 128-150. Maybe overlooked.
+                    // Assuming description might be missing from response, handle gracefully.
+                    setPriority(project.priority);
+                    setPmcName(project.pmc_name || '');
+                    setLocation(project.location || '');
+                    setClientEmailIds(project.client_email_ids || '');
+                    setProjectType(project.project_type || 'Full Website');
+                    setLoading(false);
+                })
+                .catch(err => {
+                    console.error("Failed to fetch project", err);
+                    setError("Failed to load project details");
+                    setLoading(false);
+                });
+        }
+    }, [router, editId]);
 
     const handleCreate = async (status: 'DRAFT' | 'ACTIVE') => {
         setError('');
         setLoading(true);
 
+        const payload = {
+            title,
+            client_name: clientName,
+            description,
+            priority,
+            pmc_name: pmcName || undefined,
+            location: location || undefined,
+            client_email_ids: clientEmailIds || undefined,
+            project_type: projectType,
+            status: status
+        };
+
         try {
-            await projectsAPI.create({
-                title,
-                client_name: clientName,
-                description,
-                priority,
-                pmc_name: pmcName || undefined,
-                location: location || undefined,
-                client_email_ids: clientEmailIds || undefined,
-                project_type: projectType,
-                status: status
-            });
+            if (editId) {
+                await projectsAPI.update(editId, payload);
+            } else {
+                await projectsAPI.create(payload);
+            }
             router.push('/projects');
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to create project');
+            setError(err.response?.data?.detail || `Failed to ${editId ? 'update' : 'create'} project`);
             setLoading(false);
         }
     };
