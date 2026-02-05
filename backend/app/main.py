@@ -259,3 +259,28 @@ def debug_database():
         return {"status": "error", "message": str(e), "trace": traceback.format_exc()}
     finally:
         db.close()
+
+@app.delete("/debug-projects")
+def debug_delete_projects(secret: str):
+    if secret != "clean_render_db_now":
+        return JSONResponse(status_code=403, content={"error": "Invalid secret"})
+        
+    from app.models import Project
+    from app.db import SessionLocal
+    try:
+        db = SessionLocal()
+        # Fetch all projects
+        projects = db.query(Project).all()
+        count = len(projects)
+        
+        # Delete individually to trigger cascades
+        for p in projects:
+            db.delete(p)
+            
+        db.commit()
+        return {"status": "ok", "deleted_count": count}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "message": str(e), "trace": traceback.format_exc()}
+    finally:
+        db.close()
