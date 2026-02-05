@@ -151,7 +151,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "error_code": "INTERNAL_ERROR",
-            "message": "An unexpected error occurred. Please try again later.",
+            "message": f"An unexpected error occurred: {str(exc)}",  # DEBUG: Exposed error
             "details": {}
         }
     )
