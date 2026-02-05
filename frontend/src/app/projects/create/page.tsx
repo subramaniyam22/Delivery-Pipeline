@@ -47,14 +47,11 @@ export default function CreateProjectPage() {
         if (editId) {
             setLoading(true);
             projectsAPI.get(editId)
-                .then(project => {
+                .then(response => {
+                    const project = response.data;
                     setTitle(project.title);
                     setClientName(project.client_name);
-                    setDescription(project.description || ''); // description not in API yet? Check schemas. If not, ignore.
-                    // Wait, schemas.py showing valid fields... description WAS NOT in ProjectResponse in Step 3105! 
-                    // Let's check schema again? No, description is usually there. 
-                    // It was NOT in lines 128-150. Maybe overlooked.
-                    // Assuming description might be missing from response, handle gracefully.
+                    setDescription(project.description || '');
                     setPriority(project.priority);
                     setPmcName(project.pmc_name || '');
                     setLocation(project.location || '');
