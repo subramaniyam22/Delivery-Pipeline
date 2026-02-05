@@ -9,10 +9,26 @@ import { Role } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
 
 export default function CreateProjectPage() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const editId = searchParams.get('edit');
 
-    // ... existing state ...
+    const [title, setTitle] = useState('');
+    const [clientName, setClientName] = useState('');
+    const [description, setDescription] = useState('');
+    const [priority, setPriority] = useState('MEDIUM');
+
+    // Sales Fields
+    const [pmcName, setPmcName] = useState('');
+    const [location, setLocation] = useState('');
+    const [clientEmailIds, setClientEmailIds] = useState('');
+
+    // New Field
+    const [projectType, setProjectType] = useState('Full Website');
+
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [user, setUser] = useState<any>(null);
 
     useEffect(() => {
         if (!isAuthenticated()) {
