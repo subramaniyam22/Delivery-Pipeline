@@ -125,6 +125,7 @@ class Project(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
     client_name = Column(String(255), nullable=False)
     priority = Column(String(50), default="MEDIUM")
     status = Column(Enum(ProjectStatus), default=ProjectStatus.DRAFT, nullable=False, index=True)

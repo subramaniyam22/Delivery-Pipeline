@@ -73,6 +73,7 @@ class LoginRequest(BaseModel):
 # ============= Project Schemas =============
 class ProjectCreate(BaseModel):
     title: str = Field(..., min_length=3, max_length=500, description="Project title")
+    description: Optional[str] = None
     client_name: str = Field(..., min_length=2, max_length=255, description="Client name")
     priority: str = Field(default="MEDIUM", pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
     pmc_name: Optional[str] = Field(None, max_length=255)
@@ -133,6 +134,7 @@ class ProjectResponse(BaseModel):
     
     id: UUID
     title: str
+    description: Optional[str] = None
     client_name: str
     priority: str
     status: ProjectStatus
