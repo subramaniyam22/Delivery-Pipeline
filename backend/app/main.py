@@ -195,8 +195,17 @@ os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 
+@app.get("/debug-schema")
+def debug_schema(db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    try:
+        result = db.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'projects'")).fetchall()
+        return {"columns": [{row[0]: row[1]} for row in result]}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/")
-def root():
+def read_root():
     """Root endpoint"""
     return {
         "message": "Multi-Agent Delivery Pipeline API",
