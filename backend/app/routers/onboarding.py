@@ -11,8 +11,10 @@ from app.schemas import (
     ProjectTaskUpdate,
     ProjectTaskResponse,
     ClientReminderCreate,
+    ClientReminderCreate,
     ClientReminderResponse
 )
+from app.services.notification_service import notification_manager
 from app.deps import get_current_active_user
 from app.rbac import check_full_access
 from typing import List, Dict, Any, Optional
@@ -865,14 +867,26 @@ async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db:
             message += "\n\nClient provided ETA:\n" + "\n".join(eta_lines)
 
         email_addresses = [u.email for u in recipients if u.email]
-        if email_addresses:
-            notification_sent = send_client_reminder_email(
-                to_emails=email_addresses,
-                subject=f"Client submitted onboarding: {project.title}",
-                message=message,
-                project_title=project.title,
-                sender_name="Delivery Management"
-            )
+        # if email_addresses:
+        #     notification_sent = send_client_reminder_email(
+        #         to_emails=email_addresses,
+        #         subject=f"Client submitted onboarding: {project.title}",
+        #         message=message,
+        #         project_title=project.title,
+        #         sender_name="Delivery Management"
+        #     )
+        
+        # Send WS Notification
+        for recipient in recipients:
+             try:
+                 await notification_manager.send_personal_message({
+                     "type": "ONBOARDING_SUBMISSION",
+                     "project_id": str(project.id),
+                     "project_title": project.title,
+                     "message": f"Client submitted onboarding for {project.title}."
+                 }, str(recipient.id))
+             except Exception as e:
+                 logger.error(f"Failed to send WS notif to {recipient.id}: {e}")
 
     return {"success": True, "notification_sent": notification_sent, "review_status": onboarding.review_status}
 

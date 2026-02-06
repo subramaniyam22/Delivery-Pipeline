@@ -95,7 +95,7 @@ async def create_project(
     # Notify Manager if assigned
     if project.manager_user_id:
         try:
-            from app.routers.ai_consultant import notification_manager
+            from app.services.notification_service import notification_manager
             await notification_manager.send_personal_message(
                 {
                     "type": "URGENT_ALERT",
@@ -572,9 +572,9 @@ def toggle_project_hitl(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Toggle HITL for a project (Admin only)"""
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(status_code=403, detail="Only Admins can toggle HITL")
+    """Toggle HITL for a project (Admin/Manager)"""
+    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
+        raise HTTPException(status_code=403, detail="Only Admins and Managers can toggle HITL")
     
     project = project_service.get_project(db, project_id)
     if not project:

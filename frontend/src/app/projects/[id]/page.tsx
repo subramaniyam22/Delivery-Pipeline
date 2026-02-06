@@ -2374,45 +2374,15 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
-                {/* Project Requirement Progress - Manager View */}
-                {user?.role === 'MANAGER' && onboardingData && (
-                    <div className="manager-progress-section" style={{ marginTop: '24px', marginBottom: '24px', background: 'white', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-                        <div className="section-header" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h2 style={{ fontSize: '18px', fontWeight: 600, color: '#1e293b', margin: 0 }}>Project Requirement Progress</h2>
-                            <span className="badge" style={{ background: onboardingData.completion_percentage === 100 ? '#dcfce7' : '#e0f2fe', color: onboardingData.completion_percentage === 100 ? '#166534' : '#0369a1', padding: '4px 12px', borderRadius: '99px', fontSize: '12px', fontWeight: 600 }}>
-                                {onboardingData.completion_percentage}% Ready
-                            </span>
-                        </div>
-                        <div className="progress-container">
-                            <div className="progress-bar-bg" style={{ height: '12px', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden' }}>
-                                <div
-                                    className="progress-bar-fill"
-                                    style={{
-                                        width: `${onboardingData.completion_percentage}%`,
-                                        height: '100%',
-                                        background: onboardingData.completion_percentage === 100 ? 'linear-gradient(90deg, #22c55e 0%, #16a34a 100%)' : 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)',
-                                        transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)',
-                                        borderRadius: '6px'
-                                    }}
-                                />
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '13px', color: '#64748b' }}>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    {onboardingData.completion_percentage === 100 ? '✅ All data collected' : '⏳ Waiting for inputs'}
-                                </span>
-                                <span style={{ fontWeight: 500 }}>{onboardingData.images_json?.length || 0} images • {(onboardingData.contacts_json?.length || 0)} contacts</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
+
 
                 {/* Onboarding Section - Unified View for All Roles */}
                 {project.current_stage === 'ONBOARDING' && project.current_stage !== 'SALES' && onboardingData && (
                     <div className="onboarding-section">
                         <div className="section-header">
-                            <h2>📋 {user?.role === 'ADMIN' ? 'Project Requirement Progress' : 'Project Onboarding Details'}</h2>
+                            <h2>📋 {['ADMIN', 'MANAGER'].includes(user?.role || '') ? 'Project Requirement Progress' : 'Project Onboarding Details'}</h2>
                             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                {isAdmin && (
+                                {(isAdmin || user?.role === 'MANAGER') && (
                                     <div className={`hitl-banner ${project.require_manual_review ? 'hitl-on' : 'hitl-off'}`} style={{
                                         display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 20px',
                                         borderRadius: '12px', border: '1px solid',
@@ -2455,7 +2425,7 @@ export default function ProjectDetailPage() {
                                         </div>
                                     </div>
                                 )}
-                                {project.require_manual_review && (user?.role === 'CONSULTANT' || user?.role === 'PC' || user?.role === 'ADMIN') && (
+                                {project.require_manual_review && (user?.role === 'CONSULTANT' || user?.role === 'PC' || user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
                                     <button
                                         className="btn-send-reminder-now"
                                         onClick={async () => {
