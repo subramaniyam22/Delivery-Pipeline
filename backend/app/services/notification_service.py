@@ -24,7 +24,24 @@ class NotificationConnectionManager:
                 del self.active_connections[user_id]
         logger.info(f"Notification WS Disconnected: {user_id}")
 
-    async def send_personal_message(self, message: dict, user_id: str):
+    async def send_personal_message(self, message: dict, user_id: str, db=None):
+        # Persist if db session provided
+        if db:
+            try:
+                from app.models import Notification
+                new_notif = Notification(
+                    user_id=user_id,
+                    project_id=message.get("project_id"),
+                    type=message.get("type", "INFO"),
+                    message=message.get("message", ""),
+                    is_read=False
+                )
+                db.add(new_notif)
+                db.commit()
+            except Exception as e:
+                logger.error(f"Failed to save notification to DB: {e}")
+
+        # Send WS
         if user_id in self.active_connections:
             for connection in self.active_connections[user_id]:
                 try:

@@ -1089,3 +1089,19 @@ class ChatLog(Base):
     project = relationship("Project", backref="chat_logs")
 
 
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True) # Optional link to project
+    type = Column(String(50), nullable=False) # e.g. URGENT_ALERT, INFO
+    message = Column(Text, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    user = relationship("User", backref="notifications")
+    project = relationship("Project")
+
+

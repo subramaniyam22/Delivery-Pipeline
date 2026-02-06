@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { getCurrentUser, isAuthenticated } from '@/lib/auth';
+import { notificationsAPI } from '@/lib/api';
 import NotificationToast from '@/components/NotificationToast';
 
 interface Notification {
@@ -33,25 +34,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const wsRef = useRef<WebSocket | null>(null);
 
     useEffect(() => {
-        const saved = localStorage.getItem('notifications');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                const restored = parsed.map((n: any) => ({ ...n, timestamp: new Date(n.timestamp) }));
-                setNotifications(restored);
-                setUnreadCount(restored.filter((n: any) => !n.read).length);
-            } catch (e) {
-                console.error('Failed to load notifications', e);
-            }
-        }
-    }, []);
-
-    useEffect(() => {
-        localStorage.setItem('notifications', JSON.stringify(notifications));
-        setUnreadCount(notifications.filter(n => !n.read).length);
-    }, [notifications]);
-
-    useEffect(() => {
         // Only run on client side and if authenticated
         if (typeof window === 'undefined' || !isAuthenticated()) return;
 
@@ -65,7 +47,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             baseUrl = baseUrl.replace(/^http/, 'ws');
         }
 
-        // Fixed: Backend WebSocket endpoint is /ws/notifications/{user_id}
         const wsUrl = `${baseUrl}/ws/notifications/${user.id}`;
         console.log('Connecting to Global Notification WS:', wsUrl);
 
@@ -83,24 +64,28 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
+                console.log('Global WS Data:', data);
 
                 if (data.type === 'REFRESH_PROJECTS') {
-                    console.log('Received Refresh Signal');
                     setRefreshSignal(prev => prev + 1);
-                } else if (data.type === 'URGENT_ALERT') {
-                    console.log('Received Urgent Alert');
+                } else if (data.type === 'URGENT_ALERT' || data.type === 'ONBOARDING_SUBMISSION') {
+                    // Trigger refresh to fetch from DB
+                    setRefreshSignal(prev => prev + 1);
+
+                    // Optional: Show toast immediately without waiting for DB fetch roundtrip
+                    // This logic is handled by the `latestUrgent` effect which watches `notifications`
+                    // But since we just triggered refresh, we rely on loadNotifications to update state
+                    // To make it instant, we can append temporarily:
                     const newNotification: Notification = {
-                        id: Date.now().toString(),
+                        id: Date.now().toString(), // temporary ID
                         message: data.message,
                         type: 'urgent',
                         timestamp: new Date(),
                         read: false,
                         projectId: data.project_id
                     };
-
                     setNotifications(prev => [newNotification, ...prev]);
-                    // Persistent audio or visual cue could be added here
-                    setRefreshSignal(prev => prev + 1);
+                    setUnreadCount(prev => prev + 1);
                 }
             } catch (e) {
                 console.error('Global WS Error', e);
@@ -116,14 +101,54 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const toggleDrawer = () => setIsDrawerOpen(prev => !prev);
 
-    const markAsRead = (id: string) => {
+    useEffect(() => {
+        // Load Notifications from DB on mount
+        if (isAuthenticated()) {
+            loadNotifications();
+        }
+    }, [refreshSignal]); // Reload when signal changes (e.g. new WS message)
+
+    const loadNotifications = async () => {
+        try {
+            const res = await notificationsAPI.list();
+            // Map DB response to UI format
+            const mapped = res.data.map((n: any) => ({
+                id: n.id,
+                message: n.message,
+                type: n.type.toLowerCase().includes('urgent') ? 'urgent' : 'info',
+                timestamp: new Date(n.created_at),
+                read: n.is_read,
+                projectId: n.project_id
+            }));
+            setNotifications(mapped);
+            setUnreadCount(mapped.filter((n: any) => !n.read).length);
+        } catch (err) {
+            console.error('Failed to fetch notifications', err);
+        }
+    };
+
+    const markAsRead = async (id: string) => {
+        // Optimistic UI Update
         setNotifications(prev => prev.map(n =>
             n.id === id ? { ...n, read: true } : n
         ));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+
+        try {
+            await notificationsAPI.markRead(id);
+        } catch (err) {
+            console.error('Failed to mark read', err);
+        }
     };
 
-    const clearAll = () => {
-        setNotifications([]);
+    const clearAll = async () => {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true }))); // Improve UX by just marking all read
+        setUnreadCount(0);
+        try {
+            await notificationsAPI.markAllRead();
+        } catch (err) {
+            console.error('Failed to mark all read', err);
+        }
     };
 
     const latestUrgent = notifications.find(n => n.type === 'urgent' && !n.read && (Date.now() - new Date(n.timestamp).getTime() < 10000));

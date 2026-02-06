@@ -180,6 +180,12 @@ export const configAPI = {
         api.put(`/admin/config/${key}`, { value_json: valueJson }),
 };
 
+export const notificationsAPI = {
+    list: (skip = 0, limit = 50) => api.get(`/notifications?skip=${skip}&limit=${limit}`),
+    markRead: (id: string) => api.put(`/notifications/${id}/read`),
+    markAllRead: () => api.put('/notifications/read-all'),
+};
+
 export const onboardingAPI = {
     getData: (projectId: string) =>
         api.get(`/projects/${projectId}/onboarding-data`),

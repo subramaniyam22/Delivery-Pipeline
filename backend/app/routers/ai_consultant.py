@@ -222,7 +222,7 @@ Guidelines:
                                 "project_id": str(project.id),
                                 "project_title": project.title,
                                 "message": f"Client for {project.title} requested a human consultant."
-                            }, recipient_id)
+                            }, recipient_id, db)
                     else:
                          logger.warning(f"No consultant assigned for project {project_id} and no managers found, cannot send alert.")
                 except Exception as e:

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from app.config import settings
-from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant, cache, analytics, websocket
+from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant, cache, analytics, websocket, notifications
 from app.services.config_service import seed_default_configs
 from app.db import SessionLocal
 from app.models import User, Role
@@ -193,6 +193,7 @@ app.include_router(ai_consultant.router)
 app.include_router(cache.router)
 app.include_router(analytics.router)
 app.include_router(websocket.router)
+app.include_router(notifications.router)
 
 # Serve uploaded files
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

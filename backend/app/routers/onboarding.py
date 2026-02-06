@@ -884,7 +884,7 @@ async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db:
                      "project_id": str(project.id),
                      "project_title": project.title,
                      "message": f"Client submitted onboarding for {project.title}."
-                 }, str(recipient.id))
+                 }, str(recipient.id), db)
              except Exception as e:
                  logger.error(f"Failed to send WS notif to {recipient.id}: {e}")
 

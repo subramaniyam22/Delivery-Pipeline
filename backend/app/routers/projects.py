@@ -102,7 +102,8 @@ async def create_project(
                     "message": f"New Project Handover: {project.title}",
                     "project_id": str(project.id)
                 },
-                str(project.manager_user_id)
+                str(project.manager_user_id),
+                db
             )
         except Exception as e:
             # Don't fail request if notification fails
