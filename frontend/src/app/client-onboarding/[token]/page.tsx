@@ -155,7 +155,7 @@ const ReviewModal = ({ onClose, onConfirm, phases, requirements }: any) => {
 };
 
 const PHASE_DEFINITIONS = [
-    { id: 'phase-1', title: 'Project Basics', fields: ['project_summary', 'project_notes', 'phase_number', 'contacts'] },
+    { id: 'phase-1', title: 'Project Basics', fields: ['project_summary', 'project_notes', 'phase_number'] },
     { id: 'phase-2', title: 'Brand & Visual Assets', fields: ['logo', 'images', 'copy', 'copy_scope', 'theme', 'template_mode', 'template_references'] },
     { id: 'phase-3', title: 'Design Preferences', fields: ['brand_guidelines', 'color_selection', 'font_selection', 'custom_graphics', 'navigation'] },
     { id: 'phase-4', title: 'Property Content', fields: ['floor_plans', 'virtual_tours', 'poi', 'stock_images', 'sitemap', 'specials'] },

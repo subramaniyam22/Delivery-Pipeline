@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     AWS_REGION: Optional[str] = None
     AWS_S3_BUCKET: Optional[str] = None
     S3_PUBLIC_BASE_URL: Optional[str] = None
+
+    @property
+    def S3_BUCKET(self) -> Optional[str]:
+        return self.AWS_S3_BUCKET
+
+    @property
+    def S3_BUCKET_NAME(self) -> Optional[str]:
+        return self.AWS_S3_BUCKET
     
     # Redis (for rate limiting and caching)
     REDIS_URL: str = "redis://localhost:6379"
