@@ -816,7 +816,7 @@ export default function ClientOnboardingPage() {
         setError('');
         try {
             await clientAPI.submitOnboardingForm(token, { missing_fields_eta: missingFieldsEta });
-            setSuccess('Form submitted successfully! Your consultant has been notified.');
+            setSuccess('Form submitted successfully! Our Consultant team has been notified and will reach out to you.');
             await loadFormData();
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to submit form');
@@ -1411,7 +1411,16 @@ export default function ClientOnboardingPage() {
                                             <div
                                                 key={tier.name}
                                                 className={`pricing-card`}
-                                                style={{ border: '1px solid #cbd5e1', padding: '16px', borderRadius: '8px', cursor: 'pointer', background: 'white' }}
+                                                style={{
+                                                    border: (formData.data.requirements?.template_references || '').includes(tier.name) ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                                                    padding: '16px',
+                                                    borderRadius: '8px',
+                                                    cursor: 'pointer',
+                                                    background: (formData.data.requirements?.template_references || '').includes(tier.name) ? '#eff6ff' : 'white',
+                                                    transition: 'all 0.2s',
+                                                    transform: (formData.data.requirements?.template_references || '').includes(tier.name) ? 'scale(1.02)' : 'none',
+                                                    boxShadow: (formData.data.requirements?.template_references || '').includes(tier.name) ? '0 4px 6px -1px rgba(59, 130, 246, 0.1)' : 'none'
+                                                }}
                                                 onClick={() => updateRequirements({ template_references: `Selected Package: ${tier.name} ($${tier.price})\nIncludes: ${tier.features}` })}
                                             >
                                                 <div style={{ fontSize: '18px', fontWeight: 700, color: '#1e293b' }}>${tier.price}</div>

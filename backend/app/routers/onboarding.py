@@ -830,29 +830,44 @@ async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db:
     db.commit()
 
     notification_sent = False
-    if project and project.consultant_user_id:
+    notification_sent = False
+    recipients = []
+    
+    # 1. Determine Recipients
+    if project.consultant_user_id:
         consultant = db.query(User).filter(User.id == project.consultant_user_id).first()
         if consultant:
-            required_fields = resolve_required_fields(db, project)
-            missing_fields = get_missing_fields(onboarding, required_fields)
-            eta_lines = []
-            if isinstance(missing_fields_eta, dict):
-                for field, eta in missing_fields_eta.items():
-                    eta_lines.append(f"- {field}: {eta}")
+            recipients.append(consultant)
+    
+    # Fallback to Managers if no consultant
+    if not recipients:
+        managers = db.query(User).filter(User.role == Role.MANAGER).all()
+        recipients.extend(managers)
 
-            status_msg = f"Review Status: {onboarding.review_status.value}"
-            if onboarding.review_status == OnboardingReviewStatus.APPROVED:
-                status_msg += " (Auto-Approved by AI)"
-            
-            message = f"The client submitted the onboarding form.\n{status_msg}\nAI Feedback: {onboarding.ai_review_notes}"
-            
-            if missing_fields:
-                message += "\n\nMissing information:\n" + "\n".join([f"- {f}" for f in missing_fields])
-            if eta_lines:
-                message += "\n\nClient provided ETA:\n" + "\n".join(eta_lines)
+    # 2. Send Notifications
+    if recipients:
+        required_fields = resolve_required_fields(db, project)
+        missing_fields = get_missing_fields(onboarding, required_fields)
+        eta_lines = []
+        if isinstance(missing_fields_eta, dict):
+            for field, eta in missing_fields_eta.items():
+                eta_lines.append(f"- {field}: {eta}")
 
+        status_msg = f"Review Status: {onboarding.review_status.value}"
+        if onboarding.review_status == OnboardingReviewStatus.APPROVED:
+            status_msg += " (Auto-Approved by AI)"
+        
+        message = f"The client submitted the onboarding form.\n{status_msg}\nAI Feedback: {onboarding.ai_review_notes}"
+        
+        if missing_fields:
+            message += "\n\nMissing information:\n" + "\n".join([f"- {f}" for f in missing_fields])
+        if eta_lines:
+            message += "\n\nClient provided ETA:\n" + "\n".join(eta_lines)
+
+        email_addresses = [u.email for u in recipients if u.email]
+        if email_addresses:
             notification_sent = send_client_reminder_email(
-                to_emails=[consultant.email],
+                to_emails=email_addresses,
                 subject=f"Client submitted onboarding: {project.title}",
                 message=message,
                 project_title=project.title,

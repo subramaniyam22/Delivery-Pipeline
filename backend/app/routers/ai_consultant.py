@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.config import settings
 from app.db import get_db
-from app.models import ChatLog, Project
+from app.models import ChatLog, Project, User, Role
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 import logging
@@ -233,16 +233,26 @@ Guidelines:
             if project_id:
                 try:
                     # Re-query if specific details needed, but we have project object
+                    # Re-query if specific details needed, but we have project object
+                    recipients = []
                     if project and project.consultant_user_id:
-                         logger.info(f"Sending Urgent Alert to Consultant ID: {project.consultant_user_id}")
-                         await notification_manager.send_personal_message({
-                            "type": "URGENT_ALERT",
-                            "project_id": str(project.id),
-                            "project_title": project.title,
-                            "message": f"Client for {project.title} requested a human consultant."
-                        }, str(project.consultant_user_id))
+                        recipients.append(str(project.consultant_user_id))
+                    
+                    if not recipients:
+                        managers = db.query(User).filter(User.role == Role.MANAGER).all()
+                        recipients = [str(m.id) for m in managers]
+
+                    if recipients:
+                         logger.info(f"Sending Urgent Alert to {len(recipients)} recipients (Consultant/Managers)")
+                         for recipient_id in recipients:
+                            await notification_manager.send_personal_message({
+                                "type": "URGENT_ALERT",
+                                "project_id": str(project.id),
+                                "project_title": project.title,
+                                "message": f"Client for {project.title} requested a human consultant."
+                            }, recipient_id)
                     else:
-                         logger.warning(f"No consultant assigned for project {project_id}, cannot send alert.")
+                         logger.warning(f"No consultant assigned for project {project_id} and no managers found, cannot send alert.")
                 except Exception as e:
                     logger.error(f"Failed to send urgent alert: {e}")
         
