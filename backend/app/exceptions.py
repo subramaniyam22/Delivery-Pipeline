@@ -153,5 +153,10 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
             "error_code": "INTERNAL_ERROR",
             "message": f"An unexpected error occurred: {str(exc)}",  # DEBUG: Exposed error
             "details": {}
+        },
+        headers={
+            "Access-Control-Allow-Origin": "https://delivery-frontend-60cf.onrender.com",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*"
         }
     )
