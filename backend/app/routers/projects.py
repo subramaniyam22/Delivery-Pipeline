@@ -405,13 +405,14 @@ def get_project(
     return project
 
 
-@router.put("/{project_id}", response_model=ProjectResponse)
+@router.put("/{project_id}")
 def update_project(
     project_id: UUID,
     data: ProjectUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
+
     """Update project metadata"""
     # RBAC: Admin/Manager can update anytime. Sales can update ONLY if Draft.
     is_admin_manager = check_full_access(current_user.role)
@@ -466,7 +467,7 @@ def update_project(
 
     try:
         project = project_service.update_project(db, project_id, data, current_user)
-        return project
+        return {"status": "success", "id": str(project.id), "message": "Project updated successfully"}
     except Exception as e:
         import traceback
         trace = traceback.format_exc()
