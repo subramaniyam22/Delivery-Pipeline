@@ -137,7 +137,11 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=settings.cors_origins_list + [
+        "https://delivery-frontend-60cf.onrender.com",
+        "https://delivery-backend-vvbf.onrender.com",
+        "http://localhost:3000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
