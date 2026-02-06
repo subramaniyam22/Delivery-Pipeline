@@ -2381,7 +2381,7 @@ export default function ProjectDetailPage() {
                     <div className="onboarding-section">
                         {console.log('Project Page Debug - User Role:', user?.role, 'Is Admin:', isAdmin, 'Matches:', ['ADMIN', 'MANAGER'].includes(user?.role || ''))}
                         <div className="section-header">
-                            <h2>📋 {['ADMIN', 'MANAGER'].includes(user?.role || '') ? 'Project Requirement Progress' : 'Project Onboarding Details'}  <span style={{ fontSize: '10px', color: '#ccc' }}>(v2.1)</span></h2>
+                            <h2>📋 {['ADMIN', 'MANAGER'].includes(user?.role || '') ? 'Project Requirement Progress' : 'Project Onboarding Details'}  <span style={{ fontSize: '14px', color: 'red', fontWeight: 'bold' }}>(v2.2)</span></h2>
                             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                                 {(isAdmin || user?.role === 'MANAGER') && (
                                     <div className={`hitl-banner ${project.require_manual_review ? 'hitl-on' : 'hitl-off'}`} style={{

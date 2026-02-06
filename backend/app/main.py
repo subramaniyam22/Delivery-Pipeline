@@ -139,8 +139,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list + [
         "https://delivery-frontend-60cf.onrender.com",
+        "http://delivery-frontend-60cf.onrender.com",
         "https://delivery-backend-vvbf.onrender.com",
-        "http://localhost:3000"
+        "https://delivery-backend-xvbf.onrender.com",
+        "http://localhost:3000",
+        "http://localhost:8000"
     ],
     allow_credentials=True,
     allow_methods=["*"],
