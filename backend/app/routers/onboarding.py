@@ -22,7 +22,7 @@ import secrets
 import os
 import boto3
 import logging
-from app.config import Settings
+from app.config import Settings, settings
 
 logger = logging.getLogger(__name__)
 from app.services.email_service import send_client_reminder_email
