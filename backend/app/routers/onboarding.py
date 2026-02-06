@@ -879,8 +879,8 @@ async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db:
         # Send WS Notification
         for recipient in recipients:
              try:
-                 await notification_manager.send_personal_message({
-                     "type": "ONBOARDING_SUBMISSION",
+                await notification_manager.send_personal_message({
+                     "type": "URGENT_ALERT",
                      "project_id": str(project.id),
                      "project_title": project.title,
                      "message": f"Client submitted onboarding for {project.title}."
