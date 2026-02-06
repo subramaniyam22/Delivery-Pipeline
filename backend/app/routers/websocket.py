@@ -1,7 +1,7 @@
 """
 WebSocket router for real-time updates.
 """
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, Cookie
 from app.websocket.manager import manager
 from app.websocket.events import WebSocketEvent, EventType
 from app.deps import get_current_user_from_token
@@ -18,7 +18,8 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 async def websocket_endpoint(
     websocket: WebSocket,
     user_id: str,
-    token: Optional[str] = Query(None)
+    token: Optional[str] = Query(None),
+    access_token: Optional[str] = Cookie(None) # Auto-read 'access_token' cookie
 ):
     """
     WebSocket endpoint for real-time notifications.
@@ -26,8 +27,16 @@ async def websocket_endpoint(
     Usage:
         ws://localhost:8000/ws/notifications/{user_id}?token={jwt_token}
     """
-    # Verify authentication
-    if not token:
+    # Verify authentication (Query Param OR Cookie)
+    final_token = token or access_token
+    if not final_token:
+        # Check Authorization header (WS handshake can have headers)
+        auth_header = websocket.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            final_token = auth_header.split(" ")[1]
+
+    if not final_token:
+        logger.warning(f"WS Connection rejected for {user_id}: No token provided")
         await websocket.close(code=1008, reason="Missing authentication token")
         return
     

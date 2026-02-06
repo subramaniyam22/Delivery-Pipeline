@@ -169,6 +169,15 @@ async def startup_event():
         seed_admin_user(db)
         seed_manager_users(db)
         db.close()
+
+        # Ensure notifications table exists
+        try:
+            from create_notifications_table import create_table
+            create_table()
+            logger.info("Notifications table verified/created")
+        except Exception as e:
+            logger.error(f"Failed to create notifications table: {e}")
+
         logger.info("Default configurations seeded")
     except Exception as e:
         logger.error(f"Failed to seed default configs: {e}")
