@@ -7,5 +7,8 @@ pip install -r requirements.txt
 # Run database migrations
 alembic upgrade head
 
+# Create Notifications Table (if missing)
+python create_notifications_table.py || true
+
 # Seed admin user if needed
 python scripts/seed_admin.py || true
