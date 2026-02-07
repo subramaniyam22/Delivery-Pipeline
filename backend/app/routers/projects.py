@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.models import User, Role, Project, Region, ProjectTask, SLAConfiguration, OnboardingData
+from app.models import User, Role, Project, Region, ProjectTask, SLAConfiguration, OnboardingData, ProjectStatus
 from app.schemas import (
     ProjectCreate,
     ProjectResponse,
@@ -22,6 +22,14 @@ from datetime import datetime
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def _normalize_locations(value: Optional[str], names: Optional[List[str]]) -> List[str]:
+    if names:
+        return [item.strip() for item in names if isinstance(item, str) and item.strip()]
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 def calculate_project_health(project: Project, sla_configs: Dict[str, SLAConfiguration]) -> Dict[str, Any]:
@@ -76,10 +84,14 @@ async def create_project(
     # Validation Logic
     if data.status == "ACTIVE": # Create Project clicked
         missing_fields = []
+        if not data.title or not data.title.strip(): missing_fields.append("title")
+        if not data.client_name or not data.client_name.strip(): missing_fields.append("client_name")
         if not data.pmc_name: missing_fields.append("pmc_name")
-        if not data.location: missing_fields.append("location")
+        if not _normalize_locations(data.location, data.location_names): missing_fields.append("location")
         if not data.client_email_ids: missing_fields.append("client_email_ids")
         if not data.project_type: missing_fields.append("project_type")
+        if not data.description or not data.description.strip(): missing_fields.append("description")
+        if not data.priority: missing_fields.append("priority")
         
         if missing_fields:
             raise HTTPException(
@@ -154,6 +166,8 @@ def list_projects(
     view_map = {p_id: t for p_id, t in last_views_query}
 
     for p in projects:
+        if p.current_stage == Stage.SALES:
+            p = project_service.auto_advance_sales_if_complete(db, p)
         p.onboarding_updated_at = None
         if p.onboarding_data:
             p.onboarding_updated_at = p.onboarding_data.updated_at
@@ -278,8 +292,9 @@ def get_projects(
         # ).group_by(AuditLog.project_id).all()
         # view_map = {p_id: t for p_id, t in last_views_query}
         
-        results = []
         for p in projects:
+            if p.current_stage == Stage.SALES:
+                p = project_service.auto_advance_sales_if_complete(db, p)
             p.onboarding_updated_at = None
             
             # Read Receipt Logic
@@ -287,21 +302,19 @@ def get_projects(
             has_updates = False
             
             # Check for updates to onboarding data
-            if p.onboarding_data: 
-                # Ensure we handle potential lazy load error by accessing safely?
-                # accessing p.onboarding_data triggers usage.
+            if p.onboarding_data:
                 p.onboarding_updated_at = p.onboarding_data.updated_at
                 
                 if p.onboarding_updated_at:
-                     if not last_view:
-                         if (p.onboarding_updated_at - p.created_at).total_seconds() > 60:
-                             has_updates = True
-                     else:
-                         if p.onboarding_updated_at > last_view:
-                             has_updates = True
+                    if not last_view:
+                        if (p.onboarding_updated_at - p.created_at).total_seconds() > 60:
+                            has_updates = True
+                    else:
+                        if p.onboarding_updated_at > last_view:
+                            has_updates = True
             
             # Restriction checks... simplified
-            is_assigned = True # Default to true for now to avoid role logic crash
+            is_assigned = True  # Default to true for now to avoid role logic crash
             
             setattr(p, 'has_new_updates', has_updates)
             
@@ -451,14 +464,23 @@ def update_project(
         # Check current values combined with update values
         pmc_name = data.pmc_name or project.pmc_name
         location = data.location or project.location
+        location_names = data.location_names or project.location_names
         client_email_ids = data.client_email_ids or project.client_email_ids
         project_type = data.project_type or project.project_type
+        title = data.title or project.title
+        client_name = data.client_name or project.client_name
+        description = data.description or project.description
+        priority = data.priority or project.priority
         
         missing_fields = []
+        if not title or not title.strip(): missing_fields.append("title")
+        if not client_name or not client_name.strip(): missing_fields.append("client_name")
         if not pmc_name: missing_fields.append("pmc_name")
-        if not location: missing_fields.append("location")
+        if not _normalize_locations(location, location_names): missing_fields.append("location")
         if not client_email_ids: missing_fields.append("client_email_ids")
         if not project_type: missing_fields.append("project_type")
+        if not description or not description.strip(): missing_fields.append("description")
+        if not priority: missing_fields.append("priority")
         
         if missing_fields:
             raise HTTPException(
@@ -723,7 +745,9 @@ def get_phase_summary(
             "total_tasks": 0,
             "completed_tasks": 0,
             "pending_tasks": 0,
-            "completion_percentage": 0
+            "completion_percentage": 0,
+            "started_at": project.phase_start_dates.get(stage.value) if project.phase_start_dates else None,
+            "sla_risk": None
         }
 
     for task in tasks:
@@ -744,6 +768,8 @@ def get_phase_summary(
     sla_configs_list = db.query(SLAConfiguration).filter(SLAConfiguration.is_active == True).all()
     sla_configs = {c.stage: c for c in sla_configs_list}
     health_summary = calculate_project_health(project, sla_configs)
+    if project.current_stage and project.current_stage.value in stage_map:
+        stage_map[project.current_stage.value]["sla_risk"] = health_summary["status"]
 
     return {
         "project_id": str(project.id),
@@ -809,8 +835,10 @@ def close_project(
         )
     
     from app.models import ProjectStatus
+    previous_stage = project.current_stage
     project.status = ProjectStatus.COMPLETED
     project.current_stage = Stage.COMPLETE
+    project_service.record_stage_transition(project, previous_stage, project.current_stage, str(current_user.id))
     db.commit()
     
     return {"success": True, "message": "Project closed successfully"}
@@ -902,10 +930,7 @@ def assign_team(
         # If project is in SALES stage and Consultant is assigned, move to ONBOARDING
         if project.current_stage == Stage.SALES:
             project.current_stage = Stage.ONBOARDING
-            # Set Phase Start Date for Onboarding
-            if not project.phase_start_dates:
-                project.phase_start_dates = {}
-            project.phase_start_dates[Stage.ONBOARDING.value] = datetime.utcnow().isoformat()
+            project_service.record_stage_transition(project, Stage.SALES, Stage.ONBOARDING, str(current_user.id))
     
     # Validate PC assignment - requires Consultant to be assigned first OR HITL to be disabled
     if data.pc_user_id:

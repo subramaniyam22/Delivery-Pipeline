@@ -167,6 +167,8 @@ interface PhaseSummary {
     completed_tasks: number;
     pending_tasks: number;
     completion_percentage: number;
+    started_at?: string | null;
+    sla_risk?: string | null;
 }
 
 interface ProjectHealthSummary {
@@ -1920,50 +1922,7 @@ export default function ProjectDetailPage() {
                     )}
                 </header>
 
-                {/* Sales Information Section - Only show for SALES stage */}
-                {project.current_stage === 'SALES' && (
-                    <div className="sales-info-section" style={{
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                        padding: '24px',
-                        borderRadius: '12px',
-                        marginBottom: '24px',
-                        color: 'white',
-                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-                    }}>
-                        <h2 style={{ margin: '0 0 20px 0', fontSize: '20px', fontWeight: 600 }}>
-                            🤝 Sales Handover Information
-                        </h2>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
-                            <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>PMC Name</div>
-                                <div style={{ fontSize: '16px', fontWeight: 500 }}>{project.pmc_name || 'Not specified'}</div>
-                            </div>
-                            <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Location</div>
-                                <div style={{ fontSize: '16px', fontWeight: 500 }}>{project.location || 'Not specified'}</div>
-                            </div>
-                            <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Client Email IDs</div>
-                                <div style={{ fontSize: '14px', fontWeight: 500, wordBreak: 'break-word' }}>
-                                    {project.client_email_ids || 'Not specified'}
-                                </div>
-                            </div>
-                            <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px' }}>
-                                <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Project Type</div>
-                                <div style={{ fontSize: '16px', fontWeight: 500 }}>
-                                    {project.project_type || 'Full Website'}
-                                </div>
-                            </div>
-                            {project.description && (
-                                <div style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '16px', borderRadius: '8px', gridColumn: '1 / -1' }}>
-                                    <div style={{ fontSize: '12px', opacity: 0.9, marginBottom: '4px' }}>Description</div>
-                                    <div style={{ fontSize: '14px', lineHeight: '1.6' }}>{project.description}</div>
-                                </div>
-                            )}
-                        </div>
-                        {/* Manager info removed as per request */}
-                    </div>
-                )}
+                {/* Sales handover summary removed (duplicate of onboarding details) */}
 
                 {/* Stage Timeline */}
                 <div className="stage-timeline">
@@ -2237,20 +2196,63 @@ export default function ProjectDetailPage() {
                                 <thead>
                                     <tr>
                                         <th>Phase</th>
+                                        <th>Started At</th>
                                         <th>Completed</th>
                                         <th>Pending</th>
                                         <th>Total</th>
                                         <th>Completion</th>
+                                        <th>SLA Risk</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {phaseSummaries.map((phase) => (
                                         <tr key={phase.stage}>
                                             <td className="cell-title">{phase.stage.replace('_', ' ')}</td>
+                                            <td>
+                                                {phase.started_at ? new Date(phase.started_at).toLocaleString() : '—'}
+                                            </td>
                                             <td>{phase.completed_tasks}</td>
                                             <td>{phase.pending_tasks}</td>
                                             <td>{phase.total_tasks}</td>
                                             <td>{phase.completion_percentage}%</td>
+                                            <td>
+                                                {phase.sla_risk ? (
+                                                    <span className={`health-pill health-${phase.sla_risk.toLowerCase()}`}>
+                                                        {phase.sla_risk.replace('_', ' ')}
+                                                    </span>
+                                                ) : '—'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Stage Timeline */}
+                {user?.role && ['ADMIN', 'MANAGER'].includes(user.role) && Array.isArray(project?.stage_history) && project.stage_history.length > 0 && (
+                    <div className="phase-summary-section">
+                        <div className="section-header">
+                            <h2>🕒 Stage Timeline</h2>
+                        </div>
+                        <div className="phase-table">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>From</th>
+                                        <th>To</th>
+                                        <th>Changed At</th>
+                                        <th>By</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {[...project.stage_history].reverse().map((entry: any, idx: number) => (
+                                        <tr key={`${entry.at || 'na'}-${idx}`}>
+                                            <td>{entry.from_stage ? entry.from_stage.replace('_', ' ') : '—'}</td>
+                                            <td>{entry.to_stage ? entry.to_stage.replace('_', ' ') : '—'}</td>
+                                            <td>{entry.at ? new Date(entry.at).toLocaleString() : '—'}</td>
+                                            <td>{entry.actor_user_id || 'System'}</td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -2304,14 +2306,16 @@ export default function ProjectDetailPage() {
                     <div className="team-section">
                         <div className="section-header">
                             <h2>👥 Team Assignment</h2>
-                            {canAssignTeam && (
-                                <button className="btn-add" onClick={() => setShowTeamModal(true)}>
-                                    ✏️ Manage Team
-                                </button>
-                            )}
-                            {user?.role === 'MANAGER' && user?.region && (
-                                <span className="region-badge">Region: {user.region}</span>
-                            )}
+                            <div className="section-header-actions">
+                                {canAssignTeam && (
+                                    <button className="btn-add" onClick={() => setShowTeamModal(true)}>
+                                        ✏️ Manage Team
+                                    </button>
+                                )}
+                                {user?.role === 'MANAGER' && user?.region && (
+                                    <span className="region-badge">Region: {user.region}</span>
+                                )}
+                            </div>
                         </div>
                         <div className="team-grid">
                             {project.require_manual_review && (
@@ -2457,6 +2461,10 @@ export default function ProjectDetailPage() {
                             <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>Project Information Summary</h3>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
                                 <div className="summary-field">
+                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Project Title</label>
+                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.title || '—'}</div>
+                                </div>
+                                <div className="summary-field">
                                     <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Name</label>
                                     <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.client_name || '—'}</div>
                                 </div>
@@ -2466,15 +2474,27 @@ export default function ProjectDetailPage() {
                                 </div>
                                 <div className="summary-field">
                                     <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Location</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.location || '—'}</div>
+                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>
+                                        {(Array.isArray(project.location_names) && project.location_names.length
+                                            ? project.location_names.join(', ')
+                                            : project.location) || '—'}
+                                    </div>
                                 </div>
                                 <div className="summary-field" style={{ minWidth: 0 }}>
                                     <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Emails</label>
                                     <div style={{ fontSize: '14px', fontWeight: 500, wordBreak: 'break-all' }}>{project.client_email_ids || '—'}</div>
                                 </div>
                                 <div className="summary-field">
+                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Project Type</label>
+                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.project_type || '—'}</div>
+                                </div>
+                                <div className="summary-field">
                                     <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Priority</label>
                                     <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.priority}</div>
+                                </div>
+                                <div className="summary-field" style={{ gridColumn: '1 / -1' }}>
+                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Description</label>
+                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.description || '—'}</div>
                                 </div>
                                 {project.sales_rep && (
                                     <div className="summary-field" style={{ minWidth: 0 }}>
@@ -3737,6 +3757,17 @@ export default function ProjectDetailPage() {
                 }
                 .readonly-group {
                     margin-bottom: 24px;
+                }
+                .section-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+                .section-header-actions {
+                    margin-left: auto;
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
                 }
             `}</style>
 

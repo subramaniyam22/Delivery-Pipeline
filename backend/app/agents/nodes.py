@@ -1,12 +1,8 @@
 from typing import Dict, Any, List
 from app.models import Stage, StageStatus, TestResultStatus
 from app.agents.prompts import (
-    ONBOARDING_PROMPT,
-    ASSIGNMENT_PROMPT,
-    BUILD_PROMPT,
     TEST_PROMPT,
     DEFECT_VALIDATION_PROMPT,
-    COMPLETE_PROMPT,
     get_llm
 )
 from app.agents.tools import fetch_staging_url, fetch_defect_from_tracker
@@ -28,29 +24,21 @@ def onboarding_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Onboarding stage node - validates project onboarding information
     """
-    project_id = state.get("project_id")
     context = state.get("context", {})
     artifacts = state.get("artifacts", [])
+    human_gate = state.get("human_gate", False)
     
-    # Check if onboarding data is complete
-    onboarding_data = context.get("onboarding_data", {})
-    
-    # Use LLM to analyze onboarding completeness
-    llm = get_llm()
-    prompt = ONBOARDING_PROMPT.format(
-        project_info=json.dumps(context.get("project_info", {})),
-        onboarding_data=json.dumps(onboarding_data),
-        artifacts=json.dumps([a.get("filename") for a in artifacts if a.get("stage") == "ONBOARDING"])
-    )
-    
-    try:
-        response = llm.invoke(prompt)
-        if isinstance(response, str):
-            analysis = json.loads(response)
-        else:
-            analysis = {"ready_for_next_stage": True, "summary": "Onboarding complete"}
-    except:
-        analysis = {"ready_for_next_stage": True, "summary": "Onboarding complete"}
+    from app.agents.onboarding_agent import OnboardingAgent
+    analysis = OnboardingAgent().run(context, artifacts)
+    if human_gate:
+        return {
+            "stage": Stage.ONBOARDING.value,
+            "status": StageStatus.NEEDS_HUMAN.value,
+            "summary": "Awaiting human approval for Onboarding stage",
+            "structured_output": analysis,
+            "required_next_inputs": analysis.get("missing_items", []),
+            "evidence_required": []
+        }
     
     return {
         "stage": Stage.ONBOARDING.value,
@@ -66,28 +54,20 @@ def assignment_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Assignment stage node - creates task assignment plan
     """
-    project_id = state.get("project_id")
     context = state.get("context", {})
+    human_gate = state.get("human_gate", False)
     
-    # Get onboarding summary from previous stage
-    onboarding_summary = context.get("onboarding_summary", "")
-    
-    # Use LLM to create assignment plan
-    llm = get_llm()
-    prompt = ASSIGNMENT_PROMPT.format(
-        project_info=json.dumps(context.get("project_info", {})),
-        onboarding_summary=onboarding_summary,
-        resources=json.dumps(context.get("available_resources", []))
-    )
-    
-    try:
-        response = llm.invoke(prompt)
-        if isinstance(response, str):
-            plan = json.loads(response)
-        else:
-            plan = {"task_breakdown": [], "summary": "Assignment plan created"}
-    except:
-        plan = {"task_breakdown": [], "summary": "Assignment plan created"}
+    from app.agents.assignment_agent import AssignmentAgent
+    plan = AssignmentAgent().run(context)
+    if human_gate:
+        return {
+            "stage": Stage.ASSIGNMENT.value,
+            "status": StageStatus.NEEDS_HUMAN.value,
+            "summary": "Awaiting human approval for Assignment stage",
+            "structured_output": plan,
+            "required_next_inputs": [],
+            "evidence_required": []
+        }
     
     return {
         "stage": Stage.ASSIGNMENT.value,
@@ -104,31 +84,21 @@ def build_hitl_node(state: Dict[str, Any]) -> Dict[str, Any]:
     Build stage node - Human-in-the-loop for build completion
     This stage requires human approval before proceeding
     """
-    project_id = state.get("project_id")
     context = state.get("context", {})
     artifacts = state.get("artifacts", [])
     human_gate = state.get("human_gate", False)
     
-    # Check build completion status
-    build_tasks = context.get("build_tasks", [])
-    build_artifacts = [a for a in artifacts if a.get("stage") == "BUILD"]
-    
-    # Use LLM to assess build readiness
-    llm = get_llm()
-    prompt = BUILD_PROMPT.format(
-        project_info=json.dumps(context.get("project_info", {})),
-        build_tasks=json.dumps(build_tasks),
-        build_artifacts=json.dumps([a.get("filename") for a in build_artifacts])
-    )
-    
-    try:
-        response = llm.invoke(prompt)
-        if isinstance(response, str):
-            assessment = json.loads(response)
-        else:
-            assessment = {"ready_for_approval": True, "summary": "Build stage completed"}
-    except:
-        assessment = {"ready_for_approval": True, "summary": "Build stage completed"}
+    from app.agents.build_agent import BuildAgent
+    assessment = BuildAgent().run(context, artifacts)
+    if human_gate:
+        return {
+            "stage": Stage.BUILD.value,
+            "status": StageStatus.NEEDS_HUMAN.value,
+            "summary": "Awaiting human approval for Build stage",
+            "structured_output": assessment,
+            "required_next_inputs": [],
+            "evidence_required": []
+        }
     
     # Return SUCCESS to allow workflow advancement
     return {
@@ -152,6 +122,7 @@ def test_node(state: Dict[str, Any]) -> Dict[str, Any]:
     artifacts = state.get("artifacts", [])
     defects = state.get("defects", [])
     db = state.get("db")  # Database session passed through state
+    human_gate = state.get("human_gate", False)
     
     # Get test information
     test_tasks = context.get("test_tasks", [])
@@ -252,7 +223,7 @@ def test_node(state: Dict[str, Any]) -> Dict[str, Any]:
     
     # Determine next stage
     if len(defects) > 0:
-        return {
+        result = {
             "stage": Stage.TEST.value,
             "status": StageStatus.SUCCESS.value,
             "summary": summary,
@@ -263,7 +234,7 @@ def test_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "defects": defects  # Pass updated defects list
         }
     else:
-        return {
+        result = {
             "stage": Stage.TEST.value,
             "status": StageStatus.SUCCESS.value,
             "summary": summary,
@@ -272,6 +243,11 @@ def test_node(state: Dict[str, Any]) -> Dict[str, Any]:
             "evidence_required": [],
             "next_stage": "COMPLETE"
         }
+    
+    if human_gate:
+        result["status"] = StageStatus.NEEDS_HUMAN.value
+        result["summary"] = "Awaiting human approval for Test stage"
+    return result
 
 
 def defect_validation_node(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -287,6 +263,7 @@ def defect_validation_node(state: Dict[str, Any]) -> Dict[str, Any]:
     context = state.get("context", {})
     defects = state.get("defects", [])
     db = state.get("db")  # Database session passed through state
+    human_gate = state.get("human_gate", False)
     
     validation_results = None
     needs_more_fixes = False
@@ -364,7 +341,7 @@ def defect_validation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         'validated_by_agent': db is not None
     }
     
-    return {
+    result = {
         "stage": Stage.DEFECT_VALIDATION.value,
         "status": StageStatus.SUCCESS.value,
         "summary": summary,
@@ -373,36 +350,32 @@ def defect_validation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "evidence_required": [],
         "next_stage": next_stage
     }
+    if human_gate:
+        result["status"] = StageStatus.NEEDS_HUMAN.value
+        result["summary"] = "Awaiting human approval for Defect Validation stage"
+    return result
 
 
 def complete_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Completion stage node - generates project summary and closes project
     """
-    project_id = state.get("project_id")
     context = state.get("context", {})
     artifacts = state.get("artifacts", [])
     stage_meta = state.get("stage_meta", {})
+    human_gate = state.get("human_gate", False)
     
-    # Gather all stage outputs
-    stage_outputs = stage_meta.get("all_stage_outputs", [])
-    
-    # Use LLM to generate completion summary
-    llm = get_llm()
-    prompt = COMPLETE_PROMPT.format(
-        project_info=json.dumps(context.get("project_info", {})),
-        stage_outputs=json.dumps(stage_outputs),
-        artifacts=json.dumps([{"stage": a.get("stage"), "filename": a.get("filename")} for a in artifacts])
-    )
-    
-    try:
-        response = llm.invoke(prompt)
-        if isinstance(response, str):
-            summary = json.loads(response)
-        else:
-            summary = {"project_summary": "Project completed", "quality_score": 100}
-    except:
-        summary = {"project_summary": "Project completed", "quality_score": 100}
+    from app.agents.completion_agent import CompletionAgent
+    summary = CompletionAgent().run(context, artifacts, stage_meta.get("all_stage_outputs", []))
+    if human_gate:
+        return {
+            "stage": Stage.COMPLETE.value,
+            "status": StageStatus.NEEDS_HUMAN.value,
+            "summary": "Awaiting human approval for Completion stage",
+            "structured_output": summary,
+            "required_next_inputs": [],
+            "evidence_required": []
+        }
     
     return {
         "stage": Stage.COMPLETE.value,

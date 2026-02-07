@@ -14,6 +14,7 @@ import re
 import asyncio
 import json
 from app.services.notification_service import notification_manager
+from app.services.webhook_service import send_chat_log_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -98,10 +99,6 @@ async def notification_endpoint(websocket: WebSocket, user_id: str):
 
 @router.post("/consult")
 async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
-    if not settings.OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY not found in settings")
-        raise HTTPException(status_code=503, detail="OpenAI API key not configured")
-    
     project_id = request.context.get("project_id") if request.context else None
     
     # 1. Log User Message & Notify
@@ -137,6 +134,15 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
                 "message": request.message,
                 "created_at": new_log.created_at.isoformat()
             }, project_id)
+
+            # Fire webhook (non-blocking)
+            asyncio.create_task(send_chat_log_webhook({
+                "id": str(new_log.id),
+                "project_id": str(project_id),
+                "sender": "user",
+                "message": request.message,
+                "created_at": new_log.created_at.isoformat()
+            }))
             
             # Check if AI is enabled (re-fetch project or use from above)
             # project already fetched above
@@ -147,6 +153,35 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
                     
         except Exception as e:
             logger.error(f"Failed to log user chat: {e}")
+
+    if not settings.OPENAI_API_KEY:
+        logger.warning("OPENAI_API_KEY not found in settings; using fallback response")
+        fallback_response = (
+            "I’m currently running in limited mode and can’t access the AI service. "
+            "Please continue with the form, and if you need help, a consultant will assist you."
+        )
+        if project_id:
+            try:
+                new_bot_log = ChatLog(project_id=project_id, sender="bot", message=fallback_response)
+                db.add(new_bot_log)
+                db.commit()
+                db.refresh(new_bot_log)
+                await manager.broadcast({
+                    "id": str(new_bot_log.id),
+                    "sender": "bot",
+                    "message": fallback_response,
+                    "created_at": new_bot_log.created_at.isoformat()
+                }, project_id)
+                asyncio.create_task(send_chat_log_webhook({
+                    "id": str(new_bot_log.id),
+                    "project_id": str(project_id),
+                    "sender": "bot",
+                    "message": fallback_response,
+                    "created_at": new_bot_log.created_at.isoformat()
+                }))
+            except Exception as e:
+                logger.error(f"Failed to log fallback bot chat: {e}")
+        return {"response": fallback_response, "action": None}
 
     try:
         # Initialize Chat Client
@@ -243,6 +278,14 @@ Guidelines:
                     "message": content,
                     "created_at": new_bot_log.created_at.isoformat()
                 }, project_id)
+
+                asyncio.create_task(send_chat_log_webhook({
+                    "id": str(new_bot_log.id),
+                    "project_id": str(project_id),
+                    "sender": "bot",
+                    "message": content,
+                    "created_at": new_bot_log.created_at.isoformat()
+                }))
                 
             except Exception as e:
                 logger.error(f"Failed to log bot chat: {e}")
@@ -289,6 +332,14 @@ async def send_consultant_message(data: ConsultantMessageRequest, db: Session = 
             "message": data.message,
             "created_at": new_log.created_at.isoformat()
         }, data.project_id)
+
+        asyncio.create_task(send_chat_log_webhook({
+            "id": str(new_log.id),
+            "project_id": str(data.project_id),
+            "sender": "consultant",
+            "message": data.message,
+            "created_at": new_log.created_at.isoformat()
+        }))
         
         return {"status": "sent"}
     except Exception as e:

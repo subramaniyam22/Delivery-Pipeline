@@ -7,10 +7,16 @@ Production-ready MVP with **FastAPI + LangGraph** backend, **Next.js** frontend,
 A multi-agent workflow system with 6 stages:
 1. **Project Onboarding** - Initial project setup and documentation
 2. **Project Assignment** - Task assignment and resource allocation
-3. **Build** - Development work (Human-in-the-loop)
+3. **Build** - Development work (Human-in-the-loop optional)
 4. **Test** - Quality assurance and testing
 5. **Defect Validation** - Defect analysis and validation
 6. **Complete** - Project closure and summary
+
+Key capabilities:
+- AI-driven workflow orchestration with optional human approval gates
+- Auto-advance from Sales to Onboarding when all required fields are complete
+- Multi-location support (`location_names`) and stage timeline history (`stage_history`)
+- Chat log webhooks for external systems and training pipelines
 
 ## 🔐 Roles & Permissions
 
@@ -22,6 +28,7 @@ A multi-agent workflow system with 6 stages:
 | **PC (Project Coordinator)** | Task assignment access, manage assignment stage |
 | **Builder** | Build stage access only (start/progress/complete, upload artifacts) |
 | **Tester** | Test stage access only (start/progress/complete, upload reports, create defects) |
+| **Sales** | Create projects, manage sales-stage data, save drafts |
 
 ## 🏗️ Architecture
 
@@ -33,6 +40,7 @@ A multi-agent workflow system with 6 stages:
 - **JWT** authentication with 6-hour expiry
 - **RBAC** enforcement on all endpoints
 - **Structured logging** with request IDs
+- **Webhook** delivery for chat logs
 
 ### Frontend (Next.js)
 - **Next.js 14** with App Router
@@ -71,13 +79,20 @@ A multi-agent workflow system with 6 stages:
 ### 1. Clone Repository
 ```bash
 git clone <repository-url>
-cd Delivery
+cd Delivery-Pipeline
 ```
 
 ### 2. Environment Setup
 ```bash
 cp .env.example .env
-# Edit .env if needed (optional: add OPENAI_API_KEY)
+# Edit .env if needed (optional: add OPENAI_API_KEY, BACKEND_URL, webhooks)
+```
+
+Recommended local values:
+```
+BACKEND_URL=http://localhost:8000
+CHAT_LOG_WEBHOOK_URL=
+CHAT_LOG_WEBHOOK_SECRET=
 ```
 
 ### 3. Start with Docker Compose
@@ -96,7 +111,10 @@ This will:
 # Option 1: Using seed script
 docker-compose exec backend python scripts/seed_admin.py
 
-# Option 2: Using API endpoint (only works if no users exist)
+# Option 2: Seed all default users/roles
+docker-compose exec backend python scripts/seed_users.py
+
+# Option 3: Using API endpoint (only works if no users exist)
 curl -X POST http://localhost:8000/users/seed
 ```
 
@@ -105,7 +123,7 @@ Open http://localhost:3000/login
 
 **Default credentials:**
 - Email: `subramaniyam.webdesigner@gmail.com`
-- Password: `admin123`
+- Password: `Admin@123`
 
 ⚠️ **Change password after first login!**
 
@@ -133,6 +151,12 @@ Once running, visit:
 - `POST /projects/{id}/advance` - Advance workflow (Admin/Manager)
 - `POST /projects/{id}/human/approve-build` - Approve build HITL (Admin/Manager)
 - `POST /projects/{id}/human/send-back` - Send back to previous stage (Admin/Manager)
+
+**AI Consultant & Webhooks:**
+- `POST /api/ai/consult` - AI consultant chat
+- `GET /api/ai/chat-logs/{project_id}` - Fetch chat logs
+- `POST /api/ai/chat/send` - Send consultant message
+- `POST /api/webhooks/chat-logs` - Receive chat log webhook
 
 **Artifacts:**
 - `POST /projects/{id}/artifacts/upload` - Upload artifact (role-based)
@@ -193,7 +217,8 @@ npm run dev
 ## 🗄️ Database Schema
 
 **Users** - User accounts with roles
-**Projects** - Project metadata and current stage
+**Projects** - Project metadata, locations (`location_names`), and current stage
+**Stage History** - Stage transition log (`stage_history`)
 **Tasks** - Task assignments per stage
 **StageOutputs** - Workflow stage execution results
 **Artifacts** - File uploads per stage
@@ -212,11 +237,13 @@ The workflow uses LangGraph for orchestration with 6 nodes:
 5. **defect_validation_node** - Validates defects and determines next action
 6. **complete_node** - Generates project summary
 
+Stage nodes delegate to dedicated agent classes in `backend/app/agents/` (onboarding, assignment, build, completion), with QA/Defect agents used in the Test/Defect Validation stages.
+
 ### Workflow Transitions
 - onboarding → assignment → build → test
 - test (with defects) → defect_validation
 - defect_validation → build (if valid defects) OR test (if retest) OR complete
-- build requires human approval before proceeding to test
+- human approval gates can be enabled per stage (HITL)
 
 ### LLM Integration
 - Uses OpenAI GPT-4 if `OPENAI_API_KEY` is provided
@@ -233,6 +260,14 @@ Located in `backend/app/agents/tools.py`:
 - `fetch_logs()` - Logging infrastructure
 
 Replace with actual API calls in production.
+
+## 🔔 Webhooks
+
+Chat logs can be delivered to an external system via webhook:
+
+- `CHAT_LOG_WEBHOOK_URL` (optional) points to a receiver endpoint
+- If not set, the service falls back to `BACKEND_URL + /api/webhooks/chat-logs`
+- `CHAT_LOG_WEBHOOK_SECRET` (optional) is validated via the `X-Webhook-Secret` header
 
 ## 📝 Configuration Management
 
@@ -301,7 +336,7 @@ docker-compose exec backend alembic upgrade head
 ## 📂 Project Structure
 
 ```
-Delivery/
+Delivery-Pipeline/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py              # FastAPI application

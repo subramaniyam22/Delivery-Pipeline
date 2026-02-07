@@ -21,6 +21,17 @@ class WorkflowState(TypedDict):
     defects: List[Dict[str, Any]]
     human_gate: bool
     stage_meta: Dict[str, Any]
+    db: Any
+
+
+def pre_stage_hook(state: WorkflowState) -> None:
+    """Hook for orchestration before a stage runs."""
+    return None
+
+
+def post_stage_hook(state: WorkflowState, result: Dict[str, Any]) -> None:
+    """Hook for orchestration after a stage runs."""
+    return None
 
 
 def should_continue_from_test(state: WorkflowState) -> str:
@@ -106,7 +117,8 @@ def execute_workflow_stage(
     context: Dict[str, Any],
     artifacts: List[Dict[str, Any]],
     defects: List[Dict[str, Any]],
-    human_gate: bool = False
+    human_gate: bool = False,
+    db: Any = None
 ) -> Dict[str, Any]:
     """
     Execute a single stage of the workflow
@@ -121,8 +133,11 @@ def execute_workflow_stage(
         "artifacts": artifacts,
         "defects": defects,
         "human_gate": human_gate,
-        "stage_meta": {}
+        "stage_meta": {},
+        "db": db
     }
+    
+    pre_stage_hook(state)
     
     # Execute the appropriate node based on current stage
     if current_stage == Stage.ONBOARDING:
@@ -147,4 +162,5 @@ def execute_workflow_stage(
             "evidence_required": []
         }
     
+    post_stage_hook(state, result)
     return result

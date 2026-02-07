@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     RESEND_API_KEY: Optional[str] = None
     EMAIL_FROM: str = "Delivery Management <noreply@resend.dev>"
     APP_NAME: str = "Delivery Management"
+
+    # Webhooks
+    CHAT_LOG_WEBHOOK_URL: Optional[str] = None
+    CHAT_LOG_WEBHOOK_SECRET: Optional[str] = None
+    BACKEND_URL: Optional[str] = None
     
     # Error Tracking (Sentry)
     SENTRY_DSN: Optional[str] = None

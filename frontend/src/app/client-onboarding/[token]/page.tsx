@@ -155,7 +155,7 @@ const ReviewModal = ({ onClose, onConfirm, phases, requirements }: any) => {
 };
 
 const PHASE_DEFINITIONS = [
-    { id: 'phase-1', title: 'Project Basics', fields: ['project_summary', 'project_notes', 'phase_number'] },
+    { id: 'phase-1', title: 'Project Basics', fields: ['project_summary', 'project_notes', 'phase_number', 'contacts'] },
     { id: 'phase-2', title: 'Brand & Visual Assets', fields: ['logo', 'images', 'copy', 'copy_scope', 'theme', 'template_mode', 'template_references'] },
     { id: 'phase-3', title: 'Design Preferences', fields: ['brand_guidelines', 'color_selection', 'font_selection', 'custom_graphics', 'navigation'] },
     { id: 'phase-4', title: 'Property Content', fields: ['floor_plans', 'virtual_tours', 'poi', 'stock_images', 'sitemap', 'specials'] },
@@ -538,6 +538,7 @@ export default function ClientOnboardingPage() {
             setFormData(prev => prev ? {
                 ...prev,
                 completion_percentage: res.data.completion_percentage,
+                missing_fields: res.data.missing_fields || prev.missing_fields,
                 data: { ...prev.data, ...updates }
             } : null);
         } catch (err: any) {
@@ -640,6 +641,34 @@ export default function ClientOnboardingPage() {
         updateLocalData({ requirements: next });
     };
 
+    const updateContacts = (contacts: Array<{ name: string; email: string; role: string; is_primary: boolean }>) => {
+        updateLocalData({ contacts });
+        saveFormData({ contacts });
+    };
+
+    const addContactRow = () => {
+        if (!formData) return;
+        const contacts = [...(formData.data.contacts || [])];
+        contacts.push({ name: '', email: '', role: '', is_primary: contacts.length === 0 });
+        updateContacts(contacts);
+    };
+
+    const updateContactField = (index: number, updates: Partial<{ name: string; email: string; role: string; is_primary: boolean }>) => {
+        if (!formData) return;
+        const contacts = [...(formData.data.contacts || [])];
+        contacts[index] = { ...contacts[index], ...updates };
+        updateContacts(contacts);
+    };
+
+    const setPrimaryContact = (index: number) => {
+        if (!formData) return;
+        const contacts = (formData.data.contacts || []).map((c, i) => ({
+            ...c,
+            is_primary: i === index
+        }));
+        updateContacts(contacts);
+    };
+
     const hasValue = (val: any) => {
         if (val === null || val === undefined) return false;
         if (typeof val === 'string') return val.trim().length > 0;
@@ -653,6 +682,20 @@ export default function ClientOnboardingPage() {
         const req = formData.data.requirements || {};
         const data = formData.data;
 
+        const navigationProvided = req.navigation_notes_option
+            ? (req.navigation_notes_option === 'Custom' ? hasValue(req.navigation_notes) : true)
+            : false;
+        const templateModeProvided = hasValue(req.template_mode) || !!data.selected_template_id;
+        const templateReferencesProvided = req.template_mode === 'NEW'
+            ? hasValue(req.template_references)
+            : templateModeProvided;
+
+        const brandGuidelinesAvailable = data.requirements?.brand_guidelines_available;
+        const brandGuidelinesProvided =
+            brandGuidelinesAvailable === true
+                ? hasValue(req.brand_guidelines_details)
+                : brandGuidelinesAvailable === false || brandGuidelinesAvailable === undefined;
+
         const items = [
             // Assets
             { id: 'logo', label: 'Company Logo', provided: !!(data.logo_url || data.logo_file_path), eta: missingFieldsEta['Company Logo'] },
@@ -661,19 +704,19 @@ export default function ClientOnboardingPage() {
             { id: 'wcag', label: 'Accessibility Choice', provided: data.wcag_confirmed === true, eta: missingFieldsEta['WCAG Compliance'] },
             { id: 'privacy', label: 'Privacy Policy', provided: !!(data.privacy_policy_url || data.privacy_policy_text), eta: missingFieldsEta['Privacy Policy'] },
             { id: 'theme', label: 'Theme Selection', provided: !!(data.selected_template_id), eta: missingFieldsEta['Theme Preference'] },
-            { id: 'contacts', label: 'Contacts', provided: (data.contacts?.length || 0) > 0, eta: missingFieldsEta['Contacts'] },
+            { id: 'contacts', label: 'Contacts', provided: (data.contacts || []).some(c => c.is_primary), eta: missingFieldsEta['Contacts'] },
 
             // Project Requirements
             { id: 'project_summary', label: 'Project Summary', provided: hasValue(req.project_summary), eta: missingFieldsEta['Project Summary'] },
             { id: 'project_notes', label: 'Project Notes', provided: hasValue(req.project_notes), eta: missingFieldsEta['Project Notes'] },
             { id: 'phase_number', label: 'Phase', provided: hasValue(req.phase_number), eta: missingFieldsEta['Phase'] },
-            { id: 'template_mode', label: 'Template Mode', provided: hasValue(req.template_mode), eta: missingFieldsEta['Template Mode'] },
-            { id: 'template_references', label: 'Template References', provided: req.template_mode === 'NEW' ? hasValue(req.template_references) : (!!req.template_mode), eta: missingFieldsEta['Template References'] },
-            { id: 'brand_guidelines', label: 'Brand Guidelines', provided: data.requirements?.brand_guidelines_available === true ? hasValue(req.brand_guidelines_details) : data.requirements?.brand_guidelines_available === false, eta: missingFieldsEta['Brand Guidelines'] },
+            { id: 'template_mode', label: 'Template Mode', provided: templateModeProvided, eta: missingFieldsEta['Template Mode'] },
+            { id: 'template_references', label: 'Template References', provided: templateReferencesProvided, eta: missingFieldsEta['Template References'] },
+            { id: 'brand_guidelines', label: 'Brand Guidelines', provided: brandGuidelinesProvided, eta: missingFieldsEta['Brand Guidelines'] },
             { id: 'color_selection', label: 'Color Selection', provided: hasValue(req.color_selection), eta: missingFieldsEta['Color Selection'] },
             { id: 'font_selection', label: 'Font Selection', provided: hasValue(req.font_selection), eta: missingFieldsEta['Font Selection'] },
             { id: 'custom_graphics', label: 'Custom Graphics', provided: data.requirements?.custom_graphic_notes_enabled === true ? hasValue(req.custom_graphic_notes) : data.requirements?.custom_graphic_notes_enabled === false, eta: missingFieldsEta['Custom Graphics'] },
-            { id: 'navigation', label: 'Navigation', provided: hasValue(req.navigation_notes), eta: missingFieldsEta['Navigation'] },
+            { id: 'navigation', label: 'Navigation', provided: navigationProvided, eta: missingFieldsEta['Navigation'] },
             { id: 'stock_images', label: 'Stock Images', provided: hasValue(req.stock_images_reference), eta: missingFieldsEta['Stock Images'] },
             { id: 'floor_plans', label: 'Floor Plans', provided: hasValue(req.floor_plan_images), eta: missingFieldsEta['Floor Plans'] },
             { id: 'sitemap', label: 'Sitemap', provided: hasValue(req.sitemap), eta: missingFieldsEta['Sitemap'] },
@@ -1022,6 +1065,46 @@ export default function ClientOnboardingPage() {
                                     <option key={option} value={option}>{option}</option>
                                 ))}
                             </select>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Primary Contact Information <span className="required">*</span></label>
+                            <div className="contact-list">
+                                {(formData.data.contacts || []).map((contact, idx) => (
+                                    <div key={idx} className="contact-row">
+                                        <input
+                                            type="text"
+                                            placeholder="Name"
+                                            value={contact.name || ''}
+                                            onChange={(e) => updateContactField(idx, { name: e.target.value })}
+                                        />
+                                        <input
+                                            type="email"
+                                            placeholder="Email"
+                                            value={contact.email || ''}
+                                            onChange={(e) => updateContactField(idx, { email: e.target.value })}
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Role"
+                                            value={contact.role || ''}
+                                            onChange={(e) => updateContactField(idx, { role: e.target.value })}
+                                        />
+                                        <label className="contact-primary">
+                                            <input
+                                                type="radio"
+                                                name="primary_contact"
+                                                checked={!!contact.is_primary}
+                                                onChange={() => setPrimaryContact(idx)}
+                                            />
+                                            Primary
+                                        </label>
+                                    </div>
+                                ))}
+                                <button className="btn-add-contact" type="button" onClick={addContactRow}>
+                                    + Add Contact
+                                </button>
+                            </div>
                         </div>
                     </PhaseSection>
 
@@ -1739,25 +1822,31 @@ export default function ClientOnboardingPage() {
                         completion={(getAllRequirements().filter(r => PHASE_DEFINITIONS[4].fields.includes(r.id) && r.provided).length / PHASE_DEFINITIONS[4].fields.length) * 100}
                     >
                         <div className="form-group">
-                            <div className="wcag-container" style={{
-                                background: '#f8fafc',
-                                border: '1px solid #e2e8f0',
-                                borderRadius: '8px',
-                                padding: '16px',
-                                display: 'flex',
-                                alignItems: 'center'
-                            }}>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: 0, width: '100%', cursor: 'pointer' }}>
+                            <label>WCAG Compliance <span className="required">*</span></label>
+                            <div className="radio-group">
+                                <label>
                                     <input
-                                        type="checkbox"
-                                        checked={formData.data.wcag_compliance_required}
-                                        onChange={(e) => saveFormData({
-                                            wcag_compliance_required: e.target.checked,
+                                        type="radio"
+                                        name="wcag_compliance_required"
+                                        checked={formData.data.wcag_compliance_required === true}
+                                        onChange={() => saveFormData({
+                                            wcag_compliance_required: true,
                                             wcag_confirmed: true
                                         })}
-                                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                                     />
-                                    <span style={{ fontWeight: 500, color: '#1e293b' }}>WCAG Compliance Review Required</span>
+                                    Yes
+                                </label>
+                                <label>
+                                    <input
+                                        type="radio"
+                                        name="wcag_compliance_required"
+                                        checked={formData.data.wcag_compliance_required === false}
+                                        onChange={() => saveFormData({
+                                            wcag_compliance_required: false,
+                                            wcag_confirmed: true
+                                        })}
+                                    />
+                                    No
                                 </label>
                             </div>
                         </div>
@@ -1864,6 +1953,19 @@ export default function ClientOnboardingPage() {
                 </main >
 
                 <aside className="sidebar">
+                    {formData?.missing_fields?.length ? (
+                        <div className="missing-fields-card">
+                            <div className="missing-fields-title">Missing required items</div>
+                            <ul>
+                                {formData.missing_fields.map((field) => (
+                                    <li key={field}>{field}</li>
+                                ))}
+                            </ul>
+                            <div className="missing-fields-note">
+                                Completion reaches 100% only when all required items are provided.
+                            </div>
+                        </div>
+                    ) : null}
                     <ChecklistPanel
                         requirements={getAllRequirements()}
                         onScrollTo={scrollToPhase}
@@ -2981,6 +3083,80 @@ export default function ClientOnboardingPage() {
                     height: calc(100vh - 48px);
                     overflow-y: auto;
                     padding-right: 4px; /* Scrollbar space */
+                }
+                
+                .contact-list {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                
+                .contact-row {
+                    display: grid;
+                    grid-template-columns: 1.2fr 1.5fr 1fr auto;
+                    gap: 8px;
+                    align-items: center;
+                    background: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 10px;
+                }
+                
+                .contact-row input[type="text"],
+                .contact-row input[type="email"] {
+                    background: white;
+                }
+                
+                .contact-primary {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 12px;
+                    color: #475569;
+                }
+                
+                .btn-add-contact {
+                    align-self: flex-start;
+                    padding: 8px 12px;
+                    border-radius: 8px;
+                    border: 1px solid #cbd5e1;
+                    background: #ffffff;
+                    color: #334155;
+                    font-size: 12px;
+                    font-weight: 600;
+                    cursor: pointer;
+                }
+                
+                .btn-add-contact:hover {
+                    background: #f1f5f9;
+                }
+                
+                .missing-fields-card {
+                    background: #fff7ed;
+                    border: 1px solid #fed7aa;
+                    border-radius: 10px;
+                    padding: 12px 14px;
+                    margin-bottom: 12px;
+                    color: #7c2d12;
+                    font-size: 12px;
+                }
+                
+                .missing-fields-title {
+                    font-weight: 600;
+                    margin-bottom: 6px;
+                }
+                
+                .missing-fields-card ul {
+                    margin: 0 0 6px 16px;
+                    padding: 0;
+                }
+                
+                .missing-fields-card li {
+                    margin-bottom: 2px;
+                }
+                
+                .missing-fields-note {
+                    color: #9a3412;
                 }
 
                 @media (max-width: 1024px) {

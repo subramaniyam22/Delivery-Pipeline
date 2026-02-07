@@ -773,7 +773,12 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
     # Auto-update tasks
     auto_update_task_status(db, onboarding.project_id, onboarding)
     
-    return {"success": True, "completion_percentage": onboarding.completion_percentage}
+    missing_fields = get_missing_fields(onboarding, required_fields)
+    return {
+        "success": True,
+        "completion_percentage": onboarding.completion_percentage,
+        "missing_fields": missing_fields
+    }
 
 
 @client_router.post("/{token}/submit")

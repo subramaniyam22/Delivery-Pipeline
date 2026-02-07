@@ -144,6 +144,7 @@ class Project(Base):
     # Phase Tracking & SLA
     phase_deadlines = Column(JSONB, default=dict)  # {"ONBOARDING": "2026-01-20", "BUILD": "2026-02-01"}
     phase_start_dates = Column(JSONB, default=dict)  # {"ONBOARDING": "2026-01-12"}
+    stage_history = Column(JSONB, default=list)  # [{from_stage, to_stage, at, actor_user_id}]
     is_delayed = Column(Boolean, default=False)
     delay_reason = Column(Text, nullable=True)
     
@@ -163,6 +164,7 @@ class Project(Base):
     # Sales Fields
     pmc_name = Column(String(255), nullable=True)
     location = Column(String(255), nullable=True)
+    location_names = Column(JSONB, default=list)
     client_email_ids = Column(Text, nullable=True)
     sales_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     

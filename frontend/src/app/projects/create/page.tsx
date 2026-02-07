@@ -54,7 +54,10 @@ export default function CreateProjectPage() {
                     setDescription(project.description || '');
                     setPriority(project.priority);
                     setPmcName(project.pmc_name || '');
-                    setLocation(project.location || '');
+                    const locationNames = Array.isArray(project.location_names)
+                        ? project.location_names.join(', ')
+                        : '';
+                    setLocation(locationNames || project.location || '');
                     setClientEmailIds(project.client_email_ids || '');
                     setProjectType(project.project_type || 'Full Website');
                     setLoading(false);
@@ -71,6 +74,7 @@ export default function CreateProjectPage() {
         setError('');
         setLoading(true);
 
+        const locationNames = normalizeList(location);
         const payload = {
             title,
             client_name: clientName,
@@ -78,6 +82,7 @@ export default function CreateProjectPage() {
             priority,
             pmc_name: pmcName || undefined,
             location: location || undefined,
+            location_names: locationNames.length ? locationNames : undefined,
             client_email_ids: clientEmailIds || undefined,
             project_type: projectType,
             status: status
@@ -100,8 +105,21 @@ export default function CreateProjectPage() {
         }
     };
 
+    const normalizeList = (value: string) =>
+        value.split(',').map(item => item.trim()).filter(Boolean);
+
     const isFormValid = () => {
-        return title && clientName && pmcName && location && clientEmailIds && projectType;
+        const baseValid = title.trim() && clientName.trim();
+        const locations = normalizeList(location);
+        return (
+            baseValid &&
+            description.trim() &&
+            pmcName.trim() &&
+            locations.length > 0 &&
+            clientEmailIds.trim() &&
+            projectType.trim() &&
+            priority
+        );
     };
 
     const priorities = [
@@ -176,6 +194,7 @@ export default function CreateProjectPage() {
                                             type="text"
                                             value={pmcName}
                                             onChange={(e) => setPmcName(e.target.value)}
+                                            required
                                             disabled={loading}
                                             placeholder="Property Management Company"
                                         />
@@ -187,8 +206,9 @@ export default function CreateProjectPage() {
                                             type="text"
                                             value={location}
                                             onChange={(e) => setLocation(e.target.value)}
+                                            required
                                             disabled={loading}
-                                            placeholder="Project Location"
+                                            placeholder="Location 1, Location 2"
                                         />
                                     </div>
                                 </div>
@@ -201,6 +221,7 @@ export default function CreateProjectPage() {
                                             type="text"
                                             value={clientEmailIds}
                                             onChange={(e) => setClientEmailIds(e.target.value)}
+                                            required
                                             disabled={loading}
                                             placeholder="email1@example.com, email2@example.com"
                                         />
@@ -211,6 +232,7 @@ export default function CreateProjectPage() {
                                             id="projectType"
                                             value={projectType}
                                             onChange={(e) => setProjectType(e.target.value)}
+                                            required
                                             disabled={loading}
                                             style={{
                                                 width: '100%',
@@ -232,19 +254,22 @@ export default function CreateProjectPage() {
                         )}
 
                         <div className="form-group">
-                            <label htmlFor="description">Description</label>
+                            <label htmlFor="description">
+                                Description <span className="required">*</span>
+                            </label>
                             <textarea
                                 id="description"
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
+                                required
                                 disabled={loading}
-                                placeholder="Brief project description (optional)"
+                                placeholder="Brief project description"
                                 rows={3}
                             />
                         </div>
 
                         <div className="form-group">
-                            <label>Priority</label>
+                            <label>Priority <span className="required">*</span></label>
                             <div className="priority-grid">
                                 {priorities.map((p) => (
                                     <button

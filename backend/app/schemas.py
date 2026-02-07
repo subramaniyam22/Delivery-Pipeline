@@ -78,6 +78,7 @@ class ProjectCreate(BaseModel):
     priority: str = Field(default="MEDIUM", pattern="^(LOW|MEDIUM|HIGH|CRITICAL)$")
     pmc_name: Optional[str] = Field(None, max_length=255)
     location: Optional[str] = Field(None, max_length=255)
+    location_names: Optional[List[str]] = None
     client_email_ids: Optional[str] = Field(None, max_length=1000)
     project_type: Optional[str] = Field(None, max_length=50)
     status: Optional[ProjectStatus] = ProjectStatus.DRAFT
@@ -108,6 +109,7 @@ class ProjectUpdate(BaseModel):
     require_manual_review: Optional[bool] = None
     pmc_name: Optional[str] = None
     location: Optional[str] = None
+    location_names: Optional[List[str]] = None
     client_email_ids: Optional[str] = None
     manager_user_id: Optional[UUID] = None
 
@@ -164,9 +166,11 @@ class ProjectResponse(BaseModel):
     # Sales Fields
     pmc_name: Optional[str] = None
     location: Optional[str] = None
+    location_names: Optional[List[str]] = None
     client_email_ids: Optional[str] = None
     sales_user_id: Optional[UUID] = None
     manager_user_id: Optional[UUID] = None
+    stage_history: Optional[List[Dict[str, Any]]] = None
     
     sales_rep: Optional[UserBrief] = None
     manager_chk: Optional[UserBrief] = None
