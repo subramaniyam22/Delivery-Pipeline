@@ -1922,6 +1922,97 @@ export default function ProjectDetailPage() {
                     )}
                 </header>
 
+            {/* Project Information Summary (always visible, including Drafts) */}
+            <div className="project-summary-box" style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>Project Information Summary</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
+                    <div className="summary-field">
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Project Title</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.title || '—'}</div>
+                    </div>
+                    <div className="summary-field">
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Name</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.client_name || '—'}</div>
+                    </div>
+                    <div className="summary-field">
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>PMC Name</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.pmc_name || '—'}</div>
+                    </div>
+                    <div className="summary-field">
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Location</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>
+                            {(Array.isArray(project.location_names) && project.location_names.length
+                                ? project.location_names.join(', ')
+                                : project.location) || '—'}
+                        </div>
+                    </div>
+                    <div className="summary-field" style={{ minWidth: 0 }}>
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Emails</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500, wordBreak: 'break-all' }}>{project.client_email_ids || '—'}</div>
+                    </div>
+                    <div className="summary-field">
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Project Type</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.project_type || '—'}</div>
+                    </div>
+                    <div className="summary-field">
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Priority</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.priority}</div>
+                    </div>
+                    <div className="summary-field" style={{ gridColumn: '1 / -1' }}>
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Description</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.description || '—'}</div>
+                    </div>
+                    {project.sales_rep && (
+                        <div className="summary-field" style={{ minWidth: 0 }}>
+                            <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Sales Rep</label>
+                            <div style={{ fontSize: '14px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={project.sales_rep.name}>{project.sales_rep.name}</div>
+                        </div>
+                    )}
+                    <div className="summary-field">
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Notification</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {onboardingData?.review_status === 'NEEDS_CHANGES' ? (
+                                <><span style={{ color: '#ef4444' }}>❌</span> Failed (Missing Info)</>
+                            ) : onboardingData?.review_status === 'PENDING' || onboardingData?.review_status === 'APPROVED' ? (
+                                <><span style={{ color: '#10b981' }}>✅</span> Sent</>
+                            ) : (
+                                <><span style={{ color: '#f59e0b' }}>⏳</span> Pending</>
+                            )}
+
+                            {/* Manual Resend Button */}
+                            {(onboardingData?.review_status === 'PENDING' || onboardingData?.review_status === 'APPROVED') && (
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            const btn = document.getElementById('resend-btn');
+                                            if (btn) btn.innerText = 'Sending...';
+                                            const response = await onboardingAPI.sendManualReminder(projectId);
+                                            console.log(response.data.message || 'Notification resent successfully!');
+                                        } catch (err: any) {
+                                            const errMsg = err.response?.data?.detail || err.response?.data?.message || err.message;
+                                            alert('Failed to resend notification. ' + errMsg);
+                                            console.error(err);
+                                        } finally {
+                                            const btn = document.getElementById('resend-btn');
+                                            if (btn) btn.innerText = '↺ Resend';
+                                        }
+                                    }}
+                                    id="resend-btn"
+                                    style={{
+                                        fontSize: '11px', padding: '2px 8px', borderRadius: '4px',
+                                        border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer',
+                                        color: '#64748b'
+                                    }}
+                                    title="Resend email notification"
+                                >
+                                    ↺ Resend
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
                 {/* Sales handover summary removed (duplicate of onboarding details) */}
 
                 {/* Stage Timeline */}
@@ -2453,104 +2544,6 @@ export default function ProjectDetailPage() {
 
 
 
-                            </div>
-                        </div>
-
-                        {/* Project Information Summary (Shared by Sales) */}
-                        <div className="project-summary-box" style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
-                            <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600, color: '#1e293b' }}>Project Information Summary</h3>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px' }}>
-                                <div className="summary-field">
-                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Project Title</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.title || '—'}</div>
-                                </div>
-                                <div className="summary-field">
-                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Name</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.client_name || '—'}</div>
-                                </div>
-                                <div className="summary-field">
-                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>PMC Name</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.pmc_name || '—'}</div>
-                                </div>
-                                <div className="summary-field">
-                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Location</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>
-                                        {(Array.isArray(project.location_names) && project.location_names.length
-                                            ? project.location_names.join(', ')
-                                            : project.location) || '—'}
-                                    </div>
-                                </div>
-                                <div className="summary-field" style={{ minWidth: 0 }}>
-                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Emails</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500, wordBreak: 'break-all' }}>{project.client_email_ids || '—'}</div>
-                                </div>
-                                <div className="summary-field">
-                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Project Type</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.project_type || '—'}</div>
-                                </div>
-                                <div className="summary-field">
-                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Priority</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.priority}</div>
-                                </div>
-                                <div className="summary-field" style={{ gridColumn: '1 / -1' }}>
-                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Description</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.description || '—'}</div>
-                                </div>
-                                {project.sales_rep && (
-                                    <div className="summary-field" style={{ minWidth: 0 }}>
-                                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Sales Rep</label>
-                                        <div style={{ fontSize: '14px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={project.sales_rep.name}>{project.sales_rep.name}</div>
-                                    </div>
-                                )}
-                                {project.description && (
-                                    <div className="summary-field" style={{ gridColumn: '1 / -1' }}>
-                                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Description</label>
-                                        <div style={{ fontSize: '14px', lineHeight: '1.5' }}>{project.description}</div>
-                                    </div>
-                                )}
-                                <div className="summary-field">
-                                    <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Notification</label>
-                                    <div style={{ fontSize: '14px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        {onboardingData?.review_status === 'NEEDS_CHANGES' ? (
-                                            <><span style={{ color: '#ef4444' }}>❌</span> Failed (Missing Info)</>
-                                        ) : onboardingData?.review_status === 'PENDING' || onboardingData?.review_status === 'APPROVED' ? (
-                                            <><span style={{ color: '#10b981' }}>✅</span> Sent</>
-                                        ) : (
-                                            <><span style={{ color: '#f59e0b' }}>⏳</span> Pending</>
-                                        )}
-
-                                        {/* Manual Resend Button */}
-                                        {(onboardingData?.review_status === 'PENDING' || onboardingData?.review_status === 'APPROVED') && (
-                                            <button
-                                                onClick={async () => {
-                                                    try {
-                                                        const btn = document.getElementById('resend-btn');
-                                                        if (btn) btn.innerText = 'Sending...';
-                                                        const response = await onboardingAPI.sendManualReminder(projectId);
-                                                        // Show actual message from backend
-                                                        console.log(response.data.message || 'Notification resent successfully!');
-                                                    } catch (err: any) {
-                                                        const errMsg = err.response?.data?.detail || err.response?.data?.message || err.message;
-                                                        alert('Failed to resend notification. ' + errMsg);
-                                                        console.error(err);
-                                                    } finally {
-                                                        const btn = document.getElementById('resend-btn');
-                                                        if (btn) btn.innerText = '↺ Resend';
-                                                    }
-                                                }}
-                                                id="resend-btn"
-                                                style={{
-                                                    fontSize: '11px', padding: '2px 8px', borderRadius: '4px',
-                                                    border: '1px solid #cbd5e1', background: 'white', cursor: 'pointer',
-                                                    color: '#64748b'
-                                                }}
-                                                title="Resend email notification"
-                                            >
-                                                ↺ Resend
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
                             </div>
                         </div>
 

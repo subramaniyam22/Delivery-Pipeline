@@ -23,6 +23,12 @@ export default function DashboardPage() {
     const [selectedStage, setSelectedStage] = useState<string | null>(null);
     const [user, setUser] = useState<any>(null);
 
+    const getApiUrl = () => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const getAuthHeaders = (): Record<string, string> => {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+        return token ? { Authorization: `Bearer ${token}` } : {};
+    };
+
     const stageConfig = [
         { key: 'SALES', label: 'Sales Handover', color: 'var(--stage-sales, #9333ea)', icon: '🤝' },
         { key: 'ONBOARDING', label: 'Project Onboarding', color: 'var(--stage-onboarding)', icon: '📋' },
@@ -98,6 +104,56 @@ export default function DashboardPage() {
 
     const totalActive = projects.filter((p) => p.current_stage !== 'COMPLETE').length;
     const totalComplete = projects.filter((p) => p.current_stage === 'COMPLETE').length;
+
+    const canManageProject = (project: any) => {
+        if (!user) return false;
+        if (['ADMIN', 'MANAGER'].includes(user.role)) return true;
+        if (user.role === 'CONSULTANT') {
+            return project.consultant_user_id === user.id || project.pc_user_id === user.id;
+        }
+        if (user.role === 'SALES') {
+            return project.sales_user_id === user.id || project.creator_user_id === user.id;
+        }
+        return false;
+    };
+
+    const handlePause = async (project: any) => {
+        const reason = prompt('Reason for pausing (optional):') || '';
+        await projectsAPI.pause(project.id, reason);
+        await loadProjects(user);
+    };
+
+    const handleArchive = async (project: any) => {
+        const reason = prompt('Reason for archiving (optional):') || '';
+        await projectsAPI.archive(project.id, reason);
+        await loadProjects(user);
+    };
+
+    const handleResume = async (project: any) => {
+        const response = await fetch(`${getApiUrl()}/project-management/resume/${project.id}`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.detail || 'Failed to resume project');
+            return;
+        }
+        await loadProjects(user);
+    };
+
+    const handleUnarchive = async (project: any) => {
+        const response = await fetch(`${getApiUrl()}/project-management/unarchive/${project.id}`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.detail || 'Failed to unarchive project');
+            return;
+        }
+        await loadProjects(user);
+    };
 
     if (loading) {
         return (
@@ -212,15 +268,89 @@ export default function DashboardPage() {
                                                 </td>
                                                 <td className="cell-date">{new Date(project.created_at).toLocaleDateString()}</td>
                                                 <td>
-                                                    <button
-                                                        className="btn-view"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            router.push(`/projects/${project.id}`);
-                                                        }}
-                                                    >
-                                                        View
-                                                    </button>
+                                                    {(() => {
+                                                        const canManage = canManageProject(project) || (user?.role === 'SALES' && project.status === 'DRAFT');
+                                                        const isAdminManager = ['ADMIN', 'MANAGER'].includes(user?.role || '');
+                                                        return (
+                                                            <div className="action-buttons">
+                                                                <button
+                                                                    className="btn-view"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        router.push(`/projects/${project.id}`);
+                                                                    }}
+                                                                    title="View Details"
+                                                                >
+                                                                    👁️
+                                                                </button>
+                                                                {(project.status === 'ACTIVE' || project.status === 'DRAFT') && (
+                                                                    <button
+                                                                        className="btn-pause"
+                                                                        onClick={() => canManage && handlePause(project)}
+                                                                        title="Pause Project"
+                                                                        disabled={!canManage}
+                                                                    >
+                                                                        ⏸️
+                                                                    </button>
+                                                                )}
+                                                                {project.status === 'PAUSED' && (
+                                                                    <button
+                                                                        className="btn-resume"
+                                                                        onClick={() => canManage && handleResume(project)}
+                                                                        title="Resume Project"
+                                                                        disabled={!canManage}
+                                                                    >
+                                                                        ▶️
+                                                                    </button>
+                                                                )}
+                                                                {project.status !== 'ARCHIVED' && (
+                                                                    <button
+                                                                        className="btn-archive"
+                                                                        onClick={() => canManage && handleArchive(project)}
+                                                                        title="Archive Project"
+                                                                        disabled={!canManage}
+                                                                    >
+                                                                        📦
+                                                                    </button>
+                                                                )}
+                                                                {project.status === 'ARCHIVED' && (
+                                                                    <button
+                                                                        className="btn-unarchive"
+                                                                        onClick={() => isAdminManager && handleUnarchive(project)}
+                                                                        title="Unarchive Project"
+                                                                        disabled={!isAdminManager}
+                                                                    >
+                                                                        📤
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    className="btn-delete"
+                                                                    onClick={() => {
+                                                                        if (!canManage) return;
+                                                                        if (confirm("Are you sure you want to DELETE this project?")) {
+                                                                            projectsAPI.delete(project.id)
+                                                                                .then(() => loadProjects(user))
+                                                                                .catch(() => alert("Failed to delete"));
+                                                                        }
+                                                                    }}
+                                                                    title="Delete Project"
+                                                                    style={{ color: '#ef4444' }}
+                                                                    disabled={!canManage}
+                                                                >
+                                                                    🗑️
+                                                                </button>
+                                                                {user?.role === 'SALES' && project.status === 'DRAFT' && (
+                                                                    <button
+                                                                        className="btn-edit"
+                                                                        onClick={() => router.push(`/projects/create?edit=${project.id}`)}
+                                                                        title="Edit Project"
+                                                                    >
+                                                                        ✏️
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </td>
                                             </tr>
                                         ))}

@@ -1953,19 +1953,6 @@ export default function ClientOnboardingPage() {
                 </main >
 
                 <aside className="sidebar">
-                    {formData?.missing_fields?.length ? (
-                        <div className="missing-fields-card">
-                            <div className="missing-fields-title">Missing required items</div>
-                            <ul>
-                                {formData.missing_fields.map((field) => (
-                                    <li key={field}>{field}</li>
-                                ))}
-                            </ul>
-                            <div className="missing-fields-note">
-                                Completion reaches 100% only when all required items are provided.
-                            </div>
-                        </div>
-                    ) : null}
                     <ChecklistPanel
                         requirements={getAllRequirements()}
                         onScrollTo={scrollToPhase}

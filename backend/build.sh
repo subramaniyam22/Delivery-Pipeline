@@ -5,7 +5,7 @@ set -o errexit
 pip install -r requirements.txt
 
 # Run database migrations
-alembic upgrade heads
+alembic upgrade head
 
 # Create Notifications Table (if missing)
 python create_notifications_table.py || true

@@ -513,91 +513,99 @@ export default function ProjectsPage() {
                                     )}
                                     <td>
                                         <div className="action-buttons">
-                                            {/* Standard View Button for All Users */}
-                                            <button
-                                                className="btn-view"
-                                                onClick={() => router.push(`/projects/${project.id}`)}
-                                                title="View Details"
-                                            >
-                                                👁️
-                                            </button>
-
-                                            {/* Manage Actions for Sales, Admin, Manager, Assigned */}
-                                            {(canManageProject(project) || (user?.role === 'SALES' && (project.sales_user_id === user.id || project.status === 'DRAFT'))) && (
-                                                <>
-                                                    {/* Pause Button */}
-                                                    {(project.status === 'ACTIVE' || project.status === 'DRAFT') && (
+                                            {(() => {
+                                                const canManage = canManageProject(project) || (user?.role === 'SALES' && (project.sales_user_id === user.id || project.status === 'DRAFT'));
+                                                const isAdminManager = ['ADMIN', 'MANAGER'].includes(user?.role || '');
+                                                return (
+                                                    <>
+                                                        {/* Standard View Button for All Users */}
                                                         <button
-                                                            className="btn-pause"
-                                                            onClick={() => handlePause(project)}
-                                                            title="Pause Project"
-                                                            disabled={user?.role === 'SALES' && project.status !== 'DRAFT' && project.status !== 'ACTIVE'}
+                                                            className="btn-view"
+                                                            onClick={() => router.push(`/projects/${project.id}`)}
+                                                            title="View Details"
                                                         >
-                                                            ⏸️
+                                                            👁️
                                                         </button>
-                                                    )}
 
-                                                    {/* Resume Button */}
-                                                    {project.status === 'PAUSED' && (
+                                                        {/* Pause Button */}
+                                                        {(project.status === 'ACTIVE' || project.status === 'DRAFT') && (
+                                                            <button
+                                                                className="btn-pause"
+                                                                onClick={() => canManage && handlePause(project)}
+                                                                title="Pause Project"
+                                                                disabled={!canManage || (user?.role === 'SALES' && project.status !== 'DRAFT' && project.status !== 'ACTIVE')}
+                                                            >
+                                                                ⏸️
+                                                            </button>
+                                                        )}
+
+                                                        {/* Resume Button */}
+                                                        {project.status === 'PAUSED' && (
+                                                            <button
+                                                                className="btn-resume"
+                                                                onClick={() => canManage && handleResume(project)}
+                                                                title="Resume Project"
+                                                                disabled={!canManage}
+                                                            >
+                                                                ▶️
+                                                            </button>
+                                                        )}
+
+                                                        {/* Archive Button */}
+                                                        {project.status !== 'ARCHIVED' && (
+                                                            <button
+                                                                className="btn-archive"
+                                                                onClick={() => canManage && handleArchive(project)}
+                                                                title="Archive Project"
+                                                                disabled={!canManage}
+                                                            >
+                                                                📦
+                                                            </button>
+                                                        )}
+
+                                                        {/* Unarchive Button */}
+                                                        {project.status === 'ARCHIVED' && (
+                                                            <button
+                                                                className="btn-unarchive"
+                                                                onClick={() => isAdminManager && handleUnarchive(project)}
+                                                                title="Unarchive Project"
+                                                                disabled={!isAdminManager}
+                                                            >
+                                                                📤
+                                                            </button>
+                                                        )}
+
+                                                        {/* Delete Button */}
                                                         <button
-                                                            className="btn-resume"
-                                                            onClick={() => handleResume(project)}
-                                                            title="Resume Project"
+                                                            className="btn-delete"
+                                                            onClick={() => {
+                                                                if (!canManage) return;
+                                                                if (confirm("Are you sure you want to DELETE this project?")) {
+                                                                    fetch(`${getApiUrl()}/projects/${project.id}`, { method: 'DELETE', headers: getAuthHeaders() })
+                                                                        .then(() => loadProjects())
+                                                                        .catch(err => alert("Failed to delete"));
+                                                                }
+                                                            }}
+                                                            title="Delete Project"
+                                                            style={{ color: '#ef4444' }}
+                                                            disabled={!canManage}
                                                         >
-                                                            ▶️
+                                                            🗑️
                                                         </button>
-                                                    )}
 
-                                                    {/* Archive Button */}
-                                                    {project.status !== 'ARCHIVED' && (
-                                                        <button
-                                                            className="btn-archive"
-                                                            onClick={() => handleArchive(project)}
-                                                            title="Archive Project"
-                                                        >
-                                                            📦
-                                                        </button>
-                                                    )}
-
-                                                    {/* Unarchive Button */}
-                                                    {project.status === 'ARCHIVED' && ['ADMIN', 'MANAGER'].includes(user?.role) && (
-                                                        <button
-                                                            className="btn-unarchive"
-                                                            onClick={() => handleUnarchive(project)}
-                                                            title="Unarchive Project"
-                                                        >
-                                                            📤
-                                                        </button>
-                                                    )}
-
-                                                    {/* Delete Button */}
-                                                    <button
-                                                        className="btn-delete"
-                                                        onClick={() => {
-                                                            if (confirm("Are you sure you want to DELETE this project?")) {
-                                                                fetch(`${getApiUrl()}/projects/${project.id}`, { method: 'DELETE', headers: getAuthHeaders() })
-                                                                    .then(() => loadProjects())
-                                                                    .catch(err => alert("Failed to delete"));
-                                                            }
-                                                        }}
-                                                        title="Delete Project"
-                                                        style={{ color: '#ef4444' }}
-                                                    >
-                                                        🗑️
-                                                    </button>
-
-                                                    {/* Edit Button (Sales Drafts only) - Moved to End */}
-                                                    {user?.role === 'SALES' && project.status === 'DRAFT' && (
-                                                        <button
-                                                            className="btn-edit"
-                                                            onClick={() => router.push(`/projects/create?edit=${project.id}`)}
-                                                            title="Edit Project"
-                                                        >
-                                                            ✏️
-                                                        </button>
-                                                    )}
-                                                </>
-                                            )}
+                                                        {/* Edit Button (Sales Drafts) - End */}
+                                                        {user?.role === 'SALES' && project.status === 'DRAFT' && (
+                                                            <button
+                                                                className="btn-edit"
+                                                                onClick={() => router.push(`/projects/create?edit=${project.id}`)}
+                                                                title="Edit Project"
+                                                            >
+                                                                ✏️
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </td>
                                 </tr>

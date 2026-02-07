@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { getCurrentUser, isAuthenticated } from '@/lib/auth';
+import { getCurrentUser, getToken, isAuthenticated } from '@/lib/auth';
 import { notificationsAPI } from '@/lib/api';
 import NotificationToast from '@/components/NotificationToast';
 
@@ -39,6 +39,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
         const user = getCurrentUser();
         if (!user?.id) return;
+        const token = getToken();
+        if (!token) return; // Avoid reconnect spam when token is missing/expired
 
         let baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         if (baseUrl.startsWith('https')) {
@@ -47,8 +49,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             baseUrl = baseUrl.replace(/^http/, 'ws');
         }
 
-        const wsUrl = `${baseUrl}/ws/notifications/${user.id}`;
+        const wsUrl = `${baseUrl}/ws/notifications/${user.id}?token=${encodeURIComponent(token)}`;
         console.log('Connecting to Global Notification WS:', wsUrl);
+
+        // Other WS connections (no auth changes here):
+        // - frontend/src/app/client-onboarding/[token]/page.tsx
+        // - frontend/src/app/projects/[id]/page.tsx
 
         if (wsRef.current) {
             wsRef.current.close();
@@ -142,7 +148,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     };
 
     const clearAll = async () => {
-        setNotifications(prev => prev.map(n => ({ ...n, read: true }))); // Improve UX by just marking all read
+        setNotifications([]);
         setUnreadCount(0);
         try {
             await notificationsAPI.markAllRead();

@@ -82,8 +82,17 @@ def create_project(db: Session, data: ProjectCreate, user) -> Project:
         data.description,
         data.priority,
     )
-    status = ProjectStatus.ACTIVE if is_complete else (data.status or ProjectStatus.DRAFT)
-    current_stage = Stage.ONBOARDING if is_complete else (Stage.ONBOARDING if data.status == ProjectStatus.ACTIVE else Stage.SALES)
+    moved_to_onboarding = False
+    if data.status == ProjectStatus.DRAFT:
+        status = ProjectStatus.DRAFT
+        current_stage = Stage.SALES
+    elif is_complete or data.status == ProjectStatus.ACTIVE:
+        status = ProjectStatus.ACTIVE
+        current_stage = Stage.ONBOARDING
+        moved_to_onboarding = True
+    else:
+        status = data.status or ProjectStatus.DRAFT
+        current_stage = Stage.SALES
     project = Project(
         title=data.title,
         client_name=data.client_name,
@@ -101,7 +110,7 @@ def create_project(db: Session, data: ProjectCreate, user) -> Project:
         manager_user_id=None # Manager assignment removed
     )
     _record_stage_transition(project, None, current_stage, str(user.id))
-    if is_complete:
+    if moved_to_onboarding:
         project.phase_start_dates = project.phase_start_dates or {}
         project.phase_start_dates[Stage.ONBOARDING.value] = datetime.utcnow().isoformat()
     
@@ -121,10 +130,11 @@ def create_project(db: Session, data: ProjectCreate, user) -> Project:
     )
     db.add(audit)
     
-    # Trigger Onboarder Agent validation
-    from app.services.onboarding_agent_service import OnboarderAgentService
-    onboarding_service = OnboarderAgentService(db)
-    onboarding_service.validate_initial_project_data(project.id)
+    # Trigger Onboarder Agent validation only when onboarding starts
+    if moved_to_onboarding:
+        from app.services.onboarding_agent_service import OnboarderAgentService
+        onboarding_service = OnboarderAgentService(db)
+        onboarding_service.validate_initial_project_data(project.id)
     
     # Commit everything at once
     db.commit()
@@ -180,7 +190,10 @@ def update_project(db: Session, project_id: UUID, data: ProjectUpdate, user) -> 
         project.description,
         project.priority,
     ):
-        if project.status != ProjectStatus.ACTIVE or project.current_stage == Stage.SALES:
+        should_auto_advance = project.status != ProjectStatus.DRAFT
+        if "status" in update_data and update_data.get("status") == ProjectStatus.ACTIVE:
+            should_auto_advance = True
+        if should_auto_advance and (project.status != ProjectStatus.ACTIVE or project.current_stage == Stage.SALES):
             project.status = ProjectStatus.ACTIVE
             project.current_stage = Stage.ONBOARDING
             moved_to_onboarding = True
@@ -224,6 +237,8 @@ def update_project(db: Session, project_id: UUID, data: ProjectUpdate, user) -> 
 def auto_advance_sales_if_complete(db: Session, project: Project) -> Project:
     normalized_locations = _normalize_locations(project.location, project.location_names)
     if project.current_stage != Stage.SALES:
+        return project
+    if project.status == ProjectStatus.DRAFT:
         return project
     if not _is_sales_requirements_complete(
         project.title,

@@ -14,9 +14,11 @@ A multi-agent workflow system with 6 stages:
 
 Key capabilities:
 - AI-driven workflow orchestration with optional human approval gates
-- Auto-advance from Sales to Onboarding when all required fields are complete
+- Auto-advance from Sales to Onboarding when all required fields are complete (Drafts stay in Sales until activated)
 - Multi-location support (`location_names`) and stage timeline history (`stage_history`)
 - Chat log webhooks for external systems and training pipelines
+- JWT-secured notification WebSocket connections
+- Debug endpoints gated in production
 
 ## 🔐 Roles & Permissions
 
@@ -139,7 +141,7 @@ Once running, visit:
 - `POST /auth/login` - Login with email/password
 
 **Projects:**
-- `POST /projects` - Create project (Consultant/Admin/Manager)
+- `POST /projects` - Create project (Sales/Consultant/Admin/Manager)
 - `GET /projects` - List all projects
 - `GET /projects/{id}` - Get project details
 - `POST /projects/{id}/onboarding/update` - Update onboarding (Consultant/Admin/Manager)
@@ -194,7 +196,7 @@ pip install -r requirements.txt
 createdb delivery_db
 
 # Run migrations
-alembic upgrade heads
+alembic upgrade head
 
 # Create admin user
 python scripts/seed_admin.py
@@ -307,6 +309,16 @@ curl -X GET http://localhost:8000/users \
 7. Create defect drafts
 8. Validate defects as Admin
 
+### Migration Heads Note
+If multiple Alembic heads appear again, merge heads first before deploying. Do not use `alembic upgrade heads` in production.
+
+### Post-fix smoke tests
+1) WebSocket notifications: Chrome DevTools → Network → WS → `/ws/notifications/{userId}` shows `?token=` in the URL.
+2) Debug endpoints (prod mode): `curl -i https://<host>/debug-db` and `curl -i https://<host>/debug-schema` return 404.
+3) Debug delete (prod mode): `curl -i -X DELETE "https://<host>/debug-projects?secret=clean_render_db_now"` returns 404.
+4) Pydantic warning: log line `Valid config keys have changed in V2: * 'orm_mode' ...` should not appear.
+5) Alembic migration command: confirm `render.yaml` uses `alembic upgrade head`.
+
 ## 🐛 Troubleshooting
 
 ### Database Connection Issues
@@ -326,7 +338,7 @@ docker-compose up --build
 ```bash
 # Reset migrations
 docker-compose exec backend alembic downgrade base
-docker-compose exec backend alembic upgrade heads
+docker-compose exec backend alembic upgrade head
 ```
 
 ### Frontend API Connection

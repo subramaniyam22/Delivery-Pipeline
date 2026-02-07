@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -54,6 +54,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+IS_PROD = os.getenv("ENVIRONMENT") == "production"
 
 
 def run_migrations():
@@ -219,6 +220,9 @@ def get_version():
 
 @app.get("/debug-schema")
 def debug_schema(db: Session = Depends(get_db)):
+    if IS_PROD:
+        logger.warning("Blocked debug endpoint access: /debug-schema")
+        raise HTTPException(status_code=404, detail="Not found")
     from sqlalchemy import text
     try:
         result = db.execute(text("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'projects'")).fetchall()
@@ -268,6 +272,9 @@ async def health_check(db: Session = Depends(get_db)):
 
 @app.get("/debug-db")
 def debug_database():
+    if IS_PROD:
+        logger.warning("Blocked debug endpoint access: /debug-db")
+        raise HTTPException(status_code=404, detail="Not found")
     from app.models import Project
     from app.db import SessionLocal
     try:
@@ -293,6 +300,9 @@ def debug_database():
 
 @app.delete("/debug-projects")
 def debug_delete_projects(secret: str):
+    if IS_PROD:
+        logger.warning("Blocked debug endpoint access: /debug-projects")
+        raise HTTPException(status_code=404, detail="Not found")
     if secret != "clean_render_db_now":
         return JSONResponse(status_code=403, content={"error": "Invalid secret"})
         
