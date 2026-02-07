@@ -194,7 +194,7 @@ pip install -r requirements.txt
 createdb delivery_db
 
 # Run migrations
-alembic upgrade head
+alembic upgrade heads
 
 # Create admin user
 python scripts/seed_admin.py
@@ -326,7 +326,7 @@ docker-compose up --build
 ```bash
 # Reset migrations
 docker-compose exec backend alembic downgrade base
-docker-compose exec backend alembic upgrade head
+docker-compose exec backend alembic upgrade heads
 ```
 
 ### Frontend API Connection

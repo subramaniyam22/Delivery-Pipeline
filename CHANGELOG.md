@@ -190,7 +190,7 @@ This release addresses 45 identified issues from comprehensive code review, impl
 - Projects: `is_deleted`, `deleted_at`, `deleted_by_user_id`
 
 ### Migration
-- Run: `alembic upgrade head`
+- Run: `alembic upgrade heads`
 - Revision: `add_indexes_soft_delete`
 
 ---
