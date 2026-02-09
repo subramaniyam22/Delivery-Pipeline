@@ -17,12 +17,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("templates", sa.Column("source_type", sa.String(length=20), nullable=False, server_default=sa.text("'ai'")))
-    op.add_column("templates", sa.Column("intent", sa.Text(), nullable=True))
-    op.add_column("templates", sa.Column("preview_status", sa.String(length=30), nullable=False, server_default=sa.text("'not_generated'")))
-    op.add_column("templates", sa.Column("preview_last_generated_at", sa.DateTime(), nullable=True))
-    op.add_column("templates", sa.Column("preview_error", sa.Text(), nullable=True))
-    op.add_column("templates", sa.Column("preview_thumbnail_url", sa.String(length=1000), nullable=True))
+    # Idempotent: a7b3c9d2e4f1 may have already added these columns; use IF NOT EXISTS for safe merge.
+    conn = op.get_bind()
+    for stmt in [
+        "ALTER TABLE templates ADD COLUMN IF NOT EXISTS source_type VARCHAR(20) NOT NULL DEFAULT 'ai'",
+        "ALTER TABLE templates ADD COLUMN IF NOT EXISTS intent TEXT",
+        "ALTER TABLE templates ADD COLUMN IF NOT EXISTS preview_status VARCHAR(30) NOT NULL DEFAULT 'not_generated'",
+        "ALTER TABLE templates ADD COLUMN IF NOT EXISTS preview_last_generated_at TIMESTAMP",
+        "ALTER TABLE templates ADD COLUMN IF NOT EXISTS preview_error TEXT",
+        "ALTER TABLE templates ADD COLUMN IF NOT EXISTS preview_thumbnail_url VARCHAR(1000)",
+    ]:
+        conn.execute(sa.text(stmt))
     op.alter_column("templates", "repo_url", nullable=True)
     op.alter_column("templates", "default_branch", nullable=True)
     op.execute("""
