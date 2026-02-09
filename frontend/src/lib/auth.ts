@@ -18,6 +18,11 @@ export enum Role {
     SALES = 'SALES',
 }
 
+const DEV_ROLE_KEY = 'dev_role_override';
+const DEV_ROLE_BACKUP_KEY = 'dev_role_original_user';
+
+const isDev = () => process.env.NODE_ENV !== 'production';
+
 export const login = async (email: string, password: string): Promise<string> => {
     const { authAPI, usersAPI } = await import('./api');
 
@@ -53,6 +58,8 @@ export const login = async (email: string, password: string): Promise<string> =>
 export const logout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('user');
+    localStorage.removeItem(DEV_ROLE_KEY);
+    localStorage.removeItem(DEV_ROLE_BACKUP_KEY);
     window.location.href = '/login';
 };
 
@@ -70,7 +77,8 @@ export const getCurrentUser = (): User | null => {
     const userStr = localStorage.getItem('user');
     if (!userStr) return null;
     try {
-        return JSON.parse(userStr);
+        const user = JSON.parse(userStr);
+        return applyDevRoleOverride(user);
     } catch {
         return null;
     }
@@ -78,6 +86,50 @@ export const getCurrentUser = (): User | null => {
 
 export const setCurrentUser = (user: User) => {
     localStorage.setItem('user', JSON.stringify(user));
+};
+
+export const getDevRoleOverride = (): Role | null => {
+    if (typeof window === 'undefined' || !isDev()) return null;
+    const value = localStorage.getItem(DEV_ROLE_KEY);
+    if (!value) return null;
+    if (Object.values(Role).includes(value as Role)) {
+        return value as Role;
+    }
+    return null;
+};
+
+export const setDevRoleOverride = (role: Role | null) => {
+    if (typeof window === 'undefined' || !isDev()) return;
+    const userStr = localStorage.getItem('user');
+    if (role) {
+        if (userStr && !localStorage.getItem(DEV_ROLE_BACKUP_KEY)) {
+            localStorage.setItem(DEV_ROLE_BACKUP_KEY, userStr);
+        }
+        localStorage.setItem(DEV_ROLE_KEY, role);
+        if (userStr) {
+            try {
+                const user = JSON.parse(userStr);
+                localStorage.setItem('user', JSON.stringify({ ...user, role }));
+            } catch {
+                // ignore parse errors
+            }
+        }
+        return;
+    }
+
+    localStorage.removeItem(DEV_ROLE_KEY);
+    const backup = localStorage.getItem(DEV_ROLE_BACKUP_KEY);
+    if (backup) {
+        localStorage.setItem('user', backup);
+        localStorage.removeItem(DEV_ROLE_BACKUP_KEY);
+    }
+};
+
+export const applyDevRoleOverride = (user: User | null): User | null => {
+    if (!user) return null;
+    const devRole = getDevRoleOverride();
+    if (!devRole) return user;
+    return { ...user, role: devRole };
 };
 
 export const isAuthenticated = (): boolean => {

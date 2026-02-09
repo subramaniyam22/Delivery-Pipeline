@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.models import User, Role, Project, Region, ProjectTask, SLAConfiguration, OnboardingData, ProjectStatus
+from app.models import User, Role, Project, Region, ProjectTask, SLAConfiguration, OnboardingData, ProjectStatus, ProjectConfig, Stage, StageOutput, TaskStatus, AuditLog, OnboardingReviewStatus, StageStatus
 from app.schemas import (
     ProjectCreate,
     ProjectResponse,
@@ -11,13 +11,15 @@ from app.schemas import (
     TeamAssignmentRequest,
     OnboardingReviewAction
 )
+from app.schemas import ProjectConfigUpdate, ProjectConfigResponse, StageOutputResponse
 from app.deps import get_current_active_user
-from app.services import project_service
-from app.rbac import check_full_access, can_access_stage
-from app.models import Stage, TaskStatus, AuditLog, OnboardingReviewStatus
-from sqlalchemy import func
+from app.services import project_service, artifact_service, config_service
+from app.rbac import check_full_access, can_access_stage, require_admin_manager
+from sqlalchemy import func, or_
 from typing import List, Optional, Dict, Any
 from uuid import UUID
+import os
+import uuid
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -128,6 +130,10 @@ async def create_project(
 def list_projects(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+    mine: bool = Query(False, description="Filter projects based on current user role"),
+    assigned: bool = Query(False, description="Filter projects assigned to current user"),
+    stage: Optional[str] = Query(None, description="Filter by current stage"),
+    needs_assignment: bool = Query(False, description="Filter projects needing assignment"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -137,8 +143,17 @@ def list_projects(
     # Calculate offset for pagination
     offset = (page - 1) * page_size
     
-    # Query with pagination
-    projects = db.query(Project).options(
+    def _parse_stage(value: str) -> Stage:
+        normalized = value.strip().upper().replace(" ", "_").replace("-", "_")
+        try:
+            return Stage[normalized]
+        except KeyError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid stage: {value}"
+            )
+
+    query = db.query(Project).options(
         joinedload(Project.creator),
         joinedload(Project.sales_rep),
         joinedload(Project.manager_chk),
@@ -147,7 +162,44 @@ def list_projects(
         joinedload(Project.builder),
         joinedload(Project.tester),
         joinedload(Project.onboarding_data)
-    ).offset(offset).limit(page_size).all()
+    )
+
+    if stage:
+        query = query.filter(Project.current_stage == _parse_stage(stage))
+
+    if mine:
+        if current_user.role == Role.CONSULTANT:
+            query = query.filter(Project.consultant_user_id == current_user.id)
+        elif current_user.role == Role.SALES:
+            query = query.filter(Project.created_by_user_id == current_user.id)
+        else:
+            query = query.filter(or_(
+                Project.consultant_user_id == current_user.id,
+                Project.pc_user_id == current_user.id,
+                Project.builder_user_id == current_user.id,
+                Project.tester_user_id == current_user.id,
+                Project.manager_user_id == current_user.id,
+                Project.sales_user_id == current_user.id
+            ))
+
+    if assigned:
+        query = query.filter(or_(
+            Project.consultant_user_id == current_user.id,
+            Project.pc_user_id == current_user.id,
+            Project.builder_user_id == current_user.id,
+            Project.tester_user_id == current_user.id,
+            Project.manager_user_id == current_user.id,
+            Project.sales_user_id == current_user.id
+        ))
+
+    if needs_assignment:
+        query = query.filter(
+            Project.current_stage == Stage.ASSIGNMENT,
+            Project.pc_user_id.is_(None)
+        )
+
+    # Query with pagination
+    projects = query.offset(offset).limit(page_size).all()
     
     # attach onboarding_updated_at for schema
     # attach onboarding_updated_at for schema AND checked for new updates
@@ -397,6 +449,52 @@ def get_project(
             
     # Attach to project instance for Pydantic serialization
     setattr(project, 'completion_percentage', completion)
+
+    # Resolve HITL state (global + per-project)
+    global_gates = {}
+    try:
+        global_config = config_service.get_config(db, "global_stage_gates_json")
+        if global_config and global_config.value_json:
+            global_gates = global_config.value_json or {}
+    except Exception:
+        global_gates = {}
+
+    project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == project.id).first()
+    project_gates = project_config.stage_gates_json if project_config and project_config.stage_gates_json else {}
+
+    def _gate_active_for_stage(stage: Stage) -> bool:
+        key = stage.value.lower()
+        return bool(global_gates.get(key)) or bool(project_gates.get(key))
+
+    hitl_enabled = bool(
+        any(bool(v) for v in (global_gates or {}).values()) or
+        any(bool(v) for v in (project_gates or {}).values())
+    )
+
+    pending_approvals: List[Dict[str, Any]] = []
+    if project.current_stage and _gate_active_for_stage(project.current_stage):
+        latest_output = (
+            db.query(StageOutput)
+            .filter(
+                StageOutput.project_id == project.id,
+                StageOutput.stage == project.current_stage,
+            )
+            .order_by(StageOutput.created_at.desc())
+            .first()
+        )
+        if latest_output and latest_output.status == StageStatus.NEEDS_HUMAN:
+            pending_approvals.append(
+                {
+                    "stage": project.current_stage.value,
+                    "type": "hitl_gate",
+                    "created_at": latest_output.created_at,
+                    "approver_roles": ["ADMIN", "MANAGER"],
+                }
+            )
+
+    setattr(project, "hitl_enabled", hitl_enabled)
+    setattr(project, "pending_approvals", pending_approvals)
+    setattr(project, "pending_approvals_count", len(pending_approvals))
     
     # Log PROJECT_VIEWED audit
     # Only if not viewed recently? Or every time? Every time is fine for "last viewed".
@@ -596,8 +694,7 @@ def toggle_project_hitl(
     current_user: User = Depends(get_current_active_user)
 ):
     """Toggle HITL for a project (Admin/Manager)"""
-    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
-        raise HTTPException(status_code=403, detail="Only Admins and Managers can toggle HITL")
+    require_admin_manager(current_user)
     
     project = project_service.get_project(db, project_id)
     if not project:
@@ -615,17 +712,12 @@ def review_onboarding(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Review onboarding submission (Consultant/Admin/Manager)"""
+    """Review onboarding submission (Admin/Manager)"""
     # Import here to avoid circulars if any, though schemas is safe
     from app.schemas import OnboardingReviewAction
     from app.models import OnboardingReviewStatus
 
-    allowed_roles = [Role.CONSULTANT, Role.ADMIN, Role.MANAGER]
-    if current_user.role not in allowed_roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Consultant, Admin, and Manager can review onboarding"
-        )
+    require_admin_manager(current_user)
 
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -1084,3 +1176,152 @@ def get_team_assignments(
             )
         }
     }
+
+
+@router.get("/{project_id}/config", response_model=ProjectConfigResponse)
+def get_project_config(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin and Manager can access project config"
+        )
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    config = db.query(ProjectConfig).filter(ProjectConfig.project_id == project_id).first()
+    if not config:
+        config = ProjectConfig(project_id=project_id)
+        db.add(config)
+        db.commit()
+        db.refresh(config)
+    return config
+
+
+@router.put("/{project_id}/config", response_model=ProjectConfigResponse)
+def update_project_config(
+    project_id: UUID,
+    data: ProjectConfigUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin and Manager can update project config"
+        )
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    config = db.query(ProjectConfig).filter(ProjectConfig.project_id == project_id).first()
+    if not config:
+        config = ProjectConfig(project_id=project_id)
+        db.add(config)
+
+    updates = data.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(config, key, value)
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+@router.get("/{project_id}/stage-outputs", response_model=List[StageOutputResponse])
+def list_stage_outputs(
+    project_id: UUID,
+    stage: Optional[Stage] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    query = db.query(StageOutput).filter(StageOutput.project_id == project_id)
+    if stage:
+        query = query.filter(StageOutput.stage == stage)
+    return query.order_by(StageOutput.created_at.desc()).all()
+
+
+@router.post("/{project_id}/checklists/build", status_code=status.HTTP_201_CREATED)
+async def upload_build_checklist(
+    project_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    if current_user.role not in [Role.ADMIN, Role.MANAGER, Role.BUILDER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin, Manager, or Builder can upload build checklist"
+        )
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    file.file.seek(0, os.SEEK_END)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    if file_size > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Checklist exceeds 10MB limit")
+
+    filename = os.path.basename(file.filename)
+    ext = os.path.splitext(filename)[1].lower()
+    safe_name = f"checklist-build-{uuid.uuid4()}{ext or '.json'}"
+    content = await file.read()
+
+    artifact = artifact_service.create_artifact_from_bytes(
+        db=db,
+        project_id=project_id,
+        stage=Stage.BUILD,
+        filename=safe_name,
+        content=content,
+        artifact_type="checklist_build",
+        uploaded_by_user_id=current_user.id,
+        metadata_json={"original_filename": filename, "content_type": file.content_type},
+    )
+    return {"artifact_id": str(artifact.id), "filename": artifact.filename}
+
+
+@router.post("/{project_id}/checklists/qa", status_code=status.HTTP_201_CREATED)
+async def upload_qa_checklist(
+    project_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    if current_user.role not in [Role.ADMIN, Role.MANAGER, Role.TESTER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Admin, Manager, or Tester can upload QA checklist"
+        )
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    file.file.seek(0, os.SEEK_END)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    if file_size > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Checklist exceeds 10MB limit")
+
+    filename = os.path.basename(file.filename)
+    ext = os.path.splitext(filename)[1].lower()
+    safe_name = f"checklist-qa-{uuid.uuid4()}{ext or '.json'}"
+    content = await file.read()
+
+    artifact = artifact_service.create_artifact_from_bytes(
+        db=db,
+        project_id=project_id,
+        stage=Stage.TEST,
+        filename=safe_name,
+        content=content,
+        artifact_type="checklist_qa",
+        uploaded_by_user_id=current_user.id,
+        metadata_json={"original_filename": filename, "content_type": file.content_type},
+    )
+    return {"artifact_id": str(artifact.id), "filename": artifact.filename}

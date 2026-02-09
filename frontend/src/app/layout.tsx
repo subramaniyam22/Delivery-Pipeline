@@ -1,18 +1,19 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { NotificationProvider } from '@/context/NotificationContext';
+import QueryProvider from '@/components/QueryProvider';
 
 // SEO-optimized metadata
 export const metadata: Metadata = {
     title: {
-        default: 'Delivery Pipeline - Project Management Platform',
-        template: '%s | Delivery Pipeline',
+        default: 'Delivery Automation Suite - Project Management Platform',
+        template: '%s | Delivery Automation Suite',
     },
-    description: 'Enterprise-grade delivery pipeline management platform. Track projects, manage teams, and optimize workflows with AI-powered insights across global regions.',
-    keywords: ['project management', 'delivery pipeline', 'team management', 'workflow automation', 'enterprise software'],
-    authors: [{ name: 'Delivery Pipeline Team' }],
-    creator: 'Delivery Pipeline',
-    publisher: 'Delivery Pipeline',
+    description: 'Enterprise-grade delivery automation suite. Track projects, manage teams, and optimize workflows with AI-powered insights across global regions.',
+    keywords: ['project management', 'delivery automation', 'team management', 'workflow automation', 'enterprise software'],
+    authors: [{ name: 'Delivery Automation Suite Team' }],
+    creator: 'Delivery Automation Suite',
+    publisher: 'Delivery Automation Suite',
     robots: {
         index: true,
         follow: true,
@@ -28,14 +29,14 @@ export const metadata: Metadata = {
         type: 'website',
         locale: 'en_US',
         url: 'https://delivery-pipeline.com',
-        siteName: 'Delivery Pipeline',
-        title: 'Delivery Pipeline - Project Management Platform',
-        description: 'Enterprise-grade delivery pipeline management platform with AI-powered insights.',
+        siteName: 'Delivery Automation Suite',
+        title: 'Delivery Automation Suite - Project Management Platform',
+        description: 'Enterprise-grade delivery automation suite with AI-powered insights.',
     },
     twitter: {
         card: 'summary_large_image',
-        title: 'Delivery Pipeline - Project Management Platform',
-        description: 'Enterprise-grade delivery pipeline management platform with AI-powered insights.',
+        title: 'Delivery Automation Suite - Project Management Platform',
+        description: 'Enterprise-grade delivery automation suite with AI-powered insights.',
     },
     // InfoSec: Prevent embedding in iframes (clickjacking protection)
     other: {
@@ -73,9 +74,11 @@ export default function RootLayout({
                 </a>
                 {/* Semantic HTML wrapper */}
                 <div id="main-content" role="main">
-                    <NotificationProvider>
-                        {children}
-                    </NotificationProvider>
+                    <QueryProvider>
+                        <NotificationProvider>
+                            {children}
+                        </NotificationProvider>
+                    </QueryProvider>
                 </div>
             </body>
         </html>

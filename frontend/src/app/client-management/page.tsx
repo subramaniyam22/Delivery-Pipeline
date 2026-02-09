@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import RequireCapability from '@/components/RequireCapability';
+import PageHeader from '@/components/PageHeader';
 
 interface PendingRequirement {
   requirement_type: string;
@@ -231,6 +233,17 @@ export default function ClientManagementPage() {
     setEmailForm({ ...emailForm, client_emails: newEmails });
   };
 
+  const buildClientSummary = (project: ProjectClientInfo) => {
+    const pendingCount = project.pending_requirements.length;
+    if (pendingCount > 0) {
+      return `Waiting on ${pendingCount} requirement${pendingCount === 1 ? '' : 's'} from client.`;
+    }
+    if (project.last_reminder_sent) {
+      return `Last reminder sent on ${new Date(project.last_reminder_sent).toLocaleDateString()}.`;
+    }
+    return 'Client details are up to date. No pending items.';
+  };
+
   if (loading || !user) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -240,87 +253,96 @@ export default function ClientManagementPage() {
   }
 
   return (
+    <RequireCapability cap="view_clients">
     <div className="page-container">
       <Navigation />
       
       <main className="main-content">
         <div className="page-header">
-          <div>
-            <h1>📧 Client Management</h1>
-            <p>Manage client contacts and send reminders for pending requirements</p>
-          </div>
+          <PageHeader
+            title="Client Management"
+            purpose="Track client contacts, project context, and communication status."
+            variant="page"
+          />
         </div>
 
-        <div className="projects-grid">
-          {projects.map((project) => (
-            <div key={project.project_id} className="project-card">
-              <div className="project-header">
-                <h3>{project.project_title}</h3>
-                <span className="client-badge">{project.client_name}</span>
-              </div>
-              
-              <div className="client-info">
-                {project.client_company && (
-                  <div className="info-row">
-                    <span className="label">🏢 Company:</span>
-                    <span>{project.client_company}</span>
-                  </div>
-                )}
-                {project.client_primary_contact && (
-                  <div className="info-row">
-                    <span className="label">👤 Contact:</span>
-                    <span>{project.client_primary_contact}</span>
-                  </div>
-                )}
-                <div className="info-row">
-                  <span className="label">📧 Emails:</span>
-                  <span>{project.client_emails.length > 0 ? project.client_emails.join(', ') : 'Not configured'}</span>
-                </div>
-              </div>
-
-              {project.pending_requirements.length > 0 && (
-                <div className="pending-section">
-                  <h4>⏳ Pending Requirements ({project.pending_requirements.length})</h4>
-                  <ul>
-                    {project.pending_requirements.map((req, idx) => (
-                      <li key={idx}>
-                        <strong>{req.requirement_type}</strong>
-                        <span>{req.description}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+        <div className="table-wrapper">
+          <table className="client-table">
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Client</th>
+                <th>Summary</th>
+                <th>Contacts</th>
+                <th>Emails</th>
+                <th>Pending</th>
+                <th>Last Reminder</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projects.map((project) => (
+                <tr key={project.project_id}>
+                  <td>
+                    <div className="cell-title">{project.project_title}</div>
+                    <div className="mono">{project.project_id}</div>
+                  </td>
+                  <td>
+                    <div className="cell-title">{project.client_name}</div>
+                    <div className="subtle">{project.client_company || '—'}</div>
+                  </td>
+                  <td className="summary-cell">{buildClientSummary(project)}</td>
+                  <td>
+                    <div className="subtle">{project.client_primary_contact || '—'}</div>
+                  </td>
+                  <td>
+                    <div className="subtle">
+                      {project.client_emails.length > 0 ? project.client_emails.join(', ') : 'Not configured'}
+                    </div>
+                  </td>
+                  <td>
+                    {project.pending_requirements.length > 0 ? (
+                      <span className="pending-pill">
+                        {project.pending_requirements.length} pending
+                      </span>
+                    ) : (
+                      <span className="status-pill">Clear</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className="subtle">
+                      {project.last_reminder_sent
+                        ? new Date(project.last_reminder_sent).toLocaleDateString()
+                        : '—'}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="btn-secondary" onClick={() => openEmailModal(project)}>
+                        Edit Contacts
+                      </button>
+                      <button 
+                        className="btn-primary" 
+                        onClick={() => openReminderModal(project)}
+                        disabled={project.client_emails.length === 0}
+                      >
+                        Send Reminder
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {projects.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="empty-row">
+                    No projects assigned to manage client communications.
+                  </td>
+                </tr>
               )}
-
-              {project.last_reminder_sent && (
-                <div className="last-reminder">
-                  Last reminder: {new Date(project.last_reminder_sent).toLocaleDateString()}
-                </div>
-              )}
-
-              <div className="card-actions">
-                <button className="btn-secondary" onClick={() => openEmailModal(project)}>
-                  ✏️ Edit Contacts
-                </button>
-                <button 
-                  className="btn-primary" 
-                  onClick={() => openReminderModal(project)}
-                  disabled={project.client_emails.length === 0}
-                >
-                  📤 Send Reminder
-                </button>
-              </div>
-            </div>
-          ))}
+            </tbody>
+          </table>
         </div>
 
-        {projects.length === 0 && (
-          <div className="empty-state">
-            <span className="empty-icon">📋</span>
-            <h3>No Projects Assigned</h3>
-            <p>You don't have any projects assigned to manage client communications.</p>
-          </div>
-        )}
       </main>
 
       {/* Email Modal */}
@@ -458,29 +480,19 @@ export default function ClientManagementPage() {
         .page-header h1 { font-size: 1.75rem; color: #1e293b; margin-bottom: 0.25rem; }
         .page-header p { color: #64748b; }
         
-        .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 1.5rem; }
-        
-        .project-card { background: #ffffff; border-radius: 12px; padding: 1.5rem; border: 1px solid #e2e8f0; }
-        .project-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
-        .project-header h3 { font-size: 1.1rem; color: #1e293b; margin: 0; }
-        .client-badge { background: #dbeafe; color: #1e40af; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.8rem; }
-        
-        .client-info { background: #f8fafc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-        .info-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.9rem; }
-        .info-row:last-child { margin-bottom: 0; }
-        .info-row .label { color: #64748b; min-width: 80px; }
-        
-        .pending-section { background: #fef3c7; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-        .pending-section h4 { font-size: 0.9rem; color: #92400e; margin: 0 0 0.75rem; }
-        .pending-section ul { list-style: none; padding: 0; margin: 0; }
-        .pending-section li { display: flex; flex-direction: column; gap: 0.125rem; padding: 0.5rem 0; border-bottom: 1px solid #fcd34d; }
-        .pending-section li:last-child { border-bottom: none; padding-bottom: 0; }
-        .pending-section li strong { color: #78350f; font-size: 0.85rem; }
-        .pending-section li span { color: #92400e; font-size: 0.8rem; }
-        
-        .last-reminder { font-size: 0.8rem; color: #64748b; margin-bottom: 1rem; }
-        
-        .card-actions { display: flex; gap: 0.75rem; }
+        .table-wrapper { background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
+        .client-table { width: 100%; border-collapse: collapse; }
+        .client-table th { text-align: left; font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; background: #f8fafc; padding: 0.75rem 1rem; border-bottom: 1px solid #e2e8f0; }
+        .client-table td { padding: 0.85rem 1rem; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem; color: #1e293b; vertical-align: top; }
+        .client-table tr:last-child td { border-bottom: none; }
+        .cell-title { font-weight: 600; }
+        .summary-cell { max-width: 260px; color: #475569; }
+        .subtle { color: #64748b; font-size: 0.85rem; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.8rem; color: #94a3b8; }
+        .pending-pill { background: #fef3c7; color: #92400e; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+        .status-pill { background: #dcfce7; color: #166534; padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+        .row-actions { display: flex; gap: 0.5rem; }
+        .empty-row { text-align: center; color: #94a3b8; font-size: 0.9rem; padding: 2rem; }
         .btn-primary { flex: 1; padding: 0.75rem; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; }
         .btn-primary:hover { background: #1d4ed8; }
         .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -531,5 +543,6 @@ export default function ClientManagementPage() {
         }
       `}</style>
     </div>
+    </RequireCapability>
   );
 }

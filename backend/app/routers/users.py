@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.models import User, Role, Region
+from app.models import User, Role, Region, AuditLog
 from app.schemas import UserCreate, UserResponse, UserUpdate
 from app.deps import get_current_active_user
 from app.auth import hash_password
-from app.rbac import check_full_access
+from app.rbac import check_full_access, require_admin_manager, require_admin
 from typing import List
 from uuid import UUID
 from datetime import datetime
@@ -58,11 +58,7 @@ def create_user(
     current_user: User = Depends(get_current_active_user)
 ):
     """Create a new user (Admin/Manager only)"""
-    if not check_full_access(current_user.role):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin and Manager can create users"
-        )
+    require_admin_manager(current_user)
     
     # Check if email already exists
     existing = db.query(User).filter(User.email == data.email).first()
@@ -85,7 +81,19 @@ def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
-    
+    db.add(
+        AuditLog(
+            project_id=None,
+            actor_user_id=current_user.id,
+            action="USER_CREATED",
+            payload_json={
+                "user_id": str(user.id),
+                "email": user.email,
+                "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+            },
+        )
+    )
+    db.commit()
     return user
 
 
@@ -94,12 +102,8 @@ def list_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """List all active (non-archived) users (Admin/Manager/Sales only for view)"""
-    if not check_full_access(current_user.role) and current_user.role != Role.SALES:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin, Manager, and Sales can list users"
-        )
+    """List all active (non-archived) users (Admin/Manager only)"""
+    require_admin_manager(current_user)
     
     users = db.query(User).filter(User.is_archived == False).all()
     return users
@@ -111,11 +115,7 @@ def list_archived_users(
     current_user: User = Depends(get_current_active_user)
 ):
     """List all archived users (Admin/Manager only)"""
-    if not check_full_access(current_user.role):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin and Manager can list archived users"
-        )
+    require_admin_manager(current_user)
     
     users = db.query(User).filter(User.is_archived == True).all()
     return users
@@ -128,11 +128,7 @@ def get_user(
     current_user: User = Depends(get_current_active_user)
 ):
     """Get user by ID (Admin/Manager only)"""
-    if not check_full_access(current_user.role):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin and Manager can view user details"
-        )
+    require_admin_manager(current_user)
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -152,11 +148,7 @@ def update_user(
     current_user: User = Depends(get_current_active_user)
 ):
     """Update user (Admin/Manager only)"""
-    if not check_full_access(current_user.role):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin and Manager can update users"
-        )
+    require_admin_manager(current_user)
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -172,7 +164,18 @@ def update_user(
     
     db.commit()
     db.refresh(user)
-    
+    db.add(
+        AuditLog(
+            project_id=None,
+            actor_user_id=current_user.id,
+            action="USER_UPDATED",
+            payload_json={
+                "user_id": str(user.id),
+                "updates": update_data,
+            },
+        )
+    )
+    db.commit()
     return user
 
 
@@ -183,11 +186,7 @@ def archive_user(
     current_user: User = Depends(get_current_active_user)
 ):
     """Archive user (Admin only) - moves user to archived section"""
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin can archive users"
-        )
+    require_admin(current_user)
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -206,7 +205,15 @@ def archive_user(
     user.is_active = False
     user.archived_at = datetime.utcnow()
     db.commit()
-    
+    db.add(
+        AuditLog(
+            project_id=None,
+            actor_user_id=current_user.id,
+            action="USER_ARCHIVED",
+            payload_json={"user_id": str(user.id)},
+        )
+    )
+    db.commit()
     return None
 
 
@@ -217,11 +224,7 @@ def reactivate_user(
     current_user: User = Depends(get_current_active_user)
 ):
     """Reactivate an archived user (Admin only)"""
-    if current_user.role != Role.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Admin can reactivate users"
-        )
+    require_admin(current_user)
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -241,7 +244,15 @@ def reactivate_user(
     user.archived_at = None
     db.commit()
     db.refresh(user)
-    
+    db.add(
+        AuditLog(
+            project_id=None,
+            actor_user_id=current_user.id,
+            action="USER_REACTIVATED",
+            payload_json={"user_id": str(user.id)},
+        )
+    )
+    db.commit()
     return user
 
 

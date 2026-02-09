@@ -1,13 +1,14 @@
 # Core Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.5.3
-pydantic-settings==2.1.0
+fastapi==0.120.0
+uvicorn[standard]==0.30.6
+gunicorn==22.0.0
+pydantic==2.9.2
+pydantic-settings==2.6.1
 email-validator>=2.1.0
 
 # Database
-sqlalchemy==2.0.25
-alembic==1.13.1
+sqlalchemy==2.0.36
+alembic==1.14.0
 psycopg2-binary==2.9.9
 
 # Authentication & Security
@@ -17,14 +18,21 @@ bcrypt==3.2.2
 python-multipart==0.0.6
 
 # LangGraph & AI
-langgraph==0.0.20
-langchain==0.1.0
-langchain-openai==0.0.2
-openai==1.7.2
+langgraph==0.2.34
+langchain==0.2.16
+langchain-openai==0.1.25
+openai==1.99.9
 
 # HTTP & API
 httpx==0.26.0
 requests==2.31.0
+
+# Build & Review Tooling
+playwright
+pillow
+opencv-python
+beautifulsoup4
+lxml
 
 # Email Service (Resend)
 resend==0.7.0

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import PageHeader from '@/components/PageHeader';
 
 interface Leave {
   id: string;
@@ -638,8 +639,11 @@ export default function LeaveManagementPage() {
       <main className="main-content">
         <div className="page-header">
           <div className="header-left">
-            <h1>📅 Leave & Capacity Management</h1>
-            <p>Manage leaves, holidays, meetings, and track your capacity</p>
+            <PageHeader
+              title="📅 Leave & Capacity Management"
+              purpose="Manage leaves, holidays, meetings, and track your capacity."
+              variant="page"
+            />
           </div>
           <button className="btn-primary" onClick={() => setShowRequestModal(true)}>
             ➕ Request Leave

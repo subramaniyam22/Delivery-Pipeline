@@ -2,6 +2,7 @@
 Request ID tracking middleware for distributed tracing.
 """
 import uuid
+import time
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
@@ -29,14 +30,13 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
         
         # Add to logger context
+        start = time.time()
         logger.info(
-            f"Request started",
+            "Request started",
             extra={
                 "request_id": request_id,
-                "method": request.method,
-                "path": request.url.path,
-                "client": request.client.host if request.client else None
-            }
+                "status": "started",
+            },
         )
         
         # Process request
@@ -46,21 +46,24 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             # Add request ID to response headers
             response.headers["X-Request-ID"] = request_id
             
+            duration_ms = int((time.time() - start) * 1000)
             logger.info(
-                f"Request completed",
+                "Request completed",
                 extra={
                     "request_id": request_id,
-                    "status_code": response.status_code
-                }
+                    "status": response.status_code,
+                    "duration_ms": duration_ms,
+                },
             )
             
             return response
             
         except Exception as e:
+            duration_ms = int((time.time() - start) * 1000)
             logger.error(
                 f"Request failed: {str(e)}",
-                extra={"request_id": request_id},
-                exc_info=True
+                extra={"request_id": request_id, "duration_ms": duration_ms},
+                exc_info=True,
             )
             raise
 

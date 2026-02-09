@@ -52,6 +52,11 @@ def has_permission(user_role: Role, permission: str) -> bool:
     return ROLE_PERMISSIONS.get(user_role, {}).get(permission, False)
 
 
+def raise_forbidden() -> None:
+    """Raise a consistent 403 response"""
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
+
+
 def can_access_stage(user_role: Role, stage: Stage) -> bool:
     """Check if a role can access a specific stage"""
     perms = ROLE_PERMISSIONS.get(user_role, {})
@@ -106,6 +111,18 @@ def check_full_access(user_role: Role) -> bool:
     return user_role in [Role.ADMIN, Role.MANAGER]
 
 
+def require_admin_manager(current_user) -> None:
+    """Require Admin or Manager role"""
+    if not check_full_access(current_user.role):
+        raise_forbidden()
+
+
+def require_admin(current_user) -> None:
+    """Require Admin role"""
+    if current_user.role != Role.ADMIN:
+        raise_forbidden()
+
+
 def check_can_manage_projects(user_role: Role) -> bool:
     """Check if user can manage projects (Admin, Manager, Consultant, PC, Tester, Sales)"""
     return user_role in [Role.ADMIN, Role.MANAGER, Role.CONSULTANT, Role.PC, Role.TESTER, Role.SALES]
@@ -114,10 +131,7 @@ def check_can_manage_projects(user_role: Role) -> bool:
 def check_admin_or_manager(current_user) -> bool:
     """Check if user is Admin or Manager (not a dependency, use get_admin_or_manager instead)"""
     if current_user.role not in [Role.ADMIN, Role.MANAGER]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied. Admin or Manager role required."
-        )
+        raise_forbidden()
     return current_user
 
 
@@ -128,10 +142,7 @@ def get_admin_or_manager_dependency():
     
     async def _check(current_user = Depends(get_current_user)):
         if current_user.role not in [Role.ADMIN, Role.MANAGER]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied. Admin or Manager role required."
-            )
+            raise_forbidden()
         return current_user
     
     return _check

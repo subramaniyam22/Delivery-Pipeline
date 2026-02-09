@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { login } from '@/lib/auth';
-import { authAPI, healthAPI } from '@/lib/api';
+import { login, setCurrentUser, type User } from '@/lib/auth';
+import { authAPI, healthAPI, usersAPI } from '@/lib/api';
+import { getLandingRouteForRole } from '@/lib/nav';
+import { hasCapability, type Capability } from '@/lib/rbac';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,8 +33,22 @@ export default function LoginPage() {
       // Warm the backend in the background to reduce cold-start latency
       healthAPI.ping().catch(() => {});
 
-      // Use client-side navigation instead of full page reload
-      router.push('/dashboard');
+      const meResponse = await usersAPI.me();
+      const currentUser = meResponse.data as User;
+      setCurrentUser(currentUser);
+
+      const redirectPath = sessionStorage.getItem('post_login_redirect');
+      if (redirectPath) {
+        sessionStorage.removeItem('post_login_redirect');
+        const cap = mapRouteToCapability(redirectPath);
+        if (!cap || hasCapability(currentUser, cap)) {
+          router.push(redirectPath);
+          return;
+        }
+      }
+
+      const landing = getLandingRouteForRole(currentUser.role);
+      router.push(landing);
     } catch (err: any) {
       console.error('Login error:', err);
       let errorMessage = 'Login failed';
@@ -46,6 +62,20 @@ export default function LoginPage() {
       setError(errorMessage);
       setLoading(false);
     }
+  };
+
+  const mapRouteToCapability = (path: string): Capability | null => {
+    if (path.startsWith('/configuration')) return 'configure_system';
+    if (path.startsWith('/users') || path.startsWith('/manage-users')) return 'manage_users';
+    if (path.startsWith('/admin/operations') || path.startsWith('/operations')) return 'view_operations';
+    if (path.startsWith('/admin/quality') || path.startsWith('/quality')) return 'view_quality';
+    if (path.startsWith('/capacity')) return 'view_capacity';
+    if (path.startsWith('/forecast')) return 'view_forecast';
+    if (path.startsWith('/sentiments')) return 'view_sentiments';
+    if (path.startsWith('/admin/audit-logs') || path.startsWith('/audit-logs')) return 'view_audit_logs';
+    if (path.startsWith('/client-management') || path.startsWith('/clients')) return 'view_clients';
+    if (path.startsWith('/projects')) return 'view_projects';
+    return null;
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -82,9 +112,9 @@ export default function LoginPage() {
         <div className="login-card">
           <header className="login-header">
             <div className="logo" aria-hidden="true">
-              <span>📦</span>
+              <img src="/logo.svg" alt="Delivery Automation Suite logo" style={{ width: '48px', height: '48px' }} />
             </div>
-            <h1>Delivery Management</h1>
+            <h1>Delivery Automation Suite</h1>
           </header>
 
           <form onSubmit={handleSubmit} aria-label="Login form">

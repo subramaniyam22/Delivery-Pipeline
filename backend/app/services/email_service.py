@@ -1,7 +1,11 @@
 import logging
 from typing import List, Optional, Dict, Any
 import resend
+import smtplib
+import ssl
+from email.mime.text import MIMEText
 from app.config import settings
+from app.utils.retry import retry_email
 from jinja2 import Template
 
 logger = logging.getLogger(__name__)
@@ -34,6 +38,16 @@ class EmailService:
         Returns:
             bool or (bool, str)
         """
+        # Prefer SMTP if configured
+        if settings.SMTP_HOST:
+            return EmailService._send_smtp_email(
+                to=to,
+                subject=subject,
+                html_content=html_content,
+                from_email=from_email,
+                return_details=return_details,
+            )
+
         # Mock mode if no API key or placeholder
         api_key = settings.RESEND_API_KEY
         if not api_key or api_key.startswith("your-") or api_key == "None":
@@ -65,6 +79,48 @@ class EmailService:
                  return (True, msg) if return_details else True
             
             return (False, error_str) if return_details else False
+
+    @staticmethod
+    @retry_email
+    def send_email_with_retry(
+        to: List[str],
+        subject: str,
+        html_content: str,
+        from_email: Optional[str] = None,
+        return_details: bool = False,
+    ) -> Any:
+        return EmailService.send_email(
+            to=to,
+            subject=subject,
+            html_content=html_content,
+            from_email=from_email,
+            return_details=return_details,
+        )
+
+    @staticmethod
+    def _send_smtp_email(
+        to: List[str],
+        subject: str,
+        html_content: str,
+        from_email: Optional[str] = None,
+        return_details: bool = False
+    ) -> Any:
+        sender = from_email or settings.FROM_EMAIL or settings.EMAIL_FROM
+        msg = MIMEText(html_content, "html")
+        msg["Subject"] = subject
+        msg["From"] = sender
+        msg["To"] = ", ".join(to)
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+                server.starttls(context=context)
+                if settings.SMTP_USER and settings.SMTP_PASS:
+                    server.login(settings.SMTP_USER, settings.SMTP_PASS)
+                server.sendmail(sender, to, msg.as_string())
+            return (True, "Email sent via SMTP") if return_details else True
+        except Exception as exc:
+            logger.error(f"SMTP send error: {exc}")
+            return (False, str(exc)) if return_details else False
 
     # ... [Keep other methods as is, they just call send_email default] ...
 
@@ -101,7 +157,7 @@ class EmailService:
                     <div class="message-box">{{ message }}</div>
                 </div>
                 <div class="footer">
-                    <p>Multi-Agent Delivery Pipeline</p>
+                    <p>Delivery Automation Suite</p>
                 </div>
             </div>
         </body>
@@ -167,7 +223,7 @@ class EmailService:
                     <a href="{{ app_url }}/projects/{{ project_id }}" class="button">View Project</a>
                 </div>
                 <div class="footer">
-                    <p>Multi-Agent Delivery Pipeline</p>
+                    <p>Delivery Automation Suite</p>
                 </div>
             </div>
         </body>
@@ -227,7 +283,7 @@ class EmailService:
                     <a href="{{ app_url }}/projects/{{ project_id }}" class="button">View Project</a>
                 </div>
                 <div class="footer">
-                    <p>Multi-Agent Delivery Pipeline</p>
+                    <p>Delivery Automation Suite</p>
                 </div>
             </div>
         </body>
@@ -292,7 +348,7 @@ class EmailService:
                     <a href="{{ app_url }}/projects/{{ project_id }}" class="button">View Task</a>
                 </div>
                 <div class="footer">
-                    <p>Multi-Agent Delivery Pipeline</p>
+                    <p>Delivery Automation Suite</p>
                 </div>
             </div>
         </body>
@@ -349,7 +405,7 @@ class EmailService:
                     <p>If you didn't request this, you can safely ignore this email.</p>
                 </div>
                 <div class="footer">
-                    <p>Multi-Agent Delivery Pipeline</p>
+                    <p>Delivery Automation Suite</p>
                 </div>
             </div>
         </body>

@@ -8,8 +8,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (avoid peer conflicts in CI)
+RUN npm ci --legacy-peer-deps
 
 # Copy application code
 COPY . .

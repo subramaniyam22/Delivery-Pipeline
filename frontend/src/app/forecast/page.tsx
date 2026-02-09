@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isAuthenticated } from '@/lib/auth';
-import { projectsAPI } from '@/lib/api';
+import { projectsAPI, sentimentAPI } from '@/lib/api';
 import Navigation from '@/components/Navigation';
+import RequireCapability from '@/components/RequireCapability';
+import PageHeader from '@/components/PageHeader';
 
 interface ForecastData {
     projectsNextMonth: number;
@@ -13,6 +15,11 @@ interface ForecastData {
     bottleneckStage: string;
     recommendations: string[];
     monthlyTrend: { month: string; count: number }[];
+    repeatClientRate: number | null;
+    repeatClientCount: number;
+    sentimentScoreAvg: number | null;
+    qualityScoreAvg: number | null;
+    aiDrivers: { label: string; value: string }[];
 }
 
 export default function ForecastPage() {
@@ -34,9 +41,14 @@ export default function ForecastPage() {
 
     const loadData = async () => {
         try {
-            const response = await projectsAPI.list();
-            setProjects(response.data);
-            generateForecast(response.data);
+            const [projectsRes, sentimentRes] = await Promise.all([
+                projectsAPI.list(),
+                sentimentAPI.list(),
+            ]);
+            const projectData = projectsRes.data || [];
+            const sentimentData = sentimentRes.data || [];
+            setProjects(projectData);
+            generateForecast(projectData, sentimentData);
         } catch (error) {
             console.error('Failed to load projects:', error);
         } finally {
@@ -44,7 +56,7 @@ export default function ForecastPage() {
         }
     };
 
-    const generateForecast = (projectData: any[]) => {
+    const generateForecast = (projectData: any[], sentiments: any[]) => {
         const completedProjects = projectData.filter((p) => p.current_stage === 'COMPLETE');
         const activeProjects = projectData.filter((p) => p.current_stage !== 'COMPLETE');
         
@@ -62,6 +74,30 @@ export default function ForecastPage() {
             count: Math.floor(projectData.length * 0.3 + Math.random() * 5) + i,
         }));
 
+        const clientCounts: Record<string, number> = {};
+        projectData.forEach((p) => {
+            const clientName = p.client_name || p.client?.name || 'Unknown';
+            clientCounts[clientName] = (clientCounts[clientName] || 0) + 1;
+        });
+        const repeatClients = Object.values(clientCounts).filter((count) => count > 1).length;
+        const repeatClientRate = Object.keys(clientCounts).length > 0
+            ? Math.round((repeatClients / Object.keys(clientCounts).length) * 100)
+            : null;
+
+        const sentimentScores = sentiments
+            .map((s) => s.score ?? s.rating ?? s.sentiment_score)
+            .filter((v: any) => typeof v === 'number');
+        const sentimentScoreAvg = sentimentScores.length > 0
+            ? Math.round((sentimentScores.reduce((a: number, b: number) => a + b, 0) / sentimentScores.length) * 10) / 10
+            : null;
+
+        const qualityScores = projectData
+            .map((p) => p.quality_score ?? p.health?.quality_score)
+            .filter((v: any) => typeof v === 'number');
+        const qualityScoreAvg = qualityScores.length > 0
+            ? Math.round((qualityScores.reduce((a: number, b: number) => a + b, 0) / qualityScores.length) * 10) / 10
+            : null;
+
         setForecast({
             projectsNextMonth: Math.max(activeProjects.length + 2, 5),
             estimatedCompletions: Math.max(Math.floor(activeProjects.length * 0.6), 2),
@@ -74,6 +110,16 @@ export default function ForecastPage() {
                 activeProjects.length > 5 ? 'High project load detected - consider prioritization' : 'Project load is manageable',
             ],
             monthlyTrend,
+            repeatClientRate,
+            repeatClientCount: repeatClients,
+            sentimentScoreAvg,
+            qualityScoreAvg,
+            aiDrivers: [
+                { label: 'Repeat clients', value: repeatClientRate !== null ? `${repeatClientRate}%` : 'Data source not connected yet' },
+                { label: 'Sentiment signal', value: sentimentScoreAvg !== null ? `${sentimentScoreAvg}/10` : 'Data source not connected yet' },
+                { label: 'Quality signal', value: qualityScoreAvg !== null ? `${qualityScoreAvg}/10` : 'Data source not connected yet' },
+                { label: 'Backlog size', value: `${activeProjects.length} active` },
+            ],
         });
     };
 
@@ -130,14 +176,16 @@ export default function ForecastPage() {
     const maxTrend = Math.max(...(forecast?.monthlyTrend.map(t => t.count) || [1]));
 
     return (
+        <RequireCapability cap="view_forecast">
         <div className="page-wrapper">
             <Navigation />
             <main className="forecast-page">
                 <header className="page-header">
-                    <div className="header-text">
-                        <h1>Project Forecast</h1>
-                        <p>AI-powered predictions based on historical data</p>
-                    </div>
+                    <PageHeader
+                        title="Project Forecast"
+                        purpose="AI-powered predictions based on historical data."
+                        variant="page"
+                    />
                     <div className="ai-indicator">
                         <span className="pulse-dot" />
                         AI Powered
@@ -173,6 +221,33 @@ export default function ForecastPage() {
                             <span className="metric-label">Current Bottleneck</span>
                         </div>
                     </div>
+                    <div className="metric-card">
+                        <div className="metric-icon">🔁</div>
+                        <div className="metric-content">
+                            <span className="metric-value-text">
+                                {forecast?.repeatClientRate !== null ? `${forecast?.repeatClientRate}%` : '—'}
+                            </span>
+                            <span className="metric-label">Repeat Client Rate</span>
+                        </div>
+                    </div>
+                    <div className="metric-card">
+                        <div className="metric-icon">💬</div>
+                        <div className="metric-content">
+                            <span className="metric-value-text">
+                                {forecast?.sentimentScoreAvg !== null ? `${forecast?.sentimentScoreAvg}/10` : '—'}
+                            </span>
+                            <span className="metric-label">Client Sentiment Avg.</span>
+                        </div>
+                    </div>
+                    <div className="metric-card">
+                        <div className="metric-icon">🧪</div>
+                        <div className="metric-content">
+                            <span className="metric-value-text">
+                                {forecast?.qualityScoreAvg !== null ? `${forecast?.qualityScoreAvg}/10` : '—'}
+                            </span>
+                            <span className="metric-label">Quality Signal Avg.</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="content-grid">
@@ -206,6 +281,19 @@ export default function ForecastPage() {
                         </ul>
                     </section>
                 </div>
+
+                <section className="drivers-section">
+                    <h2>AI Signal Inputs</h2>
+                    <p className="section-desc">Forecast is driven by historical trends, repeat-client behavior, sentiment, and quality signals.</p>
+                    <div className="drivers-grid">
+                        {forecast?.aiDrivers.map((driver) => (
+                            <div key={driver.label} className="driver-card">
+                                <span className="driver-label">{driver.label}</span>
+                                <span className="driver-value">{driver.value}</span>
+                            </div>
+                        ))}
+                    </div>
+                </section>
 
                 <section className="ai-section">
                     <h2>Custom Analysis</h2>
@@ -436,6 +524,41 @@ export default function ForecastPage() {
                     flex-shrink: 0;
                 }
                 
+                .drivers-section {
+                    margin-top: var(--space-lg);
+                    background: var(--bg-card);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-lg);
+                    padding: var(--space-lg);
+                }
+
+                .drivers-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                    gap: var(--space-md);
+                }
+
+                .driver-card {
+                    background: var(--bg-secondary);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-md);
+                    padding: var(--space-md);
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
+
+                .driver-label {
+                    font-size: 12px;
+                    color: var(--text-hint);
+                }
+
+                .driver-value {
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+
                 .ai-section {
                     margin-top: var(--space-lg);
                 }
@@ -536,5 +659,6 @@ export default function ForecastPage() {
                 }
             `}</style>
         </div>
+        </RequireCapability>
     );
 }

@@ -19,6 +19,7 @@ from app.models import (
     TestExecutionStatus, TestResultStatus, Project, Artifact, Stage
 )
 from app.agents.prompts import get_llm
+from app.utils.llm import invoke_llm
 
 
 class QAAutomationAgent:
@@ -32,7 +33,7 @@ class QAAutomationAgent:
     
     def __init__(self, db: Session):
         self.db = db
-        self.llm = get_llm()
+        self.llm = get_llm(task="analysis")
         self.agent_name = "QA_AUTOMATION_AGENT"
     
     def analyze_test_artifacts(self, project_id: str) -> Dict[str, Any]:
@@ -108,7 +109,7 @@ class QAAutomationAgent:
         """
         
         try:
-            response = self.llm.invoke(prompt)
+            response = invoke_llm(self.llm, prompt)
             if isinstance(response, str):
                 # Try to extract JSON from response
                 import re

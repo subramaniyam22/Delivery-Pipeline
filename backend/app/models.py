@@ -63,6 +63,14 @@ class StageStatus(str, enum.Enum):
     BLOCKED = "BLOCKED"
     FAILED = "FAILED"
 
+class JobRunStatus(str, enum.Enum):
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    NEEDS_HUMAN = "NEEDS_HUMAN"
+    CANCELED = "CANCELED"
+
 
 class DefectSeverity(str, enum.Enum):
     LOW = "LOW"
@@ -144,7 +152,7 @@ class Project(Base):
     # Phase Tracking & SLA
     phase_deadlines = Column(JSONB, default=dict)  # {"ONBOARDING": "2026-01-20", "BUILD": "2026-02-01"}
     phase_start_dates = Column(JSONB, default=dict)  # {"ONBOARDING": "2026-01-12"}
-    stage_history = Column(JSONB, default=list)  # [{from_stage, to_stage, at, actor_user_id}]
+    stage_history = Column(JSONB, default=list)  # [{from_stage, to_stage, at, actor_user_id, request_id}]
     is_delayed = Column(Boolean, default=False)
     delay_reason = Column(Text, nullable=True)
     
@@ -193,6 +201,9 @@ class Project(Base):
     client_reminders = relationship("ClientReminder", back_populates="project", cascade="all, delete-orphan")
     test_scenarios = relationship("TestScenario", back_populates="project", cascade="all, delete-orphan")
     test_executions = relationship("TestExecution", back_populates="project", cascade="all, delete-orphan")
+    job_runs = relationship("JobRun", back_populates="project", cascade="all, delete-orphan")
+    project_config = relationship("ProjectConfig", back_populates="project", uselist=False, cascade="all, delete-orphan")
+    sentiments = relationship("ClientSentiment", back_populates="project", cascade="all, delete-orphan")
 
 
 class Task(Base):
@@ -212,14 +223,42 @@ class Task(Base):
     project = relationship("Project", back_populates="tasks")
     assignee = relationship("User", back_populates="assigned_tasks", foreign_keys=[assignee_user_id])
 
+class JobRun(Base):
+    __tablename__ = "job_runs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    stage = Column(Enum(Stage), nullable=False, index=True)
+    status = Column(Enum(JobRunStatus), default=JobRunStatus.QUEUED, nullable=False, index=True)
+    attempts = Column(Integer, default=0, nullable=False)
+    max_attempts = Column(Integer, default=3, nullable=False)
+    payload_json = Column(JSONB, default=dict)
+    error_json = Column(JSONB, default=dict)
+    request_id = Column(String(100), nullable=True, index=True)
+    actor_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    next_run_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    locked_by = Column(String(100), nullable=True, index=True)
+    locked_at = Column(DateTime, nullable=True)
+    
+    project = relationship("Project", back_populates="job_runs")
+    stage_outputs = relationship("StageOutput", back_populates="job_run", cascade="all, delete-orphan")
+
 
 class StageOutput(Base):
     __tablename__ = "stage_outputs"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
+    job_run_id = Column(UUID(as_uuid=True), ForeignKey("job_runs.id"), nullable=True, index=True)
     stage = Column(Enum(Stage), nullable=False)
     status = Column(Enum(StageStatus), nullable=False)
+    gate_decision = Column(String(50), nullable=True)
+    score = Column(Float, nullable=True)
+    report_json = Column(JSONB, default=dict)
+    evidence_links_json = Column(JSONB, default=list)
     summary = Column(Text)
     structured_output_json = Column(JSONB, default=dict)
     required_next_inputs_json = Column(JSONB, default=list)
@@ -227,6 +266,7 @@ class StageOutput(Base):
     
     # Relationships
     project = relationship("Project", back_populates="stage_outputs")
+    job_run = relationship("JobRun", back_populates="stage_outputs")
 
 
 class Artifact(Base):
@@ -236,9 +276,15 @@ class Artifact(Base):
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
     stage = Column(Enum(Stage), nullable=False)
     type = Column(String(100), nullable=False)  # document, image, test_report, evidence, etc.
+    artifact_type = Column(String(100), nullable=True)
     filename = Column(String(500), nullable=False)
-    url = Column(String(1000), nullable=False)  # file path or S3 URL
+    storage_key = Column(String(1000), nullable=True)
+    url = Column(String(1000), nullable=False, default="")  # file path or S3 URL
+    content_type = Column(String(255), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    checksum = Column(String(128), nullable=True)
     notes = Column(Text)
+    metadata_json = Column(JSONB, default=dict)
     uploaded_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     
@@ -289,14 +335,50 @@ class Defect(Base):
     assignments = relationship("DefectAssignment", back_populates="defect", cascade="all, delete-orphan")
 
 
+class TemplateRegistry(Base):
+    __tablename__ = "templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    repo_url = Column(String(1000), nullable=True)
+    default_branch = Column(String(255), nullable=True, default="main")
+    meta_json = Column(JSONB, default=dict)
+    description = Column(Text, nullable=True)
+    features_json = Column(JSONB, default=list)
+    preview_url = Column(String(1000), nullable=True)
+    source_type = Column(String(20), default="ai", nullable=False)
+    intent = Column(Text, nullable=True)
+    preview_status = Column(String(30), default="not_generated", nullable=False)
+    preview_last_generated_at = Column(DateTime, nullable=True)
+    preview_error = Column(Text, nullable=True)
+    preview_thumbnail_url = Column(String(1000), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_active = Column(Boolean, default=True)
+    is_published = Column(Boolean, default=True)
+
+
 class AdminConfig(Base):
     __tablename__ = "admin_configs"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     key = Column(String(255), unique=True, nullable=False, index=True)
     value_json = Column(JSONB, nullable=False)
+    config_version = Column(Integer, default=1, nullable=False)
     updated_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class ProjectConfig(Base):
+    __tablename__ = "project_configs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, unique=True, index=True)
+    stage_gates_json = Column(JSONB, nullable=True)
+    thresholds_json = Column(JSONB, nullable=True)
+    hitl_enabled = Column(Boolean, default=False, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="project_config")
 
 
 class AuditLog(Base):
@@ -1058,6 +1140,23 @@ class ClientReminderLog(Base):
     # Relationships
     project = relationship("Project", backref="reminder_logs")
     sent_by = relationship("User", backref="sent_reminders")
+
+
+class ClientSentiment(Base):
+    __tablename__ = "client_sentiments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    rating = Column(Integer, nullable=False)
+    comment = Column(Text, nullable=True)
+    template_id = Column(String(100), nullable=True)
+    template_name = Column(String(255), nullable=True)
+    stage_at_delivery = Column(String(50), nullable=True)
+    created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_by_type = Column(String(50), default="client")
+    submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="sentiments")
 
 
 class ThemeTemplate(Base):

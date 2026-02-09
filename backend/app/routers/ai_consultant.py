@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Depends, WebSocket, WebSocketDisconnect, Request
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ import asyncio
 import json
 from app.services.notification_service import notification_manager
 from app.services.webhook_service import send_chat_log_webhook
+from app.rate_limit import limiter, AI_RATE_LIMIT, get_user_or_ip_key
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +99,9 @@ async def notification_endpoint(websocket: WebSocket, user_id: str):
 
 
 @router.post("/consult")
-async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
-    project_id = request.context.get("project_id") if request.context else None
+@limiter.limit(AI_RATE_LIMIT, key_func=get_user_or_ip_key)
+async def consult_ai(request: Request, chat_request: ChatRequest, db: Session = Depends(get_db)):
+    project_id = chat_request.context.get("project_id") if chat_request.context else None
     
     # 1. Log User Message & Notify
     if project_id:
@@ -122,7 +124,7 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
                     }, str(project.consultant_user_id))
 
             # Log message
-            new_log = ChatLog(project_id=project_id, sender="user", message=request.message)
+            new_log = ChatLog(project_id=project_id, sender="user", message=chat_request.message)
             db.add(new_log)
             db.commit()
             db.refresh(new_log)
@@ -131,7 +133,7 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
             await manager.broadcast({
                 "id": str(new_log.id),
                 "sender": "user",
-                "message": request.message,
+                "message": chat_request.message,
                 "created_at": new_log.created_at.isoformat()
             }, project_id)
 
@@ -140,7 +142,7 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
                 "id": str(new_log.id),
                 "project_id": str(project_id),
                 "sender": "user",
-                "message": request.message,
+                "message": chat_request.message,
                 "created_at": new_log.created_at.isoformat()
             }))
             
@@ -153,6 +155,13 @@ async def consult_ai(request: ChatRequest, db: Session = Depends(get_db)):
                     
         except Exception as e:
             logger.error(f"Failed to log user chat: {e}")
+
+    if settings.AI_MODE.lower() != "full":
+        fallback_response = (
+            "I’m currently running in limited mode and can’t access the AI service. "
+            "Please continue with the form, and if you need help, a consultant will assist you."
+        )
+        return {"response": fallback_response, "action": None}
 
     if not settings.OPENAI_API_KEY:
         logger.warning("OPENAI_API_KEY not found in settings; using fallback response")
@@ -214,16 +223,16 @@ Guidelines:
         ]
         
         # Inject Context
-        if request.context:
+        if chat_request.context:
             context_str = "Current Form Data:\n"
-            for key, value in request.context.items():
+            for key, value in chat_request.context.items():
                 if value and key != "project_id":
                     context_str += f"- {key}: {value}\n"
             messages.append(SystemMessage(content=context_str))
             
-        messages.append(HumanMessage(content=request.message))
+        messages.append(HumanMessage(content=chat_request.message))
         
-        logger.info(f"Sending request to OpenAI: {request.message}")
+        logger.info(f"Sending request to OpenAI: {chat_request.message}")
         response = chat.invoke(messages)
         content = response.content
         logger.info("Received response from OpenAI")
@@ -297,7 +306,8 @@ Guidelines:
         return {"response": "I apologize, but I'm having trouble connecting to my knowledge base right now. Please try again later."}
 
 @router.get("/chat-logs/{project_id}")
-async def get_chat_logs(project_id: str, db: Session = Depends(get_db)):
+@limiter.limit(AI_RATE_LIMIT, key_func=get_user_or_ip_key)
+async def get_chat_logs(request: Request, project_id: str, db: Session = Depends(get_db)):
     try:
         uuid.UUID(str(project_id))
         logs = db.query(ChatLog).filter(ChatLog.project_id == project_id).order_by(ChatLog.created_at.asc()).all()
@@ -317,7 +327,8 @@ async def get_chat_logs(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to fetch chat logs")
 
 @router.post("/chat/send")
-async def send_consultant_message(data: ConsultantMessageRequest, db: Session = Depends(get_db)):
+@limiter.limit(AI_RATE_LIMIT, key_func=get_user_or_ip_key)
+async def send_consultant_message(request: Request, data: ConsultantMessageRequest, db: Session = Depends(get_db)):
     try:
         uuid.UUID(str(data.project_id))
         new_log = ChatLog(project_id=data.project_id, sender="consultant", message=data.message)
@@ -347,7 +358,8 @@ async def send_consultant_message(data: ConsultantMessageRequest, db: Session = 
         raise HTTPException(status_code=500, detail="Failed to send message")
 
 @router.post("/toggle-ai")
-async def toggle_ai(data: ToggleAIRequest, db: Session = Depends(get_db)):
+@limiter.limit(AI_RATE_LIMIT, key_func=get_user_or_ip_key)
+async def toggle_ai(request: Request, data: ToggleAIRequest, db: Session = Depends(get_db)):
     try:
         project = db.query(Project).filter(Project.id == data.project_id).first()
         if not project:
@@ -368,7 +380,8 @@ async def toggle_ai(data: ToggleAIRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to toggle AI")
 
 @router.get("/status/{project_id}")
-async def get_ai_status(project_id: str, db: Session = Depends(get_db)):
+@limiter.limit(AI_RATE_LIMIT, key_func=get_user_or_ip_key)
+async def get_ai_status(request: Request, project_id: str, db: Session = Depends(get_db)):
     try:
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project:

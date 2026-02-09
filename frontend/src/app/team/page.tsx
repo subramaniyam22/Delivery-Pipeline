@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { isAuthenticated } from '@/lib/auth';
 import { usersAPI } from '@/lib/api';
 import Navigation from '@/components/Navigation';
+import PageHeader from '@/components/PageHeader';
 
 interface User {
     id: number;
@@ -150,10 +151,11 @@ export default function TeamPage() {
             <Navigation />
             <main className="team-page">
                 <header className="page-header">
-                    <div className="header-text">
-                        <h1>Team Directory</h1>
-                        <p>All team members across India, US and Philippines regions</p>
-                    </div>
+                    <PageHeader
+                        title="Team Directory"
+                        purpose="All team members across India, US and Philippines regions."
+                        variant="page"
+                    />
                     <div className="header-stats">
                         {REGIONS.map(region => (
                             <div key={region.value} className="region-stat">

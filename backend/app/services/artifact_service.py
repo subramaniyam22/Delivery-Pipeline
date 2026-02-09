@@ -1,12 +1,12 @@
 from sqlalchemy.orm import Session
-from app.models import Artifact, Project, Stage, Role
+from app.models import Artifact, Project, Stage, Role, AuditLog
 from app.rbac import can_access_stage, check_full_access
 from fastapi import UploadFile, HTTPException
-from typing import Optional
+from typing import Optional, Dict, Any
 from uuid import UUID
 import os
-import shutil
 from app.config import settings
+from app.services.storage import get_storage_backend
 
 
 def validate_stage_permission(project: Project, stage: Stage, user) -> bool:
@@ -61,41 +61,95 @@ async def upload_artifact(
             detail=f"File size exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE} bytes"
         )
     
-    # Create artifact record
-    from app.services.storage_service import s3_enabled, upload_bytes_to_s3
-    
-    file_url = None
-    if s3_enabled():
-        # Reset file pointer since we seeked earlier
-        file.file.seek(0)
-        content = file.file.read()
-        key = f"projects/{project_id}/artifacts/{stage.value}/{file.filename}"
-        file_url = upload_bytes_to_s3(content, key, file.content_type)
-    else:
-        # Create upload directory if it doesn't exist
-        upload_dir = os.path.join(settings.UPLOAD_DIR, str(project_id), stage.value)
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        # Save file locally
-        file_path = os.path.join(upload_dir, file.filename)
-        file.file.seek(0)
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        file_url = file_path
+    storage = get_storage_backend()
+    file.file.seek(0)
+    content = file.file.read()
+    storage_key = f"projects/{project_id}/artifacts/{stage.value}/{file.filename}"
+    stored = storage.save_bytes(storage_key, content, file.content_type)
     
     artifact = Artifact(
         project_id=project_id,
         stage=stage,
         type=artifact_type,
+        artifact_type=artifact_type,
         filename=file.filename,
-        url=file_url,
+        storage_key=stored.storage_key,
+        url=stored.url or "",
+        content_type=stored.content_type,
+        size_bytes=stored.size_bytes,
+        checksum=stored.checksum,
         notes=notes,
+        metadata_json={},
         uploaded_by_user_id=user.id
     )
     db.add(artifact)
+    db.flush()
+    db.add(
+        AuditLog(
+            project_id=project_id,
+            actor_user_id=user.id,
+            action="ARTIFACT_UPLOADED",
+            payload_json={
+                "artifact_id": str(artifact.id),
+                "filename": file.filename,
+                "stage": stage.value,
+                "artifact_type": artifact_type,
+            },
+        )
+    )
     db.commit()
     db.refresh(artifact)
     
+    return artifact
+
+
+def create_artifact_from_bytes(
+    db: Session,
+    project_id: UUID,
+    stage: Stage,
+    filename: str,
+    content: bytes,
+    artifact_type: str,
+    uploaded_by_user_id: UUID,
+    notes: Optional[str] = None,
+    metadata_json: Optional[Dict[str, Any]] = None,
+) -> Artifact:
+    storage = get_storage_backend()
+    storage_key = f"projects/{project_id}/artifacts/{stage.value}/{filename}"
+    stored = storage.save_bytes(storage_key, content, "application/octet-stream")
+
+    artifact = Artifact(
+        project_id=project_id,
+        stage=stage,
+        type=artifact_type,
+        artifact_type=artifact_type,
+        filename=filename,
+        storage_key=stored.storage_key,
+        url=stored.url or "",
+        content_type=stored.content_type,
+        size_bytes=stored.size_bytes,
+        checksum=stored.checksum,
+        notes=notes,
+        metadata_json=metadata_json or {},
+        uploaded_by_user_id=uploaded_by_user_id,
+    )
+    db.add(artifact)
+    db.flush()
+    db.add(
+        AuditLog(
+            project_id=project_id,
+            actor_user_id=uploaded_by_user_id,
+            action="ARTIFACT_UPLOADED",
+            payload_json={
+                "artifact_id": str(artifact.id),
+                "filename": filename,
+                "stage": stage.value,
+                "artifact_type": artifact_type,
+            },
+        )
+    )
+    db.commit()
+    db.refresh(artifact)
     return artifact
 
 
@@ -112,12 +166,25 @@ def delete_artifact(db: Session, artifact_id: UUID, user) -> bool:
             detail="You don't have permission to delete this artifact"
         )
     
-    # Delete file from filesystem
-    if os.path.exists(artifact.url):
-        os.remove(artifact.url)
+    storage = get_storage_backend()
+    if artifact.storage_key:
+        try:
+            storage.delete(artifact.storage_key)
+        except Exception:
+            pass
     
     # Delete database record
     db.delete(artifact)
     db.commit()
     
     return True
+
+
+def get_artifact_bytes(artifact: Artifact) -> bytes:
+    storage = get_storage_backend()
+    if artifact.storage_key:
+        return storage.read_bytes(artifact.storage_key)
+    if artifact.url and os.path.exists(artifact.url):
+        with open(artifact.url, "rb") as handle:
+            return handle.read()
+    raise FileNotFoundError("Artifact storage not found")

@@ -5,6 +5,7 @@ from app.agents.prompts import (
     DEFECT_VALIDATION_PROMPT,
     get_llm
 )
+from app.utils.llm import invoke_llm
 from app.agents.tools import fetch_staging_url, fetch_defect_from_tracker
 import json
 
@@ -186,7 +187,7 @@ def test_node(state: Dict[str, Any]) -> Dict[str, Any]:
     
     # Fallback to LLM analysis if no test scenarios or db not available
     if not test_execution_summary:
-        llm = get_llm()
+        llm = get_llm(task="summary")
         prompt = TEST_PROMPT.format(
             project_info=json.dumps(context.get("project_info", {})),
             test_tasks=json.dumps(test_tasks),
@@ -195,7 +196,7 @@ def test_node(state: Dict[str, Any]) -> Dict[str, Any]:
         )
         
         try:
-            response = llm.invoke(prompt)
+            response = invoke_llm(llm, prompt)
             if isinstance(response, str):
                 results = json.loads(response)
             else:
@@ -304,7 +305,7 @@ def defect_validation_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 external_defects.append(fetch_defect_from_tracker(defect["external_id"]))
         
         # Use LLM to validate defects
-        llm = get_llm()
+        llm = get_llm(task="summary")
         prompt = DEFECT_VALIDATION_PROMPT.format(
             project_info=json.dumps(context.get("project_info", {})),
             defects=json.dumps(defects),
@@ -313,7 +314,7 @@ def defect_validation_node(state: Dict[str, Any]) -> Dict[str, Any]:
         )
         
         try:
-            response = llm.invoke(prompt)
+            response = invoke_llm(llm, prompt)
             if isinstance(response, str):
                 validation = json.loads(response)
             else:

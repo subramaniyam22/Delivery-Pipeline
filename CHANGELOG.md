@@ -1,6 +1,6 @@
 # CHANGELOG
 
-All notable changes to the Multi-Agent Delivery Pipeline project.
+All notable changes to the Delivery Automation Suite project.
 
 ## [2.0.0] - 2026-02-04
 

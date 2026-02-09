@@ -40,11 +40,16 @@ services:
     environment:
       DATABASE_URL: postgresql://delivery_user:delivery_pass@postgres:5432/delivery_db
       SECRET_KEY: your-secret-key-change-in-production-use-openssl-rand-hex-32
+      SECRET_KEY_CURRENT:
+      SECRET_KEY_PREVIOUS:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       UPLOAD_DIR: /uploads
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       FRONTEND_URL: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000,https://delivery-frontend-60cf.onrender.com
       REDIS_URL: redis://redis:6379
+      STORAGE_BACKEND: local
+      AI_MODE: full
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
@@ -66,9 +71,42 @@ services:
       - delivery_network
     command: >
       sh -c "
-        alembic upgrade head &&
+        alembic upgrade heads &&
         uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       "
+
+  backend-worker:
+    build: ./backend
+    container_name: delivery_backend_worker
+    environment:
+      DATABASE_URL: postgresql://delivery_user:delivery_pass@postgres:5432/delivery_db
+      SECRET_KEY: your-secret-key-change-in-production-use-openssl-rand-hex-32
+      SECRET_KEY_CURRENT:
+      SECRET_KEY_PREVIOUS:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      UPLOAD_DIR: /uploads
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      FRONTEND_URL: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000,https://delivery-frontend-60cf.onrender.com
+      REDIS_URL: redis://redis:6379
+      STORAGE_BACKEND: local
+      AI_MODE: full
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      AWS_REGION: ${AWS_REGION:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+    volumes:
+      - uploads:/uploads
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - delivery_network
+    command: python -m app.jobs.worker
 
   frontend:
     build: ./frontend

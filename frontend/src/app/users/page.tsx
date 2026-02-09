@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { usersAPI } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
+import RequireCapability from '@/components/RequireCapability';
+import PageHeader from '@/components/PageHeader';
 
 interface User {
     id: string;
@@ -265,14 +267,16 @@ export default function UsersPage() {
     if (!currentUser) return null;
 
     return (
+        <RequireCapability cap="manage_users">
         <div className="page-wrapper">
             <Navigation />
             <main className="users-page">
                 <header className="page-header">
-                    <div className="header-text">
-                        <h1>User Management</h1>
-                        <p>Create and manage users and their roles</p>
-                    </div>
+                    <PageHeader
+                        title="User Management"
+                        purpose="Create and manage users and their roles."
+                        variant="page"
+                    />
                     <button onClick={openCreateModal} className="btn-create">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <line x1="12" y1="5" x2="12" y2="19" />
@@ -1235,5 +1239,6 @@ export default function UsersPage() {
                 }
             `}</style>
         </div>
+        </RequireCapability>
     );
 }

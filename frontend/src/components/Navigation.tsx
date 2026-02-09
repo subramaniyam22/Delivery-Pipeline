@@ -1,21 +1,28 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { getCurrentUser, logout } from '@/lib/auth';
+import { getCurrentUser, getDevRoleOverride, logout, Role, setDevRoleOverride } from '@/lib/auth';
 import { healthAPI } from '@/lib/api';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useNotification } from '@/context/NotificationContext';
+import { getNavForUser, type NavGroup } from '@/lib/nav';
 
 export default function Navigation() {
     const { unreadCount, toggleDrawer, isDrawerOpen, notifications, markAsRead, clearAll } = useNotification();
     const router = useRouter();
     const pathname = usePathname();
     const [user, setUser] = useState<any>(null);
+    const [devRole, setDevRole] = useState<string>('');
+    const isDev = process.env.NODE_ENV !== 'production';
 
     useEffect(() => {
         const currentUser = getCurrentUser();
         setUser(currentUser);
+        if (isDev) {
+            const override = getDevRoleOverride();
+            setDevRole(override || '');
+        }
 
         if (currentUser) {
             // Single warm-up ping; avoid continuous background requests
@@ -24,40 +31,51 @@ export default function Navigation() {
         return;
     }, []);
 
-    const isActive = (path: string) => pathname === path;
-    const isAdmin = user?.role === 'ADMIN';
-    const isManager = user?.role === 'ADMIN' || user?.role === 'MANAGER';
-    const isConsultantPlus = ['ADMIN', 'MANAGER', 'CONSULTANT', 'PC'].includes(user?.role);
+    const navContainerRef = useRef<HTMLDivElement | null>(null);
+    const [openGroup, setOpenGroup] = useState<NavGroup | null>(null);
 
-    // Build nav items based on role
-    const navItems = [
-        // Admin: Executive Dashboard instead of regular Dashboard
-        ...(isAdmin ? [
-            { path: '/executive-dashboard', label: 'Dashboard', icon: '📊' },
-        ] : [
-            { path: '/dashboard', label: 'Dashboard', icon: '📊' },
-        ]),
-        // All users: Projects (with role-based detail views)
-        { path: '/projects', label: 'Projects', icon: '📁' },
-        // Consultant+: Client Management
-        ...(isConsultantPlus ? [
-            { path: '/client-management', label: 'Clients', icon: '📧' },
-        ] : []),
-        // Non-admin: Forecast and Capacity
-        ...(!isAdmin ? [
-            { path: '/forecast', label: 'Forecast', icon: '🔮', badge: 'AI' },
-            { path: '/capacity', label: 'Capacity', icon: '👥', badge: 'AI' },
-        ] : []),
-        // All users: Leave Management
-        { path: '/leave-management', label: 'Leave', icon: '📅' },
-        // Managers+: User Management & Configuration
-        ...(isManager ? [
-            { path: '/users', label: 'Manage Users', icon: '⚙️' },
-            { path: '/configuration', label: 'Config', icon: '🛠️' },
-        ] : []),
-        // All users: Team directory
-        { path: '/team', label: 'Team', icon: '📋' },
-    ];
+    const isActive = (path: string) => {
+        if (path === '/dashboard' || path === '/executive-dashboard') {
+            return pathname === path;
+        }
+        return pathname === path || pathname.startsWith(`${path}/`);
+    };
+
+    const groupedNav = useMemo(() => {
+        const items = getNavForUser(user);
+        const groups: Record<NavGroup, typeof items> = {
+            Work: [],
+            Delivery: [],
+            Insights: [],
+            Admin: [],
+        };
+        items.forEach((item) => {
+            groups[item.group].push(item);
+        });
+        return groups;
+    }, [user]);
+
+    const groupOrder: NavGroup[] = ['Work', 'Delivery', 'Insights', 'Admin'];
+
+    useEffect(() => {
+        const handleClick = (event: MouseEvent) => {
+            if (!navContainerRef.current) return;
+            if (!navContainerRef.current.contains(event.target as Node)) {
+                setOpenGroup(null);
+            }
+        };
+        const handleKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setOpenGroup(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        document.addEventListener('keydown', handleKey);
+        return () => {
+            document.removeEventListener('mousedown', handleClick);
+            document.removeEventListener('keydown', handleKey);
+        };
+    }, []);
 
     if (!user) return null;
 
@@ -73,28 +91,53 @@ export default function Navigation() {
                     aria-label="Go to dashboard"
                 >
                     <div className="brand-logo" aria-hidden="true">
-                        <span>🚀</span>
+                        <img src="/logo.svg" alt="Delivery Automation Suite logo" />
                     </div>
                     <div className="brand-text">
                         <span className="brand-name">Delivery</span>
-                        <span className="brand-tagline">Pipeline</span>
+                        <span className="brand-tagline">Automation Suite</span>
                     </div>
                 </div>
 
-                <div className="nav-links" role="menubar">
-                    {navItems.map((item) => (
-                        <button
-                            key={item.path}
-                            onClick={() => router.push(item.path)}
-                            className={`nav-link ${isActive(item.path) ? 'active' : ''}`}
-                            role="menuitem"
-                            aria-current={isActive(item.path) ? 'page' : undefined}
-                        >
-                            <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                            <span className="nav-label">{item.label}</span>
-                            {item.badge && <span className="nav-badge" aria-label={`${item.badge} powered`}>{item.badge}</span>}
-                        </button>
-                    ))}
+                <div className="nav-links" role="menubar" ref={navContainerRef}>
+                    {groupOrder.map((group) => {
+                        const items = groupedNav[group];
+                        if (!items || items.length === 0) return null;
+                        const groupActive = items.some((item) => isActive(item.href));
+                        const isOpen = openGroup === group;
+                        return (
+                            <div key={group} className="nav-dropdown">
+                                <button
+                                    type="button"
+                                    className={`nav-link dropdown-trigger ${groupActive ? 'active' : ''}`}
+                                    onClick={() => setOpenGroup(isOpen ? null : group)}
+                                    aria-haspopup="true"
+                                    aria-expanded={isOpen}
+                                >
+                                    <span className="nav-label">{group}</span>
+                                    <span className="dropdown-caret" aria-hidden="true">▾</span>
+                                </button>
+                                {isOpen && (
+                                    <div className="dropdown-menu" role="menu">
+                                        {items.map((item) => (
+                                            <button
+                                                key={item.href}
+                                                onClick={() => {
+                                                    setOpenGroup(null);
+                                                    router.push(item.href);
+                                                }}
+                                                className={`dropdown-item ${isActive(item.href) ? 'active' : ''}`}
+                                                role="menuitem"
+                                                aria-current={isActive(item.href) ? 'page' : undefined}
+                                            >
+                                                {item.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
 
 
@@ -107,6 +150,42 @@ export default function Navigation() {
                         <span className="user-name">{user.name}</span>
                         <span className="user-role">{user.role}</span>
                     </div>
+                    {isDev && (user.role === 'ADMIN' || user.role === 'MANAGER') && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
+                            <span style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444' }}>DEV ONLY</span>
+                            <select
+                                value={devRole || 'none'}
+                                onChange={(e) => {
+                                    const next = e.target.value;
+                                    if (next === 'none') {
+                                        setDevRoleOverride(null);
+                                    } else {
+                                        setDevRoleOverride(next as Role);
+                                    }
+                                    setDevRole(next === 'none' ? '' : next);
+                                    const updated = getCurrentUser();
+                                    setUser(updated);
+                                    setTimeout(() => window.location.reload(), 50);
+                                }}
+                                style={{
+                                    padding: '4px 6px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #e2e8f0',
+                                    fontSize: '11px',
+                                    background: '#fff',
+                                    color: '#0f172a',
+                                }}
+                                aria-label="Development role switcher"
+                            >
+                                <option value="none">Role</option>
+                                {Object.values(Role).map((role) => (
+                                    <option key={role} value={role}>
+                                        {role}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     <div className="nav-actions" style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
                         <button
@@ -233,13 +312,19 @@ export default function Navigation() {
                 .brand-logo {
                     width: 40px;
                     height: 40px;
-                    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
                     border-radius: var(--radius-md);
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    font-size: 20px;
                     box-shadow: var(--shadow-sm);
+                    overflow: hidden;
+                    background: var(--bg-tertiary);
+                }
+                .brand-logo img {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: cover;
+                    display: block;
                 }
                 .brand-text {
                     display: flex;
@@ -284,6 +369,49 @@ export default function Navigation() {
                     outline-offset: 2px;
                 }
                 .nav-link.active {
+                    background: var(--color-info-bg);
+                    color: var(--accent-primary);
+                    font-weight: 600;
+                }
+                .nav-dropdown {
+                    position: relative;
+                }
+                .dropdown-trigger {
+                    padding-right: 10px;
+                }
+                .dropdown-caret {
+                    font-size: 10px;
+                    margin-left: 4px;
+                }
+                .dropdown-menu {
+                    position: absolute;
+                    top: calc(100% + 6px);
+                    left: 0;
+                    min-width: 180px;
+                    background: white;
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-md);
+                    box-shadow: var(--shadow-lg);
+                    padding: 6px;
+                    z-index: 1000;
+                }
+                .dropdown-item {
+                    width: 100%;
+                    text-align: left;
+                    background: transparent;
+                    border: none;
+                    padding: 8px 10px;
+                    border-radius: var(--radius-sm);
+                    cursor: pointer;
+                    font-size: 13px;
+                    color: var(--text-secondary);
+                    transition: background 0.2s ease;
+                }
+                .dropdown-item:hover {
+                    background: var(--bg-tertiary);
+                    color: var(--text-primary);
+                }
+                .dropdown-item.active {
                     background: var(--color-info-bg);
                     color: var(--accent-primary);
                     font-weight: 600;
@@ -390,17 +518,6 @@ export default function Navigation() {
                 @keyframes slideDown {
                     from { opacity: 0; transform: translateY(-10px); }
                     to { opacity: 1; transform: translateY(0); }
-                }
-
-                .nav-badge {
-                    font-size: 9px;
-                    padding: 2px 6px;
-                    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-                    color: white;
-                    border-radius: var(--radius-full);
-                    font-weight: 600;
-                    text-transform: uppercase;
-                    letter-spacing: 0.5px;
                 }
 
                 .nav-user {

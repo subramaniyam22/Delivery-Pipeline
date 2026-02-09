@@ -9,12 +9,17 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: apt-get update && apt-get install -y nodejs npm git && npm install -g lighthouse && pip install -r requirements.txt && python -m playwright install --with-deps chromium
+    startCommand: alembic upgrade head && gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 60 --keep-alive 5
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: delivery-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: delivery-redis
+          type: redis
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
@@ -24,6 +29,12 @@ services:
         value: https://delivery-frontend.onrender.com
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: AI_MODE
+        value: full
+      - key: RATE_LIMIT_AI_PER_MINUTE
+        value: 30
+      - key: RATE_LIMIT_PUBLIC_PER_MINUTE
+        value: 60
 
   # Frontend Service
   - type: web
@@ -39,6 +50,41 @@ services:
         value: https://delivery-backend-vx6f.onrender.com
       - key: NODE_VERSION
         value: 20
+
+  # Background Worker Service
+  - type: worker
+    name: delivery-worker
+    runtime: python
+    region: oregon
+    plan: starter
+    rootDir: backend
+    buildCommand: apt-get update && apt-get install -y nodejs npm git && npm install -g lighthouse && pip install -r requirements.txt && python -m playwright install --with-deps chromium
+    startCommand: python -m app.jobs.worker
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: delivery-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: delivery-redis
+          type: redis
+          property: connectionString
+      - key: SECRET_KEY
+        fromService:
+          name: delivery-backend
+          type: web
+          property: envVars.SECRET_KEY
+      - key: FRONTEND_URL
+        value: https://delivery-frontend.onrender.com
+      - key: AI_MODE
+        value: full
+
+  # Redis Service
+  - type: redis
+    name: delivery-redis
+    plan: free
+    region: oregon
 
 databases:
   - name: delivery-db

@@ -1,283 +1,306 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List, Optional
-from pydantic import BaseModel, ConfigDict
+from typing import List
 from datetime import datetime
+import os
+import html
 
 from app.db import get_db
+from app.db import SessionLocal
 from app.deps import get_current_active_user
-from app.models import ThemeTemplate, User, Role
+from app.models import TemplateRegistry, User, AuditLog
+from app.schemas import TemplateCreate, TemplateUpdate, TemplateResponse
+from app.config import settings
+from app.rbac import require_admin_manager
 
-router = APIRouter()
+router = APIRouter(tags=["templates"])
 
-# --- Schemas ---
-class TemplateCreate(BaseModel):
-    id: str
-    name: str
-    description: Optional[str] = None
-    preview_url: Optional[str] = None
-    actual_web_url: Optional[str] = None
-    colors_json: Optional[dict] = {}
-    features_json: Optional[list] = []
 
-class TemplateResponse(BaseModel):
-    id: str
-    name: str
-    description: Optional[str]
-    preview_url: Optional[str]
-    actual_web_url: Optional[str]
-    colors_json: dict
-    features_json: list
-    created_at: datetime
-    is_active: bool
-    is_published: bool
+def _require_admin_manager(user: User) -> None:
+    require_admin_manager(user)
 
-    model_config = ConfigDict(from_attributes=True)
 
-# --- Endpoints ---
+def _build_preview_html(template: TemplateRegistry) -> str:
+    name = html.escape(template.name or "Untitled Template")
+    description = html.escape(template.description or "")
+    intent = html.escape(template.intent or "")
+    features = template.features_json or []
+    feature_items = "\n".join([f"<li>{html.escape(item)}</li>" for item in features]) or "<li>No features listed</li>"
+    return f"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{name} Preview</title>
+  <style>
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      margin: 0;
+      background: #f8fafc;
+      color: #0f172a;
+    }}
+    .hero {{
+      background: linear-gradient(135deg, #2563eb, #22d3ee);
+      color: white;
+      padding: 48px 32px;
+    }}
+    .container {{
+      max-width: 900px;
+      margin: 0 auto;
+    }}
+    .card {{
+      background: white;
+      border-radius: 16px;
+      padding: 24px;
+      margin-top: -32px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }}
+    .meta {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }}
+    .meta-item {{
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 16px;
+      background: #f8fafc;
+    }}
+    h1 {{
+      margin: 0 0 8px 0;
+      font-size: 32px;
+    }}
+    h2 {{
+      margin: 0 0 12px 0;
+      font-size: 20px;
+    }}
+    ul {{
+      margin: 0;
+      padding-left: 18px;
+    }}
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="container">
+      <h1>{name}</h1>
+      <p>{description}</p>
+    </div>
+  </div>
+  <div class="container">
+    <div class="card">
+      <h2>Template Intent</h2>
+      <p>{intent or "Intent not provided yet."}</p>
+      <div class="meta">
+        <div class="meta-item">
+          <h2>Features</h2>
+          <ul>
+            {feature_items}
+          </ul>
+        </div>
+        <div class="meta-item">
+          <h2>Generated Preview</h2>
+          <p>This preview is AI-generated and updates when you regenerate.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+def _generate_template_preview(template_id: str) -> None:
+    db = SessionLocal()
+    try:
+        template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+        if not template:
+            return
+        preview_root = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "generated_previews"
+        )
+        os.makedirs(preview_root, exist_ok=True)
+        template_dir = os.path.join(preview_root, str(template.id))
+        os.makedirs(template_dir, exist_ok=True)
+        html_content = _build_preview_html(template)
+        index_path = os.path.join(template_dir, "index.html")
+        with open(index_path, "w", encoding="utf-8") as handle:
+            handle.write(html_content)
+        base_url = settings.BACKEND_URL or "http://localhost:8000"
+        template.preview_url = f"{base_url}/previews/{template.id}/index.html"
+        template.preview_status = "ready"
+        template.preview_error = None
+        template.preview_last_generated_at = datetime.utcnow()
+        db.commit()
+    except Exception as exc:
+        if template_id:
+            template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+            if template:
+                template.preview_status = "failed"
+                template.preview_error = str(exc)
+                template.preview_last_generated_at = datetime.utcnow()
+                db.commit()
+    finally:
+        db.close()
+
 
 @router.get("/templates", response_model=List[TemplateResponse])
-def get_templates(
+@router.get("/api/templates", response_model=List[TemplateResponse])
+def list_templates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """List all active templates (Admin View)."""
-    return db.query(ThemeTemplate).filter(ThemeTemplate.is_active == True).all()
+    _require_admin_manager(current_user)
+    return db.query(TemplateRegistry).order_by(TemplateRegistry.created_at.desc()).all()
 
-@router.post("/templates/{template_id}/publish")
-def toggle_template_publish(
-    template_id: str,
-    publish: bool,
+
+@router.post("/templates", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/api/templates", response_model=TemplateResponse, status_code=status.HTTP_201_CREATED)
+def create_template(
+    data: TemplateCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Publish/Unpublish a template."""
-    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    
-    template = db.query(ThemeTemplate).filter(ThemeTemplate.id == template_id).first()
+    _require_admin_manager(current_user)
+    source_type = (data.source_type or "ai").lower()
+    if source_type not in ["ai", "git"]:
+        raise HTTPException(status_code=400, detail="Invalid source_type")
+    if source_type == "git" and not data.repo_url:
+        raise HTTPException(status_code=400, detail="repo_url is required for git templates")
+    template = TemplateRegistry(
+        name=data.name,
+        repo_url=data.repo_url,
+        default_branch=data.default_branch or ("main" if source_type == "git" else None),
+        meta_json=data.meta_json or {},
+        description=data.description,
+        features_json=data.features_json or [],
+        preview_url=data.preview_url,
+        source_type=source_type,
+        intent=data.intent,
+        preview_status=data.preview_status or "not_generated",
+        preview_last_generated_at=data.preview_last_generated_at,
+        preview_error=data.preview_error,
+        preview_thumbnail_url=data.preview_thumbnail_url,
+        is_active=True if data.is_active is None else data.is_active,
+        is_published=True if data.is_published is None else data.is_published,
+    )
+    db.add(template)
+    db.commit()
+    db.refresh(template)
+    db.add(
+        AuditLog(
+            project_id=None,
+            actor_user_id=current_user.id,
+            action="TEMPLATE_CREATED",
+            payload_json={"template_id": str(template.id), "name": template.name},
+        )
+    )
+    db.commit()
+    return template
+
+
+@router.get("/templates/{template_id}", response_model=TemplateResponse)
+@router.get("/api/templates/{template_id}", response_model=TemplateResponse)
+def get_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    
-    template.is_published = publish
-    db.commit()
-    return {"success": True, "message": f"Template {'published' if publish else 'unpublished'}"}
+    return template
 
-@router.post("/templates", response_model=TemplateResponse)
-def create_template(
-    template: TemplateCreate,
+
+@router.put("/templates/{template_id}", response_model=TemplateResponse)
+@router.put("/api/templates/{template_id}", response_model=TemplateResponse)
+def update_template(
+    template_id: str,
+    data: TemplateUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Create a new theme template (Admin/Manager only)."""
-    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    
-    existing = db.query(ThemeTemplate).filter(ThemeTemplate.id == template.id).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Template ID already exists")
-    
-    new_template = ThemeTemplate(
-        id=template.id,
-        name=template.name,
-        description=template.description,
-        preview_url=template.preview_url,
-        actual_web_url=template.actual_web_url,
-        colors_json=template.colors_json,
-        features_json=template.features_json,
-        is_published=False # Default to draft
-    )
-    db.add(new_template)
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    updates = data.model_dump(exclude_unset=True)
+    if "source_type" in updates:
+        source_type = str(updates["source_type"]).lower()
+        if source_type not in ["ai", "git"]:
+            raise HTTPException(status_code=400, detail="Invalid source_type")
+        if source_type == "git" and not (updates.get("repo_url") or template.repo_url):
+            raise HTTPException(status_code=400, detail="repo_url is required for git templates")
+        updates["source_type"] = source_type
+    for key, value in updates.items():
+        setattr(template, key, value)
     db.commit()
-    db.refresh(new_template)
-    return new_template
+    db.refresh(template)
+    if "is_published" in updates:
+        db.add(
+            AuditLog(
+                project_id=None,
+                actor_user_id=current_user.id,
+                action="TEMPLATE_PUBLISHED" if updates.get("is_published") else "TEMPLATE_UNPUBLISHED",
+                payload_json={"template_id": str(template.id), "name": template.name},
+            )
+        )
+        db.commit()
+    db.add(
+        AuditLog(
+            project_id=None,
+            actor_user_id=current_user.id,
+            action="TEMPLATE_UPDATED",
+            payload_json={"template_id": str(template.id), "updates": updates},
+        )
+    )
+    db.commit()
+    return template
 
-@router.delete("/templates/{template_id}")
+
+@router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_template(
     template_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Soft delete a template (Admin/Manager only)."""
-    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    
-    template = db.query(ThemeTemplate).filter(ThemeTemplate.id == template_id).first()
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    
-    # Soft delete
-    template.is_active = False
-    template.is_published = False # Also unpublish
+    db.delete(template)
     db.commit()
-    return {"success": True, "message": "Template deleted"}
+    db.add(
+        AuditLog(
+            project_id=None,
+            actor_user_id=current_user.id,
+            action="TEMPLATE_DELETED",
+            payload_json={"template_id": str(template_id), "name": template.name},
+        )
+    )
+    db.commit()
 
-# --- Bulk Upload ---
-from fastapi import UploadFile, File
-import pandas as pd
-import io
 
-@router.post("/templates/bulk")
-async def bulk_upload_templates(
-    file: UploadFile = File(...),
+@router.post("/api/templates/{template_id}/generate-preview")
+def generate_template_preview(
+    template_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """Bulk upload theme templates from Excel/CSV."""
-    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-
-    try:
-        content = await file.read()
-        file_obj = io.BytesIO(content)
-        
-        if file.filename.endswith('.csv'):
-            df = pd.read_csv(file_obj)
-        elif file.filename.endswith(('.xls', '.xlsx')):
-            df = pd.read_excel(file_obj)
-        elif file.filename.endswith('.docx'):
-            import docx
-            doc = docx.Document(file_obj)
-            # Find the first table
-            if len(doc.tables) == 0:
-                raise HTTPException(status_code=400, detail="No tables found in Word document.")
-            
-            table = doc.tables[0]
-            data = [[cell.text for cell in row.cells] for row in table.rows]
-            
-            if len(data) < 2:
-                raise HTTPException(status_code=400, detail="Table in document is empty or has no data.")
-                
-            # Assume first row is header
-            headers = data[0]
-            rows = data[1:]
-            df = pd.DataFrame(rows, columns=headers)
-            
-        elif file.filename.endswith('.pdf'):
-            import pdfplumber
-            
-            data = []
-            with pdfplumber.open(file_obj) as pdf:
-                for page in pdf.pages:
-                    tables = page.extract_tables()
-                    for table in tables:
-                        # Filter out empty rows or None
-                        cleaned_table = [[cell if cell is not None else "" for cell in row] for row in table]
-                        data.extend(cleaned_table)
-            
-            if not data or len(data) < 2:
-                raise HTTPException(status_code=400, detail="No readable tables found in PDF.")
-                
-            # Assume first row of the first identified table is header
-            headers = data[0]
-            rows = data[1:]
-            df = pd.DataFrame(rows, columns=headers)
-            
-        else:
-            raise HTTPException(status_code=400, detail="Invalid file format. Use CSV, Excel, Word (.docx), or PDF.")
-
-        # Expected columns: "Template ID", "Template Name", "Description", "Preview Image URL", "Actual Template Web URL", "Features"
-        
-        # Normalize column names (strip whitespace, lower case)
-        df.columns = [str(c).strip().lower().replace(' ', '_') for c in df.columns]
-        print(f"Bulk Upload Columns Detected: {df.columns.tolist()}") # Debug log
-        
-        # Mappings helper
-        def get_val(row, keys):
-            for k in keys:
-                if k in row:
-                    val = row[k]
-                    if pd.notna(val):
-                        return str(val).strip()
-            return ""
-
-        success_count = 0
-        errors = []
-
-        for index, row in df.iterrows():
-            try:
-                # Flexible column matching
-                t_id = get_val(row, ['template_id', 'id', 'templateid', 'code'])
-                t_name = get_val(row, ['template_name', 'name', 'templatename', 'title'])
-                
-                if not t_id and t_name:
-                    # Auto-generate ID from name if missing
-                    # Simple slugify: lowercase, replace non-alphanumeric with hyphen
-                    import re
-                    t_id = re.sub(r'[^a-z0-9]+', '-', t_name.lower()).strip('-')
-
-                if not t_id or not t_name:
-                    # Log why it skipped
-                    if not t_id and not t_name:
-                        # Probably an empty row, ignore silently
-                        continue
-                    errors.append(f"Row {index+2}: Missing ID or Name (Found ID: '{t_id}', Name: '{t_name}')")
-                    continue
-
-                description = get_val(row, ['description', 'desc', 'summary'])
-                preview_url = get_val(row, ['preview_image_url', 'preview_url', 'image', 'image_url', 'preview'])
-                actual_web_url = get_val(row, ['actual_template_web_url', 'actual_web_url', 'web_url', 'url', 'link', 'site_url'])
-                actual_web_url = get_val(row, ['actual_template_web_url', 'actual_web_url', 'web_url', 'url', 'link', 'site_url'])
-                
-                # Improve features detection
-                features_keys = ['features', 'feature_list', 'tags', 'features_(comma_separated)']
-                features_raw = get_val(row, features_keys)
-                
-                # Fallback: if empty, look for any column containing 'feature'
-                if not features_raw:
-                    for col in df.columns:
-                        if 'feature' in col:
-                            val = row[col]
-                            if pd.notna(val):
-                                features_raw = str(val).strip()
-                                break
-
-                # Check if exists
-                existing = db.query(ThemeTemplate).filter(ThemeTemplate.id == t_id).first()
-                
-                # Parse features robustly
-                import re
-                features_list = []
-                if features_raw:
-                    features_list = [f.strip() for f in re.split(r'[,\n;]+', features_raw) if f.strip()]
-
-                if existing:
-                    # Update existing
-                    existing.name = t_name
-                    existing.description = description
-                    existing.preview_url = preview_url
-                    existing.actual_web_url = actual_web_url
-                    existing.features_json = features_list
-                    
-                    # Re-activate if it was deleted
-                    existing.is_active = True
-                    
-                else:
-                    # Create new
-                    new_template = ThemeTemplate(
-                        id=t_id,
-                        name=t_name,
-                        description=description,
-                        preview_url=preview_url,
-                        actual_web_url=actual_web_url,
-                        features_json=features_list,
-                        colors_json={ "primary": "#000000", "secondary": "#333333", "accent": "#666666" }, # Default colors
-                        is_published=False # Uploaded templates are drafts by default
-                    )
-                    db.add(new_template)
-                
-                success_count += 1
-                
-                success_count += 1
-            except Exception as e:
-                errors.append(f"Row {index+1}: {str(e)}")
-
-        db.commit()
-        return {
-            "success": True, 
-            "message": f"Successfully processed {success_count} templates.",
-            "errors": errors
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if template.source_type == "git":
+        raise HTTPException(status_code=400, detail="Preview generation is only supported for AI templates")
+    template.preview_status = "generating"
+    template.preview_error = None
+    db.commit()
+    background_tasks.add_task(_generate_template_preview, template_id)
+    return {"preview_status": "generating"}

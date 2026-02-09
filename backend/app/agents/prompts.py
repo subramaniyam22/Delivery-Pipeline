@@ -255,11 +255,16 @@ class FakeLLM:
             """
 
 
-def get_llm():
+def get_llm(task: Optional[str] = None):
     """
     Get LLM instance - returns OpenAI LLM if API key is available,
     otherwise returns FakeLLM for deterministic testing.
     """
+    mode = (settings.AI_MODE or "full").lower()
+    if mode == "disabled":
+        return FakeLLM()
+    if mode == "basic" and task not in {"summary", "checklist", "test_plan"}:
+        return FakeLLM()
     if settings.OPENAI_API_KEY:
         try:
             from langchain_openai import ChatOpenAI

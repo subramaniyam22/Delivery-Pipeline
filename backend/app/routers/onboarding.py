@@ -21,15 +21,13 @@ from typing import List, Dict, Any, Optional
 from uuid import UUID, uuid4
 from datetime import datetime, timedelta
 import secrets
-import os
-import boto3
 import logging
 from app.config import Settings, settings
 
 logger = logging.getLogger(__name__)
 from app.services.email_service import send_client_reminder_email
 from app.services.config_service import get_config
-from app.services.storage_service import s3_enabled, upload_bytes_to_s3
+from app.services.storage import get_storage_backend
 from app.services.onboarding_agent import validate_onboarding_submission
 
 router = APIRouter(prefix="/projects", tags=["onboarding"])
@@ -280,7 +278,7 @@ Please visit the onboarding form to complete these details:
 This information is required to move your project to the next stage.
 
 Best regards,
-Delivery Pipeline Team"""
+Delivery Automation Suite Team"""
     
     reminder = ClientReminder(
         project_id=project_id,
@@ -568,7 +566,7 @@ def send_manual_reminder(
     try:
         # Use the module-level function imported at top of file
         # ensure allow fallbacks for sender name
-        sender = f"{current_user.full_name} (via Delivery Pipeline)" if hasattr(current_user, 'full_name') and current_user.full_name else "Delivery Pipeline Team"
+        sender = f"{current_user.full_name} (via Delivery Automation Suite)" if hasattr(current_user, 'full_name') and current_user.full_name else "Delivery Automation Suite Team"
         
         # Now returns (success, message/error)
         email_success, email_msg = send_client_reminder_email(
@@ -878,7 +876,7 @@ async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db:
         #         subject=f"Client submitted onboarding: {project.title}",
         #         message=message,
         #         project_title=project.title,
-        #         sender_name="Delivery Management"
+        #         sender_name="Delivery Automation Suite"
         #     )
         
         # Send WS Notification
@@ -917,26 +915,12 @@ async def upload_client_logo(
     file_path_result = None
     
     try:
-        if s3_enabled():
-            logger.info(f"Uploading logo to S3 for project {onboarding.project_id}")
-            key = f"projects/{onboarding.project_id}/logo/{file.filename}"
-            logo_url = upload_bytes_to_s3(content, key, file.content_type)
-            onboarding.logo_url = logo_url
-            onboarding.logo_file_path = None
-            file_path_result = logo_url
-        else:
-            logger.info(f"Uploading logo locally for project {onboarding.project_id}")
-            relative_dir = os.path.join(str(onboarding.project_id), "logo")
-            upload_dir = os.path.join(settings.UPLOAD_DIR, relative_dir)
-            os.makedirs(upload_dir, exist_ok=True)
-            file_path = os.path.join(upload_dir, file.filename)
-            with open(file_path, "wb") as f:
-                f.write(content)
-            # Store relative path in DB to avoid absolute path issues across environments
-            onboarding.logo_file_path = os.path.join(relative_dir, file.filename).replace("\\", "/")
-            onboarding.logo_url = None 
-            file_path_result = onboarding.logo_file_path
-            logger.info(f"Logo saved locally at: {onboarding.logo_file_path}")
+        storage = get_storage_backend()
+        key = f"projects/{onboarding.project_id}/onboarding/logo/{file.filename}"
+        stored = storage.save_bytes(key, content, file.content_type)
+        onboarding.logo_url = stored.url
+        onboarding.logo_file_path = stored.storage_key
+        file_path_result = stored.url or stored.storage_key
             
         project = db.query(Project).filter(Project.id == onboarding.project_id).first()
         required_fields = resolve_required_fields(db, project)
@@ -974,25 +958,11 @@ async def upload_client_image(
     file_path_result = None
     
     try:
-        if s3_enabled():
-            logger.info(f"Uploading image to S3 for project {onboarding.project_id}")
-            key = f"projects/{onboarding.project_id}/images/{file.filename}"
-            image_url = upload_bytes_to_s3(content, key, file.content_type)
-            images.append({"url": image_url, "filename": file.filename, "type": "uploaded"})
-            file_path_result = image_url
-        else:
-            logger.info(f"Uploading image locally for project {onboarding.project_id}")
-            relative_dir = os.path.join(str(onboarding.project_id), "images")
-            upload_dir = os.path.join(settings.UPLOAD_DIR, relative_dir)
-            os.makedirs(upload_dir, exist_ok=True)
-            file_path = os.path.join(upload_dir, file.filename)
-            with open(file_path, "wb") as f:
-                f.write(content)
-            # Store relative path in DB
-            db_path = os.path.join(relative_dir, file.filename).replace("\\", "/")
-            images.append({"file_path": db_path, "filename": file.filename, "type": "uploaded"})
-            file_path_result = db_path
-            logger.info(f"Image saved locally at: {db_path}")
+        storage = get_storage_backend()
+        key = f"projects/{onboarding.project_id}/onboarding/images/{file.filename}"
+        stored = storage.save_bytes(key, content, file.content_type)
+        images.append({"url": stored.url, "storage_key": stored.storage_key, "filename": file.filename, "type": "uploaded"})
+        file_path_result = stored.url or stored.storage_key
             
         onboarding.images_json = images
         flag_modified(onboarding, "images_json")

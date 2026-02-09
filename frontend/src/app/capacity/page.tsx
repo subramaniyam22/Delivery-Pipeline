@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { isAuthenticated } from '@/lib/auth';
 import { usersAPI, projectsAPI } from '@/lib/api';
 import Navigation from '@/components/Navigation';
+import RequireCapability from '@/components/RequireCapability';
+import PageHeader from '@/components/PageHeader';
 
 interface CapacityData {
     india: { total: number; available: number; utilized: number };
@@ -203,13 +205,17 @@ export default function CapacityPage() {
     }
 
     return (
+        <RequireCapability cap="view_capacity">
         <div className="page-wrapper">
             <Navigation />
             <main className="capacity-page">
                 <header className="page-header">
                     <div className="header-text">
-                        <h1>Team Capacity</h1>
-                        <p>Resource management across India, US, and Philippines teams</p>
+                        <PageHeader
+                            title="Team Capacity"
+                            purpose="Resource management across India, US, and Philippines teams."
+                            variant="page"
+                        />
                         <p className="capacity-note">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <circle cx="12" cy="12" r="10"/>
@@ -947,5 +953,6 @@ export default function CapacityPage() {
                 }
             `}</style>
         </div>
+        </RequireCapability>
     );
 }

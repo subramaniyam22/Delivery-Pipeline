@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
-from app.models import AdminConfig
+from app.models import AdminConfig, AuditLog
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime
+from fastapi import HTTPException, status
 
 
 # Default configuration templates
@@ -62,7 +63,37 @@ DEFAULT_CONFIGS = {
         "privacy_policy",
         "theme",
         "contacts"
-    ]
+    ],
+    "global_stage_gates_json": {
+        "onboarding": False,
+        "assignment": False,
+        "build": False,
+        "test": False,
+        "defect_validation": False,
+        "complete": False
+    },
+    "global_thresholds_json": {
+        "build_pass_score": 98,
+        "qa_pass_score": 98,
+        "lighthouse_min": {
+            "performance": 0.7,
+            "accessibility": 0.9,
+            "seo": 0.9,
+            "best_practices": 0.8
+        },
+        "axe_max_critical": 0,
+        "stage_timeouts_minutes": {
+            "build": 30,
+            "test": 15,
+            "defect_validation": 10,
+            "complete": 5
+        }
+    },
+    "preview_strategy": "zip_only",
+    "default_template_id": None,
+    "worker_concurrency_json": {
+        "max_parallel_jobs": 2
+    }
 }
 
 
@@ -91,22 +122,43 @@ def get_all_configs(db: Session) -> List[AdminConfig]:
     return db.query(AdminConfig).all()
 
 
-def update_config(db: Session, key: str, value_json: Dict[str, Any], user) -> AdminConfig:
+def update_config(db: Session, key: str, value_json: Any, user, expected_version: Optional[int] = None) -> AdminConfig:
     """Update or create configuration"""
     config = get_config(db, key)
     
     if config:
+        if expected_version is not None and config.config_version != expected_version:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Config version mismatch.",
+            )
         config.value_json = value_json
         config.updated_by_user_id = user.id
         config.updated_at = datetime.utcnow()
+        config.config_version = (config.config_version or 1) + 1
     else:
+        if expected_version is not None and expected_version not in (0, 1):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Config version mismatch.",
+            )
         config = AdminConfig(
             key=key,
             value_json=value_json,
-            updated_by_user_id=user.id
+            updated_by_user_id=user.id,
+            config_version=1,
         )
         db.add(config)
     
     db.commit()
     db.refresh(config)
+    db.add(
+        AuditLog(
+            project_id=None,
+            actor_user_id=user.id,
+            action="CONFIG_UPDATED",
+            payload_json={"key": key, "value_json": value_json},
+        )
+    )
+    db.commit()
     return config

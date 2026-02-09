@@ -20,7 +20,10 @@ def _record_stage_transition(
     from_stage: Optional[Stage],
     to_stage: Optional[Stage],
     actor_user_id: Optional[str] = None,
+    request_id: Optional[str] = None,
 ) -> None:
+    if from_stage == to_stage:
+        return
     timestamp = datetime.utcnow().isoformat()
     history = project.stage_history or []
     history.append(
@@ -29,6 +32,7 @@ def _record_stage_transition(
             "to_stage": to_stage.value if to_stage else None,
             "at": timestamp,
             "actor_user_id": actor_user_id,
+            "request_id": request_id,
         }
     )
     project.stage_history = history
@@ -43,8 +47,9 @@ def record_stage_transition(
     from_stage: Optional[Stage],
     to_stage: Optional[Stage],
     actor_user_id: Optional[str] = None,
+    request_id: Optional[str] = None,
 ) -> None:
-    _record_stage_transition(project, from_stage, to_stage, actor_user_id)
+    _record_stage_transition(project, from_stage, to_stage, actor_user_id, request_id)
 
 def _is_sales_requirements_complete(
     title: Optional[str],

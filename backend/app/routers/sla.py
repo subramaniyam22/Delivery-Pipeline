@@ -9,6 +9,7 @@ from datetime import datetime
 from app.db import get_db
 from app.deps import get_current_user
 from app.models import User, Role, SLAConfiguration, Project, Stage
+from app.rbac import check_full_access
 
 
 router = APIRouter(prefix="/sla", tags=["SLA Configuration"])
@@ -71,11 +72,11 @@ class ExecutiveDashboard(BaseModel):
 # ============== Helper Functions ==============
 
 def check_admin(current_user: User):
-    """Verify user is admin"""
-    if current_user.role != Role.ADMIN:
+    """Verify user is admin or manager"""
+    if not check_full_access(current_user.role):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only administrators can access SLA configuration"
+            detail="Only Admin and Manager can access SLA configuration"
         )
 
 

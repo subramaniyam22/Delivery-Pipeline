@@ -3,6 +3,7 @@
 set -o errexit
 
 pip install -r requirements.txt
+python -m playwright install --with-deps chromium
 
 # Run database migrations
 alembic upgrade head

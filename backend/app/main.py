@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from app.config import settings
-from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant, cache, analytics, websocket, notifications, webhooks
+from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant, cache, analytics, websocket, notifications, webhooks, jobs, preview, sentiment_public, sentiments, metrics, audit_logs
 from app.services.config_service import seed_default_configs
 from app.db import SessionLocal
 from app.models import User, Role
@@ -25,6 +25,13 @@ import os
 import logging
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import text
+
+from app.middleware.request_id import RequestIDMiddleware
+from app.middleware.body_limit import BodySizeLimitMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.utils.logging import configure_logging
 
 # Sentry integration (optional)
 try:
@@ -48,11 +55,7 @@ try:
 except ImportError:
     logging.warning("Sentry SDK not installed, skipping error tracking")
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+configure_logging(logging.INFO)
 logger = logging.getLogger(__name__)
 IS_PROD = os.getenv("ENVIRONMENT") == "production"
 
@@ -122,7 +125,7 @@ def seed_manager_users(db):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Multi-Agent Delivery Pipeline",
+    title="Delivery Automation Suite",
     description="Production-ready delivery management system with AI agents",
     version="1.0.0"
 )
@@ -135,29 +138,30 @@ app.add_exception_handler(AppException, app_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
+allowed_origins = settings.cors_origins_list
+if settings.FRONTEND_URL and settings.FRONTEND_URL not in allowed_origins:
+    allowed_origins.append(settings.FRONTEND_URL)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list + [
-        "https://delivery-frontend-60cf.onrender.com",
-        "http://delivery-frontend-60cf.onrender.com",
-        "https://delivery-backend-vvbf.onrender.com",
-        "https://delivery-backend-xvbf.onrender.com",
-        "http://localhost:3000",
-        "http://localhost:8000"
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     max_age=3600,  # Cache preflight requests for 1 hour
 )
 
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.MAX_UPLOAD_SIZE)
+app.add_middleware(SecurityHeadersMiddleware)
+
 
 # Startup event
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
-    logger.info("Starting Multi-Agent Delivery Pipeline...")
+    logger.info("Starting Delivery Automation Suite...")
     
     # Create upload directory
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -208,15 +212,73 @@ app.include_router(analytics.router)
 app.include_router(websocket.router)
 app.include_router(notifications.router)
 app.include_router(webhooks.router)
+app.include_router(jobs.router)
+app.include_router(preview.router)
+app.include_router(sentiment_public.router)
+app.include_router(sentiments.router)
+app.include_router(audit_logs.router)
+app.include_router(metrics.router)
 
 # Serve uploaded files
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
+# Serve generated previews (AI template previews)
+generated_preview_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "generated_previews")
+os.makedirs(generated_preview_dir, exist_ok=True)
+app.mount("/previews", StaticFiles(directory=generated_preview_dir), name="previews")
+
+
+def _check_migrations() -> bool:
+    try:
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        alembic_cfg_path = os.path.join(current_dir, "alembic.ini")
+        alembic_cfg = Config(alembic_cfg_path)
+        alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url_fixed)
+        script = ScriptDirectory.from_config(alembic_cfg)
+        heads = set(script.get_heads())
+        db = SessionLocal()
+        current = db.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+        db.close()
+        if not current:
+            return False
+        return current[0] in heads
+    except Exception:
+        return False
+
 
 @app.get("/version")
 def get_version():
-    return {"version": "1.0.1-debug-cache-disabled", "timestamp": "2026-02-06"}
+    return {
+        "version": os.getenv("RENDER_GIT_COMMIT") or "unknown",
+        "build_timestamp": os.getenv("BUILD_TIMESTAMP") or "unknown",
+    }
+
+
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz(db: Session = Depends(get_db)):
+    checks = {"database": False, "redis": False, "migrations": False}
+    try:
+        db.execute(text("SELECT 1"))
+        checks["database"] = True
+    except Exception:
+        checks["database"] = False
+    try:
+        from app.utils.cache import cache
+        if cache.client:
+            cache.client.ping()
+            checks["redis"] = True
+    except Exception:
+        checks["redis"] = False
+    checks["migrations"] = _check_migrations()
+    if all(checks.values()):
+        return {"status": "ok", "checks": checks}
+    raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": checks})
 
 @app.get("/debug-schema")
 def debug_schema(db: Session = Depends(get_db)):
@@ -234,7 +296,7 @@ def debug_schema(db: Session = Depends(get_db)):
 def read_root():
     """Root endpoint"""
     return {
-        "message": "Multi-Agent Delivery Pipeline API",
+        "message": "Delivery Automation Suite API",
         "version": "1.0.0",
         "status": "running"
     }

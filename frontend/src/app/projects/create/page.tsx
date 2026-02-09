@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { projectsAPI, usersAPI } from '@/lib/api';
 import { getCurrentUser, isAuthenticated } from '@/lib/auth';
@@ -8,7 +8,9 @@ import { canCreateProject } from '@/lib/rbac';
 import { Role } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
 
-export default function CreateProjectPage() {
+export const dynamic = 'force-dynamic';
+
+function CreateProjectContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const editId = searchParams.get('edit');
@@ -571,5 +573,22 @@ export default function CreateProjectPage() {
                 }
             `}</style>
         </div>
+    );
+}
+
+export default function CreateProjectPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="page-wrapper">
+                    <Navigation />
+                    <main className="create-page">
+                        <div className="form-card">Loading...</div>
+                    </main>
+                </div>
+            }
+        >
+            <CreateProjectContent />
+        </Suspense>
     );
 }

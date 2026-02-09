@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
+import PageHeader from '@/components/PageHeader';
 
 interface ProjectDelayStatus {
   project_id: string;
@@ -187,10 +188,11 @@ export default function ExecutiveDashboardPage() {
 
       <main className="main-content">
         <div className="page-header">
-          <div>
-            <h1>📊 Dashboard</h1>
-            <p>Project health overview and SLA management</p>
-          </div>
+          <PageHeader
+            title="📊 Dashboard"
+            purpose="Project health overview and SLA management."
+            variant="page"
+          />
           <button className="btn-refresh" onClick={loadData}>🔄 Refresh</button>
         </div>
 

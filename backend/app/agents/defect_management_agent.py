@@ -23,6 +23,7 @@ from app.models import (
     Project, Stage
 )
 from app.agents.prompts import get_llm
+from app.utils.llm import invoke_llm
 
 
 class DefectManagementAgent:
@@ -36,7 +37,7 @@ class DefectManagementAgent:
     
     def __init__(self, db: Session):
         self.db = db
-        self.llm = get_llm()
+        self.llm = get_llm(task="analysis")
         self.agent_name = "DEFECT_MANAGEMENT_AGENT"
     
     def create_defects_from_failed_tests(
@@ -358,7 +359,7 @@ class DefectManagementAgent:
             """
             
             try:
-                response = self.llm.invoke(prompt)
+                response = invoke_llm(self.llm, prompt)
                 if isinstance(response, str):
                     import re
                     json_match = re.search(r'\{[\s\S]*\}', response)

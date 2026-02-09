@@ -2,10 +2,20 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { projectsAPI, artifactsAPI, workflowAPI, onboardingAPI, projectTasksAPI, remindersAPI, testingAPI, usersAPI, capacityAPI } from '@/lib/api';
+import { projectsAPI, artifactsAPI, workflowAPI, onboardingAPI, projectTasksAPI, remindersAPI, testingAPI, usersAPI, capacityAPI, jobsAPI } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
+import HitlStatusPanel from '@/components/HitlStatusPanel';
 import './project-details.css';
+import { useQuery } from '@tanstack/react-query';
+import Editor from '@monaco-editor/react';
+import Split from 'react-split';
+import DiffViewer from 'react-diff-viewer';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Table, Th, Td } from '@/components/ui/table';
+import { Dialog } from '@/components/ui/dialog';
+import { Tabs } from '@/components/ui/tabs';
 
 interface Contact {
     name: string;
@@ -90,6 +100,19 @@ interface CompletionStatus {
     completed_tasks: number;
     total_required_tasks: number;
     client_form_url: string | null;
+}
+
+interface JobRun {
+    id: string;
+    project_id: string;
+    stage: string;
+    status: string;
+    attempts: number;
+    max_attempts: number;
+    request_id?: string | null;
+    created_at: string;
+    started_at?: string | null;
+    finished_at?: string | null;
 }
 
 // Test Phase Interfaces
@@ -539,6 +562,35 @@ export default function ProjectDetailPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [advancing, setAdvancing] = useState(false);
+    const [enqueueing, setEnqueueing] = useState(false);
+    const [buildOutputs, setBuildOutputs] = useState<any[]>([]);
+    const [stageOutputs, setStageOutputs] = useState<any[]>([]);
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportJson, setReportJson] = useState<any>(null);
+    const [reportTab, setReportTab] = useState<'summary' | 'raw'>('summary');
+    const [selectedCheck, setSelectedCheck] = useState<any>(null);
+
+    const {
+        data: jobsData,
+        refetch: refetchJobs,
+        isLoading: jobsLoading,
+    } = useQuery({
+        queryKey: ['jobs', projectId],
+        queryFn: async () => {
+            const res = await jobsAPI.listByProject(projectId);
+            return res.data as JobRun[];
+        },
+        enabled: !!projectId,
+        refetchInterval: 5000,
+    });
+
+    const jobs = jobsData || [];
+    const pendingHitlJob = jobs.find(job => job.status === 'NEEDS_HUMAN');
+    const latestBuildOutput = buildOutputs?.[0];
+    const latestTestOutput = stageOutputs.find(o => o.stage === 'TEST');
+    const latestDefectOutput = stageOutputs.find(o => o.stage === 'DEFECT_VALIDATION');
+    const latestCompleteOutput = stageOutputs.find(o => o.stage === 'COMPLETE');
+    const buildArtifacts = artifacts.filter(a => a.stage === 'BUILD');
 
     // Onboarding state
     const [onboardingData, setOnboardingData] = useState<OnboardingData | null>(null);
@@ -652,6 +704,16 @@ export default function ProjectDetailPage() {
     // Role and assignment checks
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const isExecutiveAdmin = user?.role === 'ADMIN';
+    const canEnqueueStage = (stage: string) => {
+        if (!user?.role) return false;
+        if (user.role === 'ADMIN' || user.role === 'MANAGER') return true;
+        if (user.role === 'BUILDER') return stage === 'BUILD';
+        if (user.role === 'TESTER') return stage === 'TEST';
+        if (user.role === 'PC') return stage === 'ASSIGNMENT';
+        if (user.role === 'CONSULTANT') return stage === 'ONBOARDING';
+        if (user.role === 'SALES') return stage === 'SALES';
+        return false;
+    };
 
     // Check if current user is assigned to this project (check both teamAssignments and project direct fields)
     const isAssignedToProject = user && project && (
@@ -698,13 +760,17 @@ export default function ProjectDetailPage() {
 
     const loadAllData = async () => {
         try {
-            const [projectRes, artifactsRes] = await Promise.all([
+            const [projectRes, artifactsRes, stageOutputsRes, buildOutputsRes] = await Promise.all([
                 projectsAPI.get(projectId),
                 artifactsAPI.list(projectId),
+                projectsAPI.getStageOutputs(projectId),
+                projectsAPI.getStageOutputs(projectId, 'BUILD'),
             ]);
 
             setProject(projectRes.data);
             setArtifacts(artifactsRes.data);
+            setStageOutputs(stageOutputsRes.data || []);
+            setBuildOutputs(buildOutputsRes.data || []);
 
             const currentUser = getCurrentUser();
             if (currentUser?.role && ['ADMIN', 'MANAGER'].includes(currentUser.role)) {
@@ -1482,6 +1548,7 @@ export default function ProjectDetailPage() {
             await workflowAPI.advance(projectId, 'Advancing workflow');
             setSuccess('Workflow advanced successfully');
             await loadAllData();
+            refetchJobs();
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to advance workflow');
         } finally {
@@ -1520,11 +1587,76 @@ export default function ProjectDetailPage() {
                 await workflowAPI.sendBack(projectId, previousStage, 'Sent back for revisions');
                 setSuccess('Project sent back successfully');
                 await loadAllData();
+                refetchJobs();
             }
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to send back');
         } finally {
             setAdvancing(false);
+        }
+    };
+
+    const handleEnqueueStage = async (stage: string) => {
+        if (!project) return;
+        setEnqueueing(true);
+        setError('');
+        try {
+            await jobsAPI.enqueueStage(projectId, stage);
+            setSuccess(`Stage ${stage} enqueued`);
+            refetchJobs();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to enqueue stage');
+        } finally {
+            setEnqueueing(false);
+        }
+    };
+
+    const handleApproveHITL = async (stage: string) => {
+        setAdvancing(true);
+        setError('');
+        try {
+            await workflowAPI.approveStage(projectId, stage);
+            setSuccess('HITL stage approved');
+            await loadAllData();
+            refetchJobs();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to approve stage');
+        } finally {
+            setAdvancing(false);
+        }
+    };
+
+    const handleChecklistUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files?.length) return;
+        const file = e.target.files[0];
+        setSaving(true);
+        setError('');
+        try {
+            await projectsAPI.uploadBuildChecklist(projectId, file);
+            setSuccess('Checklist uploaded');
+            await loadAllData();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to upload checklist');
+        } finally {
+            setSaving(false);
+            e.target.value = '';
+        }
+    };
+
+    const handleQAChecklistUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files?.length) return;
+        const file = e.target.files[0];
+        setSaving(true);
+        setError('');
+        try {
+            await projectsAPI.uploadQAChecklist(projectId, file);
+            setSuccess('QA checklist uploaded');
+            await loadAllData();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to upload QA checklist');
+        } finally {
+            setSaving(false);
+            e.target.value = '';
         }
     };
 
@@ -1808,6 +1940,12 @@ export default function ProjectDetailPage() {
     console.log('Current User Role:', user.role);
     console.log('Is Admin?', user.role === 'ADMIN');
 
+    const stageOrder = ['SALES', 'ONBOARDING', 'ASSIGNMENT', 'BUILD', 'TEST', 'DEFECT_VALIDATION', 'COMPLETE'];
+    const stageOutputsByStage = stageOrder.reduce((acc: any, stage) => {
+        acc[stage] = stageOutputs.find((o) => o.stage === stage);
+        return acc;
+    }, {});
+
     return (
         <div className="page-wrapper">
             <Navigation />
@@ -1820,7 +1958,15 @@ export default function ProjectDetailPage() {
                 {/* Project Header */}
                 <header className="project-header">
                     <div className="header-info">
-                        <h1>{project.title}</h1>
+                        <div className="title-row">
+                            <h1>{project.title}</h1>
+                            <span className={`hitl-badge ${project.hitl_enabled ? 'on' : 'off'}`}>
+                                HITL: {project.hitl_enabled ? 'ON' : 'OFF'}
+                            </span>
+                            {project.pending_approvals_count > 0 && (
+                                <span className="approval-badge">Approval pending ({project.pending_approvals_count})</span>
+                            )}
+                        </div>
                         <div className="project-meta">
                             <span><strong>Client:</strong> {project.client_name}</span>
                             <span className={`priority priority-${project.priority.toLowerCase()}`}>
@@ -1828,6 +1974,11 @@ export default function ProjectDetailPage() {
                             </span>
                             <span className="status">{project.status}</span>
                         </div>
+                        <HitlStatusPanel
+                            project={project}
+                            currentUser={user}
+                            onApprove={handleApproveHITL}
+                        />
                     </div>
 
                     {/* Draft Actions */}
@@ -1921,6 +2072,72 @@ export default function ProjectDetailPage() {
                         </div>
                     )}
                 </header>
+
+                <div style={{ display: 'grid', gap: 12, marginBottom: 20 }}>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Stage Timeline</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <thead>
+                                    <tr>
+                                        <Th>From</Th>
+                                        <Th>To</Th>
+                                        <Th>At</Th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(project.stage_history || []).map((item: any, idx: number) => (
+                                        <tr key={idx}>
+                                            <Td>{item.from_stage}</Td>
+                                            <Td>{item.to_stage}</Td>
+                                            <Td>{new Date(item.at).toLocaleString()}</Td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Stage Cards</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                                {stageOrder.map((stage) => {
+                                    const output = stageOutputsByStage[stage];
+                                    return (
+                                        <Card key={stage}>
+                                            <CardHeader>
+                                                <CardTitle>{stage.replace('_', ' ')}</CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <div style={{ fontSize: 13, marginBottom: 6 }}>
+                                                    Status: {output?.status || '—'}
+                                                </div>
+                                                <div style={{ fontSize: 13, marginBottom: 6 }}>
+                                                    Score: {output?.score ?? '—'}
+                                                </div>
+                                                <div style={{ fontSize: 12, color: '#6b7280' }}>
+                                                    Last run: {output?.created_at ? new Date(output.created_at).toLocaleString() : '—'}
+                                                </div>
+                                                {canEnqueueStage(stage) && (
+                                                    <div style={{ marginTop: 8 }}>
+                                                        <Button variant="secondary" onClick={() => handleEnqueueStage(stage)}>
+                                                            Enqueue
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    );
+                                })}
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
 
             {/* Project Information Summary (always visible, including Drafts) */}
             <div className="project-summary-box" style={{ background: '#f8fafc', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
@@ -2053,6 +2270,171 @@ export default function ProjectDetailPage() {
                         </button>
                     </div>
                 )}
+
+                {/* Job Queue */}
+                <div className="job-queue-section">
+                    <div className="section-header">
+                        <h2>Job Queue</h2>
+                        <div className="section-header-actions">
+                            <span className="job-stage-pill">Current stage: {project.current_stage}</span>
+                            {canEnqueueStage(project.current_stage) && project.current_stage !== 'COMPLETE' && (
+                                <button
+                                    className="btn-action enqueue"
+                                    onClick={() => handleEnqueueStage(project.current_stage)}
+                                    disabled={enqueueing}
+                                >
+                                    {enqueueing ? 'Enqueuing...' : `Enqueue ${project.current_stage}`}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {jobsLoading ? (
+                        <div className="empty-state">Loading jobs...</div>
+                    ) : jobs.length === 0 ? (
+                        <div className="empty-state">No jobs yet</div>
+                    ) : (
+                        <div className="job-table">
+                            <div className="job-row header">
+                                <span>Stage</span>
+                                <span>Status</span>
+                                <span>Attempts</span>
+                                <span>Requested</span>
+                            </div>
+                            {jobs.slice(0, 8).map(job => (
+                                <div key={job.id} className="job-row">
+                                    <span>{job.stage}</span>
+                                    <span className={`job-status ${job.status.toLowerCase()}`}>{job.status}</span>
+                                    <span>{job.attempts}/{job.max_attempts}</span>
+                                    <span>{new Date(job.created_at).toLocaleString()}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {pendingHitlJob && isAdmin && (
+                        <div className="hitl-actions">
+                            <div className="hitl-message">
+                                HITL approval required for {pendingHitlJob.stage}
+                            </div>
+                            <div className="actions-row">
+                                <button
+                                    className="btn-advance"
+                                    onClick={() => handleApproveHITL(pendingHitlJob.stage)}
+                                    disabled={advancing}
+                                >
+                                    Approve
+                                </button>
+                                <button
+                                    className="btn-send-back"
+                                    onClick={handleSendBack}
+                                    disabled={advancing}
+                                >
+                                    Send Back
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Build Stage */}
+                <div className="build-stage-section">
+                    <div className="section-header">
+                        <h2>Build Stage</h2>
+                        <div className="section-header-actions">
+                            {canEnqueueStage('BUILD') && (
+                                <button
+                                    className="btn-action enqueue"
+                                    onClick={() => handleEnqueueStage('BUILD')}
+                                    disabled={enqueueing}
+                                >
+                                    {enqueueing ? 'Enqueuing...' : 'Enqueue Build'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="build-metrics">
+                        <div>
+                            <strong>Last self-review score:</strong>{' '}
+                            {latestBuildOutput?.score ?? 'N/A'}
+                        </div>
+                        {latestBuildOutput?.report_json && (
+                            <button
+                                className="btn-action view-report"
+                                onClick={() => {
+                                    setReportJson(latestBuildOutput.report_json);
+                                    setReportTab('summary');
+                                    setSelectedCheck(null);
+                                    setShowReportModal(true);
+                                }}
+                            >
+                                View Report
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="build-actions">
+                        {(user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'BUILDER') && (
+                            <label className="upload-checklist">
+                                Upload Checklist (JSON/CSV)
+                                <input type="file" accept=".json,.csv" onChange={handleChecklistUpload} />
+                            </label>
+                        )}
+                    </div>
+
+                    <div className="build-artifacts">
+                        <h4>Artifacts</h4>
+                        {buildArtifacts.length === 0 ? (
+                            <div className="empty-state">No build artifacts yet</div>
+                        ) : (
+                            <ul>
+                                {buildArtifacts.map((artifact) => (
+                                    <li key={artifact.id}>
+                                        <a href={artifact.metadata_json?.preview_url || artifact.url} target="_blank" rel="noreferrer">
+                                            {artifact.artifact_type || artifact.type} - {artifact.filename}
+                                        </a>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                </div>
+
+                {/* QA Stage */}
+                <Card style={{ marginTop: 16 }}>
+                    <CardHeader>
+                        <CardTitle>QA Stage</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                                <strong>Last QA score:</strong> {latestTestOutput?.score ?? 'N/A'}
+                            </div>
+                            {latestTestOutput?.report_json && (
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => {
+                                        setReportJson(latestTestOutput.report_json);
+                                        setReportTab('summary');
+                                        setSelectedCheck(null);
+                                        setShowReportModal(true);
+                                    }}
+                                >
+                                    View QA Report
+                                </Button>
+                            )}
+                        </div>
+                        {(user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'TESTER') && (
+                            <div style={{ marginTop: 12 }}>
+                                <label className="upload-checklist">
+                                    Upload QA Checklist (JSON/CSV)
+                                    <input type="file" accept=".json,.csv" onChange={handleQAChecklistUpload} />
+                                </label>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
 
                 {/* My Capacity on this Project - Visible to all assigned team members */}
                 {isAssignedToProject && (
@@ -3110,8 +3492,8 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
-                {/* Admin Actions - Only for Consultant on their assigned projects */}
-                {hasFullEditAccess && !isExecutiveAdmin && (
+                {/* Admin Actions - Admin/Manager only */}
+                {isAdmin && (
                     <div className="admin-actions">
                         <h3>Project Actions</h3>
 
@@ -3269,6 +3651,81 @@ export default function ProjectDetailPage() {
                         </div>
                     </div>
                 )}
+
+                {/* Report Modal */}
+                <Dialog
+                    open={showReportModal && !!reportJson}
+                    onOpenChange={(open) => setShowReportModal(open)}
+                    title="Report Viewer"
+                >
+                    {reportJson && (
+                        <>
+                            <Tabs
+                                value={reportTab}
+                                onValueChange={(value) => setReportTab(value as 'summary' | 'raw')}
+                                tabs={[
+                                    { value: 'summary', label: 'Summary' },
+                                    { value: 'raw', label: 'Raw JSON' },
+                                ]}
+                            />
+                            {reportTab === 'summary' && (
+                                <Split
+                                    sizes={[35, 65]}
+                                    minSize={200}
+                                    gutterSize={8}
+                                    style={{ display: 'flex', height: 520, marginTop: 12 }}
+                                >
+                                    <div style={{ overflow: 'auto', paddingRight: 8 }}>
+                                        <Table>
+                                            <thead>
+                                                <tr>
+                                                    <Th>Check</Th>
+                                                    <Th>Status</Th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(reportJson.test_matrix || reportJson.checks || []).map((check: any, index: number) => (
+                                                    <tr key={index} onClick={() => setSelectedCheck(check)} style={{ cursor: 'pointer' }}>
+                                                        <Td>{check.title || check.name}</Td>
+                                                        <Td>{check.status || (check.passed ? 'PASS' : 'FAIL')}</Td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </Table>
+                                    </div>
+                                    <div style={{ paddingLeft: 8 }}>
+                                        {selectedCheck ? (
+                                            <>
+                                                <h4 style={{ marginTop: 0 }}>{selectedCheck.title || selectedCheck.name}</h4>
+                                                <p>{selectedCheck.note || selectedCheck.details || 'No details available'}</p>
+                                                {selectedCheck.diff && (
+                                                    <DiffViewer
+                                                        oldValue={selectedCheck.diff.before || ''}
+                                                        newValue={selectedCheck.diff.after || ''}
+                                                        splitView
+                                                    />
+                                                )}
+                                            </>
+                                        ) : (
+                                            <p>Select a check to view details.</p>
+                                        )}
+                                    </div>
+                                </Split>
+                            )}
+                            {reportTab === 'raw' && (
+                                <Editor
+                                    height="520px"
+                                    defaultLanguage="json"
+                                    value={JSON.stringify(reportJson, null, 2)}
+                                    options={{ readOnly: true, minimap: { enabled: false } }}
+                                />
+                            )}
+                            <div style={{ marginTop: 12 }}>
+                                <Button variant="secondary" onClick={() => setShowReportModal(false)}>Close</Button>
+                            </div>
+                        </>
+                    )}
+                </Dialog>
 
                 {/* Custom Field Modal */}
                 {showCustomFieldModal && (

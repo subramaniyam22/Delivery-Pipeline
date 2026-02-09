@@ -7,6 +7,8 @@ import { getCurrentUser, isAuthenticated } from '@/lib/auth';
 import { canCreateProject } from '@/lib/rbac';
 import RoleGuard from '@/components/RoleGuard';
 import Navigation from '@/components/Navigation';
+import RequireCapability from '@/components/RequireCapability';
+import PageHeader from '@/components/PageHeader';
 import { Role } from '@/lib/auth';
 import NotificationToast from '@/components/NotificationToast';
 import { useNotification } from '@/context/NotificationContext';
@@ -43,9 +45,13 @@ export default function ProjectsPage() {
     }, [refreshSignal]);
 
     // UI State
-    const [filter, setFilter] = useState('active');
+    const [filter, setFilter] = useState('all');
     const [selectedProject, setSelectedProject] = useState<any>(null);
     const [selectedRegion, setSelectedRegion] = useState<string>('ALL'); // Region Filter
+    const [showMyProjects, setShowMyProjects] = useState(false);
+    const [selectedStageFilter, setSelectedStageFilter] = useState('ALL');
+    const [quickFilter, setQuickFilter] = useState<'none' | 'blocked' | 'at_risk' | 'due_soon'>('none');
+    const [needsAssignment, setNeedsAssignment] = useState(false);
 
     // Action State
     const [showActionModal, setShowActionModal] = useState(false);
@@ -56,6 +62,8 @@ export default function ProjectsPage() {
 
     // Derived state
     const showRegionFilter = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+    const showHitlColumn = ['ADMIN', 'MANAGER', 'PC', 'CONSULTANT'].includes(user?.role || '');
+    const showApprovalColumn = true;
 
     const getFilteredProjects = (projectList: any[], activeFilter: string) => {
         let filtered = projectList;
@@ -63,7 +71,8 @@ export default function ProjectsPage() {
         // 1. Status Filter
         if (activeFilter !== 'all') {
             filtered = filtered.filter(p => {
-                if (activeFilter === 'active') return p.status === 'ACTIVE' || p.status === 'DRAFT';
+                if (activeFilter === 'active') return p.status === 'ACTIVE';
+                if (activeFilter === 'draft') return p.status === 'DRAFT';
                 if (activeFilter === 'paused') return p.status === 'PAUSED';
                 if (activeFilter === 'archived') return p.status === 'ARCHIVED' || p.is_archived;
                 if (activeFilter === 'complete') return p.status === 'COMPLETED';
@@ -74,6 +83,21 @@ export default function ProjectsPage() {
         // 2. Region Filter (for Admin/Manager)
         if (showRegionFilter && selectedRegion !== 'ALL') {
             filtered = filtered.filter(p => p.region === selectedRegion);
+        }
+
+        // 3. Quick Filters (only apply when data exists)
+        if (quickFilter === 'blocked') {
+            filtered = filtered.filter(p => p.is_delayed === true);
+        }
+        if (quickFilter === 'at_risk') {
+            if (filtered.some(p => p?.health?.status)) {
+                filtered = filtered.filter(p => ['WARNING', 'CRITICAL'].includes(p?.health?.status));
+            }
+        }
+        if (quickFilter === 'due_soon') {
+            if (filtered.some(p => typeof p?.health?.remaining_days === 'number')) {
+                filtered = filtered.filter(p => p?.health?.remaining_days <= 1 && p?.health?.remaining_days >= 0);
+            }
         }
 
         return filtered;
@@ -98,6 +122,52 @@ export default function ProjectsPage() {
         };
     };
 
+    const getDefaultFiltersForRole = (role?: string) => {
+        if (role === 'SALES') {
+            return { showMyProjects: true, stage: 'ALL', needsAssignment: false };
+        }
+        if (role === 'CONSULTANT') {
+            return { showMyProjects: true, stage: 'ALL', needsAssignment: false };
+        }
+        if (role === 'PC') {
+            return { showMyProjects: false, stage: 'ASSIGNMENT', needsAssignment: true };
+        }
+        if (role === 'BUILDER') {
+            return { showMyProjects: true, stage: 'BUILD', needsAssignment: false };
+        }
+        if (role === 'TESTER') {
+            return { showMyProjects: true, stage: 'TEST', needsAssignment: false };
+        }
+        return { showMyProjects: false, stage: 'ALL', needsAssignment: false };
+    };
+
+    const buildProjectsParams = (override?: { showMyProjects?: boolean; stage?: string; needsAssignment?: boolean; role?: string }) => {
+        if (!user && !override) return {};
+        const effectiveShowMyProjects = override?.showMyProjects ?? showMyProjects;
+        const effectiveStage = override?.stage ?? selectedStageFilter;
+        const effectiveNeedsAssignment = override?.needsAssignment ?? needsAssignment;
+        const effectiveRole = override?.role ?? user?.role;
+        const params: Record<string, any> = {};
+
+        if (effectiveShowMyProjects) {
+            if (effectiveRole === 'SALES' || effectiveRole === 'CONSULTANT') {
+                params.mine = true;
+            } else {
+                params.assigned = true;
+            }
+        }
+
+        if (effectiveStage && effectiveStage !== 'ALL') {
+            params.stage = effectiveStage;
+        }
+
+        if (effectiveNeedsAssignment) {
+            params.needs_assignment = true;
+        }
+
+        return params;
+    };
+
     useEffect(() => {
         if (!isAuthenticated()) {
             router.push('/login');
@@ -105,12 +175,18 @@ export default function ProjectsPage() {
         }
         const currentUser = getCurrentUser();
         setUser(currentUser);
-        loadProjects();
+        const defaults = getDefaultFiltersForRole(currentUser?.role);
+        setShowMyProjects(defaults.showMyProjects);
+        setSelectedStageFilter(defaults.stage);
+        setNeedsAssignment(defaults.needsAssignment);
+        loadProjects({ ...defaults, role: currentUser?.role });
     }, []);
 
-    const loadProjects = async () => {
+    const loadProjects = async (override?: { showMyProjects?: boolean; stage?: string; needsAssignment?: boolean; role?: string }) => {
         try {
-            const response = await projectsAPI.list();
+            setLoading(true);
+            const params = buildProjectsParams(override);
+            const response = await projectsAPI.list(params);
             setProjects(response.data);
         } catch (error) {
             console.error('Failed to load projects:', error);
@@ -118,6 +194,11 @@ export default function ProjectsPage() {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        if (!user) return;
+        loadProjects();
+    }, [showMyProjects, selectedStageFilter, needsAssignment]);
 
     const canManageProject = (project: any) => {
         if (!user) return false;
@@ -173,6 +254,27 @@ export default function ProjectsPage() {
 
     const hasClientUpdates = (project: any) => {
         return project.has_new_updates === true;
+    };
+
+    const getAssignedUserDisplay = (project: any) => {
+        const assigned =
+            project.builder ||
+            project.consultant ||
+            project.pc ||
+            project.tester ||
+            project.manager_chk ||
+            project.sales_rep;
+
+        if (assigned?.name) {
+            return (
+                <div className="user-info-cell">
+                    <span className="user-name">{assigned.name}</span>
+                    <span className="user-role">{assigned.role || 'Team Member'}</span>
+                </div>
+            );
+        }
+
+        return <span className="not-assigned">Build Agent</span>;
     };
 
     const handlePause = (project: any) => {
@@ -256,6 +358,8 @@ export default function ProjectsPage() {
         }
     };
 
+    const hasHealthData = projects.some(p => p?.health?.status);
+    const hasDueSoonData = projects.some(p => typeof p?.health?.remaining_days === 'number');
     const filteredProjects = getFilteredProjects(projects, filter);
 
     const getStageColor = (stage: string) => {
@@ -297,14 +401,16 @@ export default function ProjectsPage() {
     console.log('ProjectsPage Render - User Role:', user.role);
 
     return (
+        <RequireCapability cap="view_projects">
         <div className="page-wrapper">
             <Navigation />
             <main className="projects-page">
                 <header className="page-header">
-                    <div className="header-text">
-                        <h1>Active Projects</h1>
-                        <p>Manage and track all projects in the pipeline</p>
-                    </div>
+                    <PageHeader
+                        title="Active Projects"
+                        purpose="Manage and track all projects in the pipeline."
+                        variant="page"
+                    />
                     <RoleGuard
                         userRole={user.role}
                         requiredRoles={[Role.SALES]}
@@ -324,7 +430,8 @@ export default function ProjectsPage() {
                     <div className="filter-tabs">
                         {[
                             { key: 'all', label: 'All', count: projects.length },
-                            { key: 'active', label: 'Active', count: projects.filter(p => p.status === 'ACTIVE' || p.status === 'DRAFT').length },
+                            { key: 'active', label: 'Active', count: projects.filter(p => p.status === 'ACTIVE').length },
+                            { key: 'draft', label: 'Draft', count: projects.filter(p => p.status === 'DRAFT').length },
                             { key: 'paused', label: '⏸️ Paused', count: projects.filter(p => p.status === 'PAUSED').length },
                             { key: 'archived', label: '📦 Archived', count: projects.filter(p => p.status === 'ARCHIVED').length },
                             { key: 'complete', label: '✅ Complete', count: projects.filter(p => p.status === 'COMPLETED').length },
@@ -338,6 +445,58 @@ export default function ProjectsPage() {
                                 <span className="tab-count">{tab.count}</span>
                             </button>
                         ))}
+                    </div>
+
+                    <div className="filter-controls">
+                        <label className="toggle">
+                            <input
+                                type="checkbox"
+                                checked={showMyProjects}
+                                onChange={(e) => setShowMyProjects(e.target.checked)}
+                            />
+                            <span>My Projects</span>
+                        </label>
+
+                        <select
+                            value={selectedStageFilter}
+                            onChange={(e) => setSelectedStageFilter(e.target.value)}
+                            className="stage-select"
+                            aria-label="Stage filter"
+                        >
+                            <option value="ALL">All Stages</option>
+                            <option value="ONBOARDING">Onboarding</option>
+                            <option value="ASSIGNMENT">Assignment</option>
+                            <option value="BUILD">Build</option>
+                            <option value="TEST">Test</option>
+                            <option value="DEFECT_VALIDATION">Defect Validation</option>
+                            <option value="COMPLETE">Complete</option>
+                        </select>
+
+                        <div className="quick-chips">
+                            <button
+                                className={`quick-chip ${quickFilter === 'blocked' ? 'active' : ''}`}
+                                onClick={() => setQuickFilter(quickFilter === 'blocked' ? 'none' : 'blocked')}
+                                title="Show blocked or delayed projects"
+                            >
+                                Blocked
+                            </button>
+                            <button
+                                className={`quick-chip ${quickFilter === 'at_risk' ? 'active' : ''}`}
+                                onClick={() => setQuickFilter(quickFilter === 'at_risk' ? 'none' : 'at_risk')}
+                                disabled={!hasHealthData}
+                                title={hasHealthData ? 'Show projects at risk' : 'Risk data not available yet'}
+                            >
+                                At Risk
+                            </button>
+                            <button
+                                className={`quick-chip ${quickFilter === 'due_soon' ? 'active' : ''}`}
+                                onClick={() => setQuickFilter(quickFilter === 'due_soon' ? 'none' : 'due_soon')}
+                                disabled={!hasDueSoonData}
+                                title={hasDueSoonData ? 'Show projects due soon' : 'Due soon data not available yet'}
+                            >
+                                Due Soon
+                            </button>
+                        </div>
                     </div>
 
                     {showRegionFilter && (
@@ -432,7 +591,8 @@ export default function ProjectsPage() {
                                 <th>Priority</th>
                                 <th>Stage</th>
                                 <th>Status</th>
-                                {user?.role !== 'ADMIN' && <th>My Role</th>}
+                                {showHitlColumn && <th>HITL</th>}
+                                {showApprovalColumn && <th>Approval Pending</th>}
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -460,24 +620,7 @@ export default function ProjectsPage() {
                                     </td>
                                     {user?.role !== 'SALES' && (
                                         <td className="cell-user">
-                                            {project.current_stage === 'SALES' && project.manager_chk ? (
-                                                <div className="user-info-cell">
-                                                    <span className="user-name">{project.manager_chk.name}</span>
-                                                    <span className="user-role">Manager</span>
-                                                </div>
-                                            ) : project.consultant ? (
-                                                <div className="user-info-cell">
-                                                    <span className="user-name">{project.consultant.name}</span>
-                                                    <span className="user-role">Consultant</span>
-                                                </div>
-                                            ) : project.pc ? (
-                                                <div className="user-info-cell">
-                                                    <span className="user-name">{project.pc.name}</span>
-                                                    <span className="user-role">PC</span>
-                                                </div>
-                                            ) : (
-                                                <span className="not-assigned">Not assigned</span>
-                                            )}
+                                            {getAssignedUserDisplay(project)}
                                         </td>
                                     )}
                                     <td>
@@ -500,15 +643,28 @@ export default function ProjectsPage() {
                                             {project.status}
                                         </span>
                                     </td>
-                                    {user?.role !== 'ADMIN' && (
+                                    {showHitlColumn && (
                                         <td>
-                                            {project.sales_user_id === user?.id && <span className="my-role-tag sales">🤝 Sales</span>}
-                                            {project.manager_user_id === user?.id && <span className="my-role-tag manager">👔 Manager</span>}
-                                            {project.consultant_user_id === user?.id && <span className="my-role-tag consultant">💼 Consultant</span>}
-                                            {project.pc_user_id === user?.id && <span className="my-role-tag pc">🎯 PC</span>}
-                                            {project.builder_user_id === user?.id && <span className="my-role-tag builder">🔨 Builder</span>}
-                                            {project.tester_user_id === user?.id && <span className="my-role-tag tester">🧪 Tester</span>}
-                                            {!isAssignedToProject(project) && <span className="not-assigned">—</span>}
+                                            {project.hitl_enabled === true && (
+                                                <span className="badge badge-hitl badge-hitl-on">ON</span>
+                                            )}
+                                            {project.hitl_enabled === false && (
+                                                <span className="badge badge-hitl badge-hitl-off">OFF</span>
+                                            )}
+                                            {typeof project.hitl_enabled === 'undefined' && (
+                                                <span className="not-assigned">—</span>
+                                            )}
+                                        </td>
+                                    )}
+                                    {showApprovalColumn && (
+                                        <td>
+                                            {project.pending_approvals_count > 0 ? (
+                                                <span className="badge badge-approval badge-approval-yes">
+                                                    Yes ({project.pending_approvals_count})
+                                                </span>
+                                            ) : (
+                                                <span className="badge badge-approval badge-approval-no">No</span>
+                                            )}
                                         </td>
                                     )}
                                     <td>
@@ -718,11 +874,78 @@ export default function ProjectsPage() {
                     margin-bottom: var(--space-lg);
                     display: flex;
                     align-items: center;
+                    gap: var(--space-md);
+                    flex-wrap: wrap;
                 }
                 
                 .filter-tabs {
                     display: flex;
                     gap: var(--space-sm);
+                }
+
+                .filter-controls {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-md);
+                    margin-left: var(--space-md);
+                }
+
+                .toggle {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 13px;
+                    color: var(--text-secondary);
+                    cursor: pointer;
+                    user-select: none;
+                }
+
+                .toggle input {
+                    accent-color: var(--accent-primary);
+                }
+
+                .stage-select {
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    border: 1px solid var(--border-color);
+                    background-color: var(--bg-card);
+                    color: var(--text-primary);
+                    cursor: pointer;
+                    font-size: 13px;
+                }
+
+                .quick-chips {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-sm);
+                }
+
+                .quick-chip {
+                    padding: 6px 10px;
+                    border-radius: 999px;
+                    border: 1px solid var(--border-light);
+                    background: var(--bg-card);
+                    color: var(--text-secondary);
+                    font-size: 12px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all var(--transition-fast);
+                }
+
+                .quick-chip:hover:not(:disabled) {
+                    background: var(--bg-card-hover);
+                    color: var(--text-primary);
+                }
+
+                .quick-chip.active {
+                    background: var(--color-info-bg);
+                    border-color: var(--accent-primary);
+                    color: var(--accent-primary);
+                }
+
+                .quick-chip:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
                 }
                 
                 .filter-tab {
@@ -857,6 +1080,35 @@ export default function ProjectsPage() {
                 .badge-status.badge-archived {
                     background: #f3f4f6;
                     color: #6b7280;
+                }
+
+                .badge-hitl {
+                    min-width: 36px;
+                    text-align: center;
+                }
+
+                .badge-hitl-on {
+                    background: #dcfce7;
+                    color: #166534;
+                    border: 1px solid #86efac;
+                }
+
+                .badge-hitl-off {
+                    background: #f3f4f6;
+                    color: #6b7280;
+                    border: 1px solid #e5e7eb;
+                }
+
+                .badge-approval-yes {
+                    background: #fef3c7;
+                    color: #92400e;
+                    border: 1px solid #fcd34d;
+                }
+
+                .badge-approval-no {
+                    background: #e5f7ef;
+                    color: #0f766e;
+                    border: 1px solid #99f6e4;
                 }
                 
                 .action-buttons {
@@ -1180,36 +1432,6 @@ export default function ProjectsPage() {
                 }
 
                 /* My role tags */
-                .my-role-tag {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 4px;
-                    padding: 0.25rem 0.5rem;
-                    border-radius: 6px;
-                    font-size: 0.75rem;
-                    font-weight: 500;
-                }
-
-                .my-role-tag.consultant {
-                    background: #dbeafe;
-                    color: #1e40af;
-                }
-
-                .my-role-tag.pc {
-                    background: #fef3c7;
-                    color: #92400e;
-                }
-
-                .my-role-tag.builder {
-                    background: #dcfce7;
-                    color: #166534;
-                }
-
-                .my-role-tag.tester {
-                    background: #f3e8ff;
-                    color: #7c3aed;
-                }
-                
                 @media (max-width: 768px) {
                     .page-header {
                         flex-direction: column;
@@ -1223,5 +1445,6 @@ export default function ProjectsPage() {
                 }
             `}</style>
         </div>
+        </RequireCapability>
     );
 }

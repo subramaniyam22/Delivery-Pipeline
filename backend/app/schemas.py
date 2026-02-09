@@ -1,8 +1,9 @@
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional, List, Dict, Any
+from enum import Enum
 from datetime import datetime, date
 from uuid import UUID
-from app.models import Role, Region, ProjectStatus, Stage, TaskStatus, StageStatus, DefectSeverity, DefectStatus, OnboardingReviewStatus
+from app.models import Role, Region, ProjectStatus, Stage, TaskStatus, StageStatus, DefectSeverity, DefectStatus, OnboardingReviewStatus, JobRunStatus
 
 
 # ============= User Schemas =============
@@ -171,6 +172,9 @@ class ProjectResponse(BaseModel):
     sales_user_id: Optional[UUID] = None
     manager_user_id: Optional[UUID] = None
     stage_history: Optional[List[Dict[str, Any]]] = None
+    hitl_enabled: Optional[bool] = False
+    pending_approvals_count: Optional[int] = 0
+    pending_approvals: Optional[List[Dict[str, Any]]] = None
     
     sales_rep: Optional[UserBrief] = None
     manager_chk: Optional[UserBrief] = None
@@ -213,6 +217,7 @@ class TaskResponse(BaseModel):
 class ArtifactCreate(BaseModel):
     stage: Stage
     type: str
+    artifact_type: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -223,9 +228,15 @@ class ArtifactResponse(BaseModel):
     project_id: UUID
     stage: Stage
     type: str
+    artifact_type: Optional[str]
     filename: str
     url: str
+    storage_key: Optional[str] = None
+    content_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    checksum: Optional[str] = None
     notes: Optional[str]
+    metadata_json: Optional[Dict[str, Any]] = None
     uploaded_by_user_id: UUID
     created_at: datetime
 
@@ -270,12 +281,143 @@ class StageOutputResponse(BaseModel):
     
     id: UUID
     project_id: UUID
+    job_run_id: Optional[UUID]
     stage: Stage
     status: StageStatus
+    gate_decision: Optional[str]
+    score: Optional[float]
+    report_json: Optional[Dict[str, Any]] = None
+    evidence_links_json: Optional[List[Any]] = None
     summary: Optional[str]
     structured_output_json: Dict[str, Any]
     required_next_inputs_json: List[Any]
     created_at: datetime
+
+
+# ============= JobRun Schemas =============
+class JobEnqueueRequest(BaseModel):
+    payload_json: Optional[Dict[str, Any]] = None
+
+
+class JobRunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    project_id: UUID
+    stage: Stage
+    status: JobRunStatus
+    attempts: int
+    max_attempts: int
+    payload_json: Dict[str, Any]
+    error_json: Dict[str, Any]
+    request_id: Optional[str]
+    actor_user_id: Optional[UUID]
+    created_at: datetime
+    started_at: Optional[datetime]
+    finished_at: Optional[datetime]
+    next_run_at: datetime
+    locked_by: Optional[str]
+    locked_at: Optional[datetime]
+
+
+# ============= ProjectConfig Schemas =============
+class ProjectConfigUpdate(BaseModel):
+    stage_gates_json: Optional[Dict[str, Any]] = None
+    thresholds_json: Optional[Dict[str, Any]] = None
+    hitl_enabled: Optional[bool] = None
+
+
+class ProjectConfigResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    project_id: UUID
+    stage_gates_json: Optional[Dict[str, Any]]
+    thresholds_json: Optional[Dict[str, Any]]
+    hitl_enabled: bool
+    updated_at: datetime
+
+
+# ============= Template Registry Schemas =============
+class TemplateCreate(BaseModel):
+    name: str
+    repo_url: Optional[str] = None
+    default_branch: Optional[str] = "main"
+    meta_json: Optional[Dict[str, Any]] = None
+    description: Optional[str] = None
+    features_json: Optional[List[str]] = None
+    preview_url: Optional[str] = None
+    source_type: Optional[str] = "ai"
+    intent: Optional[str] = None
+    preview_status: Optional[str] = None
+    preview_last_generated_at: Optional[datetime] = None
+    preview_error: Optional[str] = None
+    preview_thumbnail_url: Optional[str] = None
+    is_active: Optional[bool] = True
+    is_published: Optional[bool] = True
+
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    repo_url: Optional[str] = None
+    default_branch: Optional[str] = None
+    meta_json: Optional[Dict[str, Any]] = None
+    description: Optional[str] = None
+    features_json: Optional[List[str]] = None
+    preview_url: Optional[str] = None
+    source_type: Optional[str] = None
+    intent: Optional[str] = None
+    preview_status: Optional[str] = None
+    preview_last_generated_at: Optional[datetime] = None
+    preview_error: Optional[str] = None
+    preview_thumbnail_url: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_published: Optional[bool] = None
+
+
+class TemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    repo_url: Optional[str] = None
+    default_branch: Optional[str] = None
+    meta_json: Dict[str, Any]
+    description: Optional[str] = None
+    features_json: List[str]
+    preview_url: Optional[str] = None
+    source_type: str
+    intent: Optional[str] = None
+    preview_status: str
+    preview_last_generated_at: Optional[datetime] = None
+    preview_error: Optional[str] = None
+    preview_thumbnail_url: Optional[str] = None
+    created_at: datetime
+    is_active: bool
+    is_published: bool
+
+
+# ============= Sentiment Schemas =============
+class SentimentCreate(BaseModel):
+    rating: int
+    comment: Optional[str] = None
+
+
+class SentimentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    project_id: UUID
+    rating: int
+    comment: Optional[str]
+    submitted_at: datetime
+    template_id: Optional[str] = None
+    template_name: Optional[str] = None
+    stage_at_delivery: Optional[str] = None
+    created_by_user_id: Optional[UUID] = None
+    created_by_type: Optional[str] = None
+    project_title: Optional[str] = None
+    client_name: Optional[str] = None
 
 
 # ============= Workflow Schemas =============
@@ -298,8 +440,14 @@ class StageStatusUpdateRequest(BaseModel):
 
 
 # ============= AdminConfig Schemas =============
+class PreviewStrategy(str, Enum):
+    zip_only = "zip_only"
+    serve_static_preview = "serve_static_preview"
+
+
 class AdminConfigUpdate(BaseModel):
-    value_json: Dict[str, Any]
+    value_json: Any
+    version: Optional[int] = None
 
 
 class AdminConfigResponse(BaseModel):
@@ -307,9 +455,30 @@ class AdminConfigResponse(BaseModel):
     
     id: UUID
     key: str
-    value_json: Dict[str, Any]
+    value_json: Any
+    config_version: int
     updated_by_user_id: Optional[UUID]
     updated_at: datetime
+
+
+# ============= Audit Log Schemas =============
+class AuditLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    project_id: Optional[UUID]
+    actor_user_id: UUID
+    actor: Optional[UserBrief] = None
+    action: str
+    payload_json: Dict[str, Any]
+    created_at: datetime
+
+
+class AuditLogListResponse(BaseModel):
+    items: List[AuditLogResponse]
+    total: int
+    page: int
+    page_size: int
 
 
 # ============= Assignment Schemas =============

@@ -52,7 +52,19 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) 
     )
 
 
+def get_user_or_ip_key(request: Request) -> str:
+    user_id = getattr(request.state, "user_id", None)
+    header_user = request.headers.get("X-User-Id")
+    return user_id or header_user or get_remote_address(request)
+
+
+def get_ip_key(request: Request) -> str:
+    return get_remote_address(request)
+
+
 # Rate limit configurations for different endpoint types
 AUTH_RATE_LIMIT = "5/minute"  # Strict limit for auth endpoints
 API_RATE_LIMIT = "60/minute"  # Standard API endpoints
 UPLOAD_RATE_LIMIT = "10/minute"  # File uploads
+AI_RATE_LIMIT = f"{settings.RATE_LIMIT_AI_PER_MINUTE}/minute"
+PUBLIC_RATE_LIMIT = f"{settings.RATE_LIMIT_PUBLIC_PER_MINUTE}/minute"

@@ -101,7 +101,7 @@ export const usersAPI = {
 };
 
 export const projectsAPI = {
-    list: () => api.get('/projects'),
+    list: (params?: Record<string, any>) => api.get('/projects', { params }),
     get: (id: string) => api.get(`/projects/${id}`),
     create: (data: any) => api.post('/projects', data),
     update: (id: string, data: any) => api.put(`/projects/${id}`, data),
@@ -124,6 +124,22 @@ export const projectsAPI = {
     // Team Assignment
     assignTeam: (id: string, data: any) => api.post(`/projects/${id}/team/assign`, data),
     getTeam: (id: string) => api.get(`/projects/${id}/team`),
+    getStageOutputs: (id: string, stage?: string) =>
+        api.get(`/projects/${id}/stage-outputs`, { params: stage ? { stage } : {} }),
+    uploadBuildChecklist: (id: string, file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return api.post(`/projects/${id}/checklists/build`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
+    uploadQAChecklist: (id: string, file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return api.post(`/projects/${id}/checklists/qa`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
     getAvailableUsersByRole: (role: string) => api.get(`/projects/available-users/${role}`),
     reviewOnboarding: (id: string, action: string, notes?: string) =>
         api.post(`/projects/${id}/onboarding/review`, { action, notes }),
@@ -139,6 +155,8 @@ export const workflowAPI = {
         api.post(`/projects/${projectId}/advance`, { notes }),
     approveBuild: (projectId: string, notes?: string) =>
         api.post(`/projects/${projectId}/human/approve-build`, { notes }),
+    approveStage: (projectId: string, stage: string) =>
+        api.post(`/projects/${projectId}/human/approve`, null, { params: { stage } }),
     sendBack: (projectId: string, targetStage: string, reason: string) =>
         api.post(`/projects/${projectId}/human/send-back`, {
             target_stage: targetStage,
@@ -176,14 +194,49 @@ export const defectsAPI = {
 export const configAPI = {
     list: () => api.get('/admin/config'),
     get: (key: string) => api.get(`/admin/config/${key}`),
-    update: (key: string, valueJson: any) =>
-        api.put(`/admin/config/${key}`, { value_json: valueJson }),
+    update: (key: string, valueJson: any, version?: number | null) =>
+        api.put(`/admin/config/${key}`, {
+            value_json: valueJson,
+            ...(typeof version === 'number' ? { version } : {}),
+        }),
+};
+
+export const projectConfigAPI = {
+    get: (projectId: string) => api.get(`/projects/${projectId}/config`),
+    update: (projectId: string, data: any) => api.put(`/projects/${projectId}/config`, data),
+};
+
+export const jobsAPI = {
+    get: (jobId: string) => api.get(`/jobs/${jobId}`),
+    listByProject: (projectId: string) => api.get(`/projects/${projectId}/jobs`),
+    enqueueStage: (projectId: string, stage: string, payload?: any) =>
+        api.post(`/projects/${projectId}/stages/${stage}/enqueue`, { payload_json: payload || {} }),
+    listAdmin: (params?: any) => api.get('/admin/jobs', { params }),
+    listStuck: () => api.get('/admin/jobs/stuck'),
+    retry: (jobId: string) => api.post(`/admin/jobs/${jobId}/retry`),
+    cancel: (jobId: string) => api.post(`/admin/jobs/${jobId}/cancel`),
 };
 
 export const notificationsAPI = {
     list: (skip = 0, limit = 50) => api.get(`/notifications?skip=${skip}&limit=${limit}`),
     markRead: (id: string) => api.put(`/notifications/${id}/read`),
     markAllRead: () => api.put('/notifications/read-all'),
+};
+
+export const sentimentAPI = {
+    getForm: (token: string) => api.get(`/public/sentiment/${token}`),
+    submit: (token: string, data: { rating: number; comment?: string }) =>
+        api.post(`/public/sentiment/${token}`, data),
+    list: (projectId?: string) =>
+        api.get(`/sentiments`, { params: projectId ? { project_id: projectId } : {} }),
+};
+
+export const metricsAPI = {
+    get: () => api.get('/admin/metrics'),
+};
+
+export const auditLogsAPI = {
+    list: (params?: Record<string, any>) => api.get('/audit-logs', { params }),
 };
 
 export const onboardingAPI = {
@@ -334,18 +387,12 @@ export const capacityAPI = {
 
 // Configuration API (Admin/Manager)
 export const configurationAPI = {
-    getTemplates: () => api.get('/templates'),
-    createTemplate: (data: any) => api.post('/templates', data),
-    deleteTemplate: (id: string) => api.delete(`/templates/${id}`),
-    uploadBulkTemplates: (file: File) => {
-        const formData = new FormData();
-        formData.append('file', file);
-        return api.post('/templates/bulk', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
-    },
-    togglePublish: (id: string, publish: boolean) =>
-        api.post(`/templates/${id}/publish`, null, { params: { publish } }),
+    getTemplates: () => api.get('/api/templates'),
+    createTemplate: (data: any) => api.post('/api/templates', data),
+    getTemplate: (id: string) => api.get(`/api/templates/${id}`),
+    updateTemplate: (id: string, data: any) => api.put(`/api/templates/${id}`, data),
+    deleteTemplate: (id: string) => api.delete(`/api/templates/${id}`),
+    generateTemplatePreview: (id: string) => api.post(`/api/templates/${id}/generate-preview`),
 
     // SLA Configuration
     getSLAConfigs: () => api.get('/sla/configurations'),
