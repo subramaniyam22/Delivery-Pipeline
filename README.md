@@ -198,6 +198,8 @@ Stage work (Build, Test, Onboarding, etc.) runs via a **job queue** and a **back
 
 **Summary:** Use **Enqueue** to trigger the AI/agent workflow for a stage. The **backend-worker** must be running for jobs to execute. Manual actions (e.g. Advance, status updates) do not go through the agent.
 
+**On Render:** Jobs will stay **Queued** until the **worker** service is running. In `render.yaml` the worker is `delivery-worker` (type: worker). Ensure it is deployed and running in your Render dashboard (same Redis and DB as the backend). If you only deploy the web backend and frontend, enqueued jobs will never run.
+
 ### Stop services
 
 ```powershell

@@ -554,6 +554,7 @@ export default function ClientOnboardingPage() {
     // Dynamic AI Hints
     const hintedPhasesRef = useRef<Set<string>>(new Set());
     const hintedFieldsRef = useRef<Set<string>>(new Set());
+    const fieldHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Section-level hints
     useEffect(() => {
@@ -583,25 +584,27 @@ export default function ClientOnboardingPage() {
         fetchHint();
     }, [activePhase]);
 
-    // Field-level hints
-    const handleFieldFocus = async (fieldId: string, label: string) => {
+    // Field-level hints (debounced 800ms so quick tab-through doesn't trigger a request per field)
+    const handleFieldFocus = (fieldId: string, label: string) => {
         if (hintedFieldsRef.current.has(fieldId)) return;
-
-        hintedFieldsRef.current.add(fieldId);
-
-        try {
-            const response = await clientAPI.consultAI(
-                `I am filling out the "${label}" field. What specific details should I include? Keep it short and helpful.`,
-                formData?.data
-            );
-
-            setChatMessages(prev => [...prev, {
-                text: `✍️ **Tip for ${label}**:\n${response.data.response}`,
-                isBot: true
-            }]);
-        } catch (err) {
-            console.error('Failed to fetch field hint:', err);
-        }
+        if (fieldHintTimerRef.current) clearTimeout(fieldHintTimerRef.current);
+        fieldHintTimerRef.current = window.setTimeout(async () => {
+            fieldHintTimerRef.current = null;
+            if (hintedFieldsRef.current.has(fieldId)) return;
+            hintedFieldsRef.current.add(fieldId);
+            try {
+                const response = await clientAPI.consultAI(
+                    `I am filling out the "${label}" field. What specific details should I include? Keep it short and helpful.`,
+                    formData?.data
+                );
+                setChatMessages(prev => [...prev, {
+                    text: `✍️ **Tip for ${label}**:\n${response.data.response}`,
+                    isBot: true
+                }]);
+            } catch (err) {
+                console.error('Failed to fetch field hint:', err);
+            }
+        }, 800);
     };
 
     const togglePhase = (phaseId: string) => {
@@ -694,7 +697,7 @@ export default function ClientOnboardingPage() {
         const brandGuidelinesProvided =
             brandGuidelinesAvailable === true
                 ? hasValue(req.brand_guidelines_details)
-                : brandGuidelinesAvailable === false || brandGuidelinesAvailable === undefined;
+                : brandGuidelinesAvailable === false;
 
         const items = [
             // Assets
@@ -717,13 +720,13 @@ export default function ClientOnboardingPage() {
             { id: 'font_selection', label: 'Font Selection', provided: hasValue(req.font_selection), eta: missingFieldsEta['Font Selection'] },
             { id: 'custom_graphics', label: 'Custom Graphics', provided: data.requirements?.custom_graphic_notes_enabled === true ? hasValue(req.custom_graphic_notes) : data.requirements?.custom_graphic_notes_enabled === false, eta: missingFieldsEta['Custom Graphics'] },
             { id: 'navigation', label: 'Navigation', provided: navigationProvided, eta: missingFieldsEta['Navigation'] },
-            { id: 'stock_images', label: 'Stock Images', provided: hasValue(req.stock_images_reference), eta: missingFieldsEta['Stock Images'] },
+            { id: 'stock_images', label: 'Stock Images', provided: hasValue(req.stock_images_reference) && req.stock_images_reference?.trim() !== 'No', eta: missingFieldsEta['Stock Images'] },
             { id: 'floor_plans', label: 'Floor Plans', provided: hasValue(req.floor_plan_images), eta: missingFieldsEta['Floor Plans'] },
             { id: 'sitemap', label: 'Sitemap', provided: hasValue(req.sitemap), eta: missingFieldsEta['Sitemap'] },
             { id: 'virtual_tours', label: 'Virtual Tours', provided: hasValue(req.virtual_tours), eta: missingFieldsEta['Virtual Tours'] },
             { id: 'poi', label: 'POI Categories', provided: hasValue(req.poi_categories), eta: missingFieldsEta['POI Categories'] },
             { id: 'specials', label: 'Specials', provided: data.requirements?.specials_enabled === true ? hasValue(req.specials_details) : data.requirements?.specials_enabled === false, eta: missingFieldsEta['Specials'] },
-            { id: 'copy_scope', label: 'Copy Scope', provided: hasValue(req.copy_scope_notes), eta: missingFieldsEta['Copy Scope'] },
+            { id: 'copy_scope', label: 'Copy Scope', provided: (data.use_custom_copy === false) || hasValue(req.copy_scope_notes), eta: missingFieldsEta['Copy Scope'] },
             { id: 'pages', label: 'Pages', provided: hasValue(req.pages), eta: missingFieldsEta['Pages'] },
             { id: 'domain', label: 'Domain Type', provided: hasValue(req.domain_type), eta: missingFieldsEta['Domain Type'] },
             { id: 'vanity', label: 'Vanity Domains', provided: hasValue(req.vanity_domains), eta: missingFieldsEta['Vanity Domains'] },
@@ -1405,8 +1408,13 @@ export default function ClientOnboardingPage() {
                             </div>
 
                             {formData.data.requirements?.template_mode !== 'NEW' ? (
+                                (formData.templates?.length ?? 0) === 0 ? (
+                                    <div className="form-group" style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', color: '#64748b' }}>
+                                        No validated templates are configured yet. Add and publish templates in the app Config &gt; Templates section to see them here.
+                                    </div>
+                                ) : (
                                 <div className="templates-grid">
-                                    {formData.templates.map((template) => (
+                                    {formData.templates!.map((template) => (
                                         <div
                                             key={template.id}
                                             className={`template-card ${formData.data.selected_template_id === template.id ? 'selected' : ''}`}
@@ -1482,6 +1490,7 @@ export default function ClientOnboardingPage() {
                                         </div>
                                     ))}
                                 </div>
+                                )
                             ) : (
                                 <div className="custom-design-section">
                                     <label>Select Design Package</label>

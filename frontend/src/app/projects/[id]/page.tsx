@@ -583,7 +583,11 @@ export default function ProjectDetailPage() {
             return res.data as JobRun[];
         },
         enabled: !!projectId,
-        refetchInterval: 5000,
+        refetchInterval: (query) => {
+            const data = query.state.data as JobRun[] | undefined;
+            const hasActive = data?.some(j => j.status === 'QUEUED' || j.status === 'RUNNING');
+            return hasActive ? 10000 : 20000;
+        },
     });
 
     const jobs = jobsData || [];

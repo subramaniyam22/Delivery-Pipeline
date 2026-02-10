@@ -722,7 +722,8 @@ def get_active_templates(db: Session):
     except Exception:
         # Fallback if table doesn't exist or DB error
         pass
-    return THEME_TEMPLATES
+    # Only show templates configured in Config > Templates; no hardcoded fallback
+    return []
 
 
 
