@@ -135,6 +135,75 @@ Open http://localhost:3000/login
 
 ⚠️ **Change password after first login!**
 
+## 🧪 End-to-end testing
+
+### Start the full stack (local)
+
+**PowerShell:**
+```powershell
+docker-compose up -d postgres redis backend frontend
+```
+
+**Bash:**
+```bash
+docker compose up -d postgres redis backend frontend
+```
+
+Wait ~30 seconds for the backend to run migrations, then:
+
+| Service   | URL                      |
+|----------|---------------------------|
+| **App**  | http://localhost:3000     |
+| **Login**| http://localhost:3000/login |
+| **API docs** | http://localhost:8000/docs |
+| **Health**   | http://localhost:8000/health |
+
+### Seed users (if needed)
+
+```powershell
+docker-compose run --rm backend python scripts/seed_users.py
+```
+
+Or seed admin only: `docker-compose run --rm backend python scripts/seed_admin.py`
+
+### Suggested E2E flow (manual)
+
+1. **Login** – Open http://localhost:3000/login, sign in (e.g. Admin or use seeded user).
+2. **Dashboard** – Confirm redirect to Dashboard; check “Your Focus” and breadcrumbs.
+3. **Projects** – Go to Work → Projects; confirm list (or empty state).
+4. **Create project** – As Sales/Admin: create a project, fill basics, save.
+5. **Project detail** – Open a project; check stages (Sales Handoff first), tabs, and info.
+6. **Roles** – As Admin: use DEV ONLY → Role to switch to Consultant/SALES; confirm nav and dashboard change; switch back.
+7. **Other pages** – Visit Reports, Configuration (Admin), Users (Admin), Capacity, etc., as your role allows.
+
+### Testing the AI agent workflow (not manual)
+
+Stage work (Build, Test, Onboarding, etc.) runs via a **job queue** and a **background worker** that runs the AI/automation for each stage. To validate the agent workflow:
+
+1. **Start the worker** (required for AI/automation to run):
+   ```powershell
+   docker-compose up -d postgres redis backend backend-worker frontend
+   ```
+   Or if the stack is already up: `docker-compose up -d backend-worker`
+
+2. **Open a project** that is in a stage you can enqueue (e.g. Onboarding, Build, Test). On the project detail page, the **Job Queue** section shows the current stage and an **Enqueue** button for that stage.
+
+3. **Enqueue a stage job** (this triggers the AI agent path):
+   - Click **Enqueue Onboarding** / **Enqueue Build** / **Enqueue Test** (or the stage you are on).
+   - The API enqueues a job; the **backend-worker** picks it up and runs the workflow (e.g. build agent, QA runner).
+
+4. **Confirm the job ran**: The Job Queue table on the project page lists recent jobs and status (SUCCESS, RUNNING, FAILED). Refresh the project to see updated stage outputs or auto-advance to the next stage.
+
+5. **Optional – watch worker logs**: `docker-compose logs -f backend-worker`
+
+**Summary:** Use **Enqueue** to trigger the AI/agent workflow for a stage. The **backend-worker** must be running for jobs to execute. Manual actions (e.g. Advance, status updates) do not go through the agent.
+
+### Stop services
+
+```powershell
+docker-compose down
+```
+
 ## 📖 API Documentation
 
 Once running, visit:

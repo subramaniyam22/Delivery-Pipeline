@@ -157,6 +157,9 @@ class ProjectResponse(BaseModel):
     tester_user_id: Optional[UUID] = None
     minimum_requirements_override: Optional[List[str]] = None
     allow_requirements_exceptions: Optional[bool] = None
+    # Agent handling (when project created or advanced by an agent)
+    created_by_agent_type: Optional[str] = None
+    last_handled_by_agent_type: Optional[str] = None
     # Nested user info for display
     creator: Optional[UserBrief] = None
     consultant: Optional[UserBrief] = None

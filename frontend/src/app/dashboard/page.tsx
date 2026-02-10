@@ -3,15 +3,18 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentUser, isAuthenticated } from '@/lib/auth';
-import { projectsAPI } from '@/lib/api';
+import { projectsAPI, configurationAPI, metricsAPI } from '@/lib/api';
 import Navigation from '@/components/Navigation';
 import PageHeader from '@/components/PageHeader';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 export default function DashboardPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(true);
     const [projects, setProjects] = useState<any[]>([]);
     const [user, setUser] = useState<any>(null);
+    const [executiveDashboard, setExecutiveDashboard] = useState<any>(null);
+    const [metrics, setMetrics] = useState<any>(null);
     type Widget = {
         title: string;
         value: string;
@@ -51,32 +54,25 @@ export default function DashboardPage() {
             }
             const response = await projectsAPI.list(params);
             setProjects(response.data || []);
+
+            if (currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER') {
+                try {
+                    const [dashboardRes, metricsRes] = await Promise.all([
+                        configurationAPI.getExecutiveDashboard(),
+                        metricsAPI.get(),
+                    ]);
+                    setExecutiveDashboard(dashboardRes.data ?? null);
+                    setMetrics(metricsRes.data ?? null);
+                } catch (e) {
+                    console.error('Failed to load dashboard metrics:', e);
+                }
+            }
         } catch (error) {
             console.error('Failed to load projects:', error);
         } finally {
             setLoading(false);
         }
     };
-
-    const buildWidget = (widget: Widget) => (
-        <button
-            key={widget.title}
-            className={`widget-card ${widget.placeholder ? 'placeholder' : ''}`}
-            onClick={() => {
-                if (widget.href && !widget.placeholder) {
-                    router.push(widget.href);
-                }
-            }}
-            disabled={!widget.href || widget.placeholder}
-        >
-            <div className="widget-title">{widget.title}</div>
-            <div className="widget-value">{widget.value}</div>
-            <div className="widget-subtitle">{widget.subtitle}</div>
-            {widget.href && !widget.placeholder && (
-                <div className="widget-link">View</div>
-            )}
-        </button>
-    );
 
     const getWidgetsForRole = (): Widget[] => {
         const role = user?.role;
@@ -213,47 +209,66 @@ export default function DashboardPage() {
         }
 
         if (role === 'MANAGER') {
+            const delayed = executiveDashboard?.delayed_count ?? 0;
+            const hitlRate = metrics?.hitl_rate != null ? `${metrics.hitl_rate}%` : '—';
+            const sentiment = metrics?.quality_metrics?.avg_client_sentiment != null
+                ? String(metrics.quality_metrics.avg_client_sentiment)
+                : '—';
             return [
                 {
                     title: 'SLA Breaches',
-                    value: '—',
-                    subtitle: 'Data source not connected yet',
-                    placeholder: true,
+                    value: String(delayed),
+                    subtitle: executiveDashboard ? 'Delayed / at-risk projects' : 'Data source not connected yet',
+                    href: '/executive-dashboard',
+                    placeholder: !executiveDashboard,
                 },
                 {
                     title: 'HITL Approvals Pending',
-                    value: '—',
-                    subtitle: 'Data source not connected yet',
-                    placeholder: true,
+                    value: hitlRate,
+                    subtitle: metrics ? 'HITL rate from stage outputs' : 'Data source not connected yet',
+                    placeholder: metrics == null,
                 },
                 {
                     title: 'Sentiment Dips',
-                    value: '—',
-                    subtitle: 'Data source not connected yet',
-                    placeholder: true,
+                    value: sentiment,
+                    subtitle: metrics ? 'Avg client sentiment score' : 'Data source not connected yet',
+                    placeholder: metrics == null,
                 },
             ];
         }
 
         if (role === 'ADMIN') {
+            const total = executiveDashboard?.total_projects ?? 0;
+            const onTrack = executiveDashboard?.on_track_count ?? 0;
+            const warning = executiveDashboard?.warning_count ?? 0;
+            const critical = executiveDashboard?.critical_count ?? 0;
+            const delayed = executiveDashboard?.delayed_count ?? 0;
+            const healthSub = executiveDashboard
+                ? `On track: ${onTrack} • Warning: ${warning} • Critical: ${critical} • Delayed: ${delayed}`
+                : 'Data source not connected yet';
+            const sentiment = metrics?.quality_metrics?.avg_client_sentiment != null
+                ? String(metrics.quality_metrics.avg_client_sentiment)
+                : '—';
             return [
                 {
                     title: 'Revenue Summary',
-                    value: '—',
-                    subtitle: 'Data source not connected yet',
-                    placeholder: true,
+                    value: String(total),
+                    subtitle: executiveDashboard ? 'Total active projects' : 'Data source not connected yet',
+                    href: '/executive-dashboard',
+                    placeholder: !executiveDashboard,
                 },
                 {
                     title: 'Delivery Health',
-                    value: '—',
-                    subtitle: 'Data source not connected yet',
-                    placeholder: true,
+                    value: executiveDashboard ? `${onTrack}/${total} on track` : '—',
+                    subtitle: healthSub,
+                    href: '/executive-dashboard',
+                    placeholder: !executiveDashboard,
                 },
                 {
                     title: 'Sentiment Trend',
-                    value: '—',
-                    subtitle: 'Data source not connected yet',
-                    placeholder: true,
+                    value: sentiment,
+                    subtitle: metrics ? 'Avg client sentiment' : 'Data source not connected yet',
+                    placeholder: metrics == null,
                 },
             ];
         }
@@ -293,119 +308,121 @@ export default function DashboardPage() {
     return (
         <div className="page-wrapper">
             <Navigation />
-            <main className="dashboard">
-                <header className="page-header">
-                    <div className="header-text">
-                        <PageHeader
-                            title="Dashboard"
-                            purpose={`Welcome back, ${user?.name || 'team'}! Here's your delivery pipeline overview.`}
-                            variant="page"
-                        />
-                    </div>
-                </header>
+            <main className="dashboard-page">
+                <Breadcrumbs />
+                <PageHeader
+                    title="Dashboard"
+                    purpose={`Welcome back, ${user?.name || 'team'}! Here's your delivery pipeline overview.`}
+                    variant="page"
+                />
 
-                <section className="widgets-section">
-                    <h2>Your Focus</h2>
-                    <div className="widgets-grid">
-                        {getWidgetsForRole().map(buildWidget)}
+                <section className="your-focus-section">
+                    <h2 className="your-focus-title">Your Focus</h2>
+                    <div className="your-focus-table-wrap">
+                        <table className="your-focus-table">
+                            <thead>
+                                <tr>
+                                    <th>Metric</th>
+                                    <th>Value</th>
+                                    <th>Details</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {getWidgetsForRole().map((widget) => {
+                                    const isClickable = widget.href && !widget.placeholder;
+                                    return (
+                                        <tr
+                                            key={widget.title}
+                                            className={isClickable ? 'focus-row--clickable' : ''}
+                                            onClick={isClickable ? () => router.push(widget.href!) : undefined}
+                                            role={isClickable ? 'button' : undefined}
+                                        >
+                                            <td className="focus-cell focus-cell--metric">{widget.title}</td>
+                                            <td className="focus-cell focus-cell--value">{widget.value}</td>
+                                            <td className="focus-cell focus-cell--details">{widget.subtitle}</td>
+                                            <td className="focus-cell focus-cell--action">
+                                                {isClickable ? (
+                                                    <span className="focus-link">View →</span>
+                                                ) : (
+                                                    <span className="focus-link focus-link--muted">—</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 </section>
-
-
             </main>
 
             <style jsx>{`
-                .dashboard {
+                .dashboard-page {
                     max-width: 1600px;
                     margin: 0 auto;
                     padding: var(--space-xl) var(--space-lg);
                 }
-                
-                /* Header */
-                .page-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: var(--space-2xl);
-                    padding: var(--space-xl);
-                    background: var(--bg-card);
-                    border: 1px solid var(--border-light);
-                    border-radius: var(--radius-xl);
-                }
-                .header-text h1 {
-                    margin-bottom: var(--space-xs);
-                }
-                .header-text p {
-                    color: var(--text-muted);
-                }
-                
-                /* Sections */
-                section {
+                .your-focus-section {
+                    margin-top: var(--space-2xl);
                     margin-bottom: var(--space-2xl);
                 }
-                section h2 {
-                    margin-bottom: var(--space-lg);
-                    font-size: 18px;
-                    color: var(--text-secondary);
+                .your-focus-title {
+                    margin: 0 0 var(--space-lg) 0;
+                    font-size: 1.125rem;
+                    font-weight: 600;
+                    color: var(--text-primary);
                 }
-                
-                .widgets-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-                    gap: var(--space-md);
-                }
-                .widget-card {
-                    text-align: left;
-                    background: var(--bg-card);
+                .your-focus-table-wrap {
+                    overflow-x: auto;
                     border: 1px solid var(--border-light);
                     border-radius: var(--radius-lg);
-                    padding: var(--space-lg);
-                    cursor: pointer;
-                    transition: all var(--transition-normal);
+                    background: var(--bg-card);
                 }
-                .widget-card.placeholder,
-                .widget-card:disabled {
-                    cursor: default;
-                    opacity: 0.8;
+                .your-focus-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 14px;
                 }
-                .widget-card:not(.placeholder):hover {
-                    background: var(--bg-card-hover);
-                    border-color: var(--accent-primary);
-                    transform: translateY(-2px);
-                    box-shadow: var(--shadow-md);
+                .your-focus-table th {
+                    text-align: left;
+                    padding: var(--space-md) var(--space-lg);
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                    background: var(--bg-secondary);
+                    border-bottom: 2px solid var(--border-medium);
                 }
-                .widget-card:focus-visible {
-                    outline: 2px solid var(--accent-primary);
-                    outline-offset: 2px;
-                }
-                .widget-title {
-                    font-size: 12px;
-                    color: var(--text-muted);
-                    margin-bottom: var(--space-xs);
-                }
-                .widget-value {
-                    font-size: 28px;
-                    font-weight: 700;
+                .your-focus-table td {
+                    padding: var(--space-md) var(--space-lg);
+                    border-bottom: 1px solid var(--border-light);
                     color: var(--text-primary);
-                    line-height: 1;
                 }
-                .widget-subtitle {
-                    margin-top: var(--space-xs);
-                    font-size: 12px;
+                .your-focus-table tbody tr:last-child td {
+                    border-bottom: none;
+                }
+                .focus-row--clickable {
+                    cursor: pointer;
+                }
+                .focus-row--clickable:hover {
+                    background: var(--bg-card-hover);
+                }
+                .focus-cell--metric {
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+                .focus-cell--value {
+                    font-weight: 700;
+                    font-size: 1.125rem;
+                }
+                .focus-cell--details {
                     color: var(--text-secondary);
                 }
-                .widget-link {
-                    margin-top: var(--space-sm);
-                    font-size: 12px;
+                .focus-link {
                     color: var(--accent-primary);
+                    font-weight: 500;
                 }
-                
-                @media (max-width: 768px) {
-                    .page-header {
-                        flex-direction: column;
-                        gap: var(--space-lg);
-                        text-align: center;
-                    }
+                .focus-link--muted {
+                    color: var(--text-hint);
                 }
             `}</style>
         </div>

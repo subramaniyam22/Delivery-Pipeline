@@ -1,49 +1,75 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Navigation from '@/components/Navigation';
 import RequireCapability from '@/components/RequireCapability';
 import PageHeader from '@/components/PageHeader';
-
-const summaryCards = [
-    { label: 'Projects Delivered', value: '—', helper: 'Historical delivery count' },
-    { label: 'Avg. Cycle Time', value: '—', helper: 'From stage history' },
-    { label: 'SLA Breaches', value: '—', helper: 'Last 30 days' },
-    { label: 'Client Sentiment', value: '—', helper: 'Average score' },
-];
-
-const reportSections = [
-    {
-        title: 'Delivery Health',
-        items: [
-            'Stage throughput by week',
-            'Blockers and escalations',
-            'HITL approvals backlog',
-        ],
-    },
-    {
-        title: 'Client Insights',
-        items: [
-            'Repeat client rate',
-            'Top client segments by volume',
-            'Sentiment dips by template',
-        ],
-    },
-    {
-        title: 'Quality & Defects',
-        items: [
-            'Defect density by stage',
-            'Rework rate',
-            'QA pass ratio',
-        ],
-    },
-];
+import Breadcrumbs from '@/components/Breadcrumbs';
+import { configurationAPI, metricsAPI } from '@/lib/api';
 
 export default function ReportsPage() {
+    const [executiveDashboard, setExecutiveDashboard] = useState<any>(null);
+    const [metrics, setMetrics] = useState<any>(null);
+
+    useEffect(() => {
+        Promise.all([
+            configurationAPI.getExecutiveDashboard().then((r) => r.data).catch(() => null),
+            metricsAPI.get().then((r) => r.data).catch(() => null),
+        ]).then(([dashboard, m]) => {
+            setExecutiveDashboard(dashboard ?? null);
+            setMetrics(m ?? null);
+        });
+    }, []);
+
+    const totalProjects = executiveDashboard?.total_projects ?? 0;
+    const delayedCount = executiveDashboard?.delayed_count ?? 0;
+    const sentiment = metrics?.quality_metrics?.avg_client_sentiment;
+    const hitlRate = metrics?.hitl_rate;
+    const qaPassRate = metrics?.quality_metrics?.qa_pass_rate;
+
+    const summaryCards = [
+        { label: 'Projects Delivered', value: String(totalProjects), helper: 'Active projects in pipeline' },
+        { label: 'Avg. Cycle Time', value: '—', helper: 'From stage history' },
+        { label: 'SLA Breaches', value: String(delayedCount), helper: 'Delayed / at-risk' },
+        { label: 'Client Sentiment', value: sentiment != null ? String(sentiment) : '—', helper: 'Average score' },
+    ];
+
+    const reportSections = [
+        {
+            title: 'Delivery Health',
+            items: [
+                'Stage throughput by week',
+                'Blockers and escalations',
+                hitlRate != null ? `HITL approvals backlog: ${hitlRate}%` : 'HITL approvals backlog',
+            ],
+            dataConnected: !!metrics,
+        },
+        {
+            title: 'Client Insights',
+            items: [
+                'Repeat client rate',
+                'Top client segments by volume',
+                sentiment != null ? `Sentiment dips by template (avg: ${sentiment})` : 'Sentiment dips by template',
+            ],
+            dataConnected: !!metrics,
+        },
+        {
+            title: 'Quality & Defects',
+            items: [
+                'Defect density by stage',
+                'Rework rate',
+                qaPassRate != null ? `QA pass ratio: ${qaPassRate}%` : 'QA pass ratio',
+            ],
+            dataConnected: !!metrics,
+        },
+    ];
+
     return (
         <RequireCapability cap="view_reports">
             <div className="page-wrapper">
                 <Navigation />
                 <main className="reports-page">
+                    <Breadcrumbs />
                     <PageHeader
                         title="Reports"
                         purpose="Operational and executive reporting across delivery, clients, and quality."
@@ -109,7 +135,9 @@ export default function ReportsPage() {
                                         <li key={item}>{item}</li>
                                     ))}
                                 </ul>
-                                <div className="placeholder">Data source not connected yet.</div>
+                                {!section.dataConnected && (
+                                    <div className="placeholder">Additional data sources can be connected for more metrics.</div>
+                                )}
                             </div>
                         ))}
                     </section>

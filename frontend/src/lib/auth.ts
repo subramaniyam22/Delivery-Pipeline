@@ -21,7 +21,9 @@ export enum Role {
 const DEV_ROLE_KEY = 'dev_role_override';
 const DEV_ROLE_BACKUP_KEY = 'dev_role_original_user';
 
-const isDev = () => process.env.NODE_ENV !== 'production';
+const isDev = () =>
+    process.env.NODE_ENV !== 'production' ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost');
 
 export const login = async (email: string, password: string): Promise<string> => {
     const { authAPI, usersAPI } = await import('./api');
@@ -96,6 +98,22 @@ export const getDevRoleOverride = (): Role | null => {
         return value as Role;
     }
     return null;
+};
+
+/** Returns the real logged-in user role (before any DEV override). Use for showing Admin/Manager-only UI like the role switcher. */
+export const getActualUserRole = (): Role | null => {
+    if (typeof window === 'undefined') return null;
+    const backup = localStorage.getItem(DEV_ROLE_BACKUP_KEY);
+    if (backup) {
+        try {
+            const user = JSON.parse(backup) as User;
+            if (user?.role && Object.values(Role).includes(user.role as Role)) return user.role as Role;
+        } catch {
+            // ignore
+        }
+    }
+    const user = getCurrentUser();
+    return user?.role ? (user.role as Role) : null;
 };
 
 export const setDevRoleOverride = (role: Role | null) => {

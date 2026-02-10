@@ -398,4 +398,5 @@ export const configurationAPI = {
     getSLAConfigs: () => api.get('/sla/configurations'),
     updateSLAConfig: (stage: string, data: any) =>
         api.put(`/sla/configurations/${stage}`, data),
+    getExecutiveDashboard: () => api.get('/sla/executive-dashboard'),
 };

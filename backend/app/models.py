@@ -176,6 +176,10 @@ class Project(Base):
     client_email_ids = Column(Text, nullable=True)
     sales_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     
+    # Agent / automation tracking (e.g. "ONBOARDING_AGENT", "ASSIGNMENT_AGENT", "BUILDER_AGENT")
+    created_by_agent_type = Column(String(100), nullable=True)
+    last_handled_by_agent_type = Column(String(100), nullable=True)
+
     # Team Assignments
     manager_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     pc_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

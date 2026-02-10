@@ -32,23 +32,7 @@ export const getNavForUser = (user?: User | null): NavItem[] => {
   );
 };
 
-export const getLandingRouteForRole = (role?: Role | string | null): string => {
-  switch (role as Role) {
-    case 'ADMIN':
-      return '/admin/operations';
-    case 'MANAGER':
-      return '/admin/operations';
-    case 'SALES':
-      return '/projects?mine=true';
-    case 'CONSULTANT':
-      return '/projects?mine=true';
-    case 'PC':
-      return '/capacity';
-    case 'BUILDER':
-      return '/projects?assigned=true&stage=build';
-    case 'TESTER':
-      return '/projects?assigned=true&stage=test';
-    default:
-      return '/dashboard';
-  }
+export const getLandingRouteForRole = (_role?: Role | string | null): string => {
+  // All users land on dashboard by default
+  return '/dashboard';
 };

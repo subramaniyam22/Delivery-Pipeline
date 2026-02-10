@@ -9,6 +9,7 @@ import RoleGuard from '@/components/RoleGuard';
 import Navigation from '@/components/Navigation';
 import RequireCapability from '@/components/RequireCapability';
 import PageHeader from '@/components/PageHeader';
+import Breadcrumbs from '@/components/Breadcrumbs';
 import { Role } from '@/lib/auth';
 import NotificationToast from '@/components/NotificationToast';
 import { useNotification } from '@/context/NotificationContext';
@@ -405,6 +406,7 @@ export default function ProjectsPage() {
         <div className="page-wrapper">
             <Navigation />
             <main className="projects-page">
+                <Breadcrumbs />
                 <header className="page-header">
                     <PageHeader
                         title="Active Projects"
@@ -613,6 +615,16 @@ export default function ProjectsPage() {
                                             <div className="user-info-cell">
                                                 <span className="user-name">{project.creator.name}</span>
                                                 <span className="user-role">{project.creator.role}</span>
+                                                {(project as any).created_by_agent_type && (
+                                                    <span className="agent-badge" title="Project created or handled by agent">
+                                                        🤖 {(project as any).created_by_agent_type.replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
+                                                {(project as any).last_handled_by_agent_type && !(project as any).created_by_agent_type && (
+                                                    <span className="agent-badge" title="Last handled by agent">
+                                                        🤖 {(project as any).last_handled_by_agent_type.replace(/_/g, ' ')}
+                                                    </span>
+                                                )}
                                             </div>
                                         ) : (
                                             <span className="not-assigned">—</span>

@@ -6,6 +6,7 @@ import { projectsAPI, artifactsAPI, workflowAPI, onboardingAPI, projectTasksAPI,
 import { getCurrentUser } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
 import HitlStatusPanel from '@/components/HitlStatusPanel';
+import Breadcrumbs from '@/components/Breadcrumbs';
 import './project-details.css';
 import { useQuery } from '@tanstack/react-query';
 import Editor from '@monaco-editor/react';
@@ -325,6 +326,7 @@ const ChatLogsModal = ({ logs, onClose }: { logs: any[], onClose: () => void }) 
 };
 
 const STAGES = [
+    { key: 'SALES', label: 'Sales Handoff', icon: '🤝' },
     { key: 'ONBOARDING', label: 'Onboarding', icon: '📋' },
     { key: 'ASSIGNMENT', label: 'Assignment', icon: '📥' },
     { key: 'BUILD', label: 'Build', icon: '🔨' },
@@ -1950,6 +1952,7 @@ export default function ProjectDetailPage() {
         <div className="page-wrapper">
             <Navigation />
             <main className="project-detail">
+                <Breadcrumbs />
                 {/* Back Button */}
                 <button className="btn-back" onClick={() => router.push('/projects')}>
                     ← Back to Projects
@@ -2183,6 +2186,20 @@ export default function ProjectDetailPage() {
                         <div className="summary-field" style={{ minWidth: 0 }}>
                             <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Sales Rep</label>
                             <div style={{ fontSize: '14px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={project.sales_rep.name}>{project.sales_rep.name}</div>
+                        </div>
+                    )}
+                    <div className="summary-field" style={{ minWidth: 0 }}>
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Created By</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>
+                            {project.creator ? `${project.creator.name} (${project.creator.role})` : '—'}
+                        </div>
+                    </div>
+                    {((project as any).created_by_agent_type || (project as any).last_handled_by_agent_type) && (
+                        <div className="summary-field" style={{ minWidth: 0 }}>
+                            <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Handled by Agent</label>
+                            <div style={{ fontSize: '14px', fontWeight: 500 }}>
+                                🤖 {((project as any).created_by_agent_type || (project as any).last_handled_by_agent_type || '').replace(/_/g, ' ')}
+                            </div>
                         </div>
                     )}
                     <div className="summary-field">
@@ -2858,7 +2875,7 @@ export default function ProjectDetailPage() {
                     <div className="onboarding-section">
                         {console.log('Project Page Debug - User Role:', user?.role, 'Is Admin:', isAdmin, 'Matches:', ['ADMIN', 'MANAGER'].includes(user?.role || ''))}
                         <div className="section-header">
-                            <h2>📋 {['ADMIN', 'MANAGER'].includes(user?.role || '') ? 'Project Requirement Progress' : 'Project Onboarding Details'}  <span style={{ fontSize: '14px', color: 'red', fontWeight: 'bold' }}>(v2.2)</span></h2>
+                            <h2>📋 {['ADMIN', 'MANAGER'].includes(user?.role || '') ? 'Project Requirement Progress' : 'Project Onboarding Details'}</h2>
                             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                                 {(isAdmin || user?.role === 'MANAGER') && (
                                     <div className={`hitl-banner ${project.require_manual_review ? 'hitl-on' : 'hitl-off'}`} style={{

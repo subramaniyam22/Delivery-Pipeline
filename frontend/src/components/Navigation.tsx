@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, usePathname } from 'next/navigation';
-import { getCurrentUser, getDevRoleOverride, logout, Role, setDevRoleOverride } from '@/lib/auth';
+import { getActualUserRole, getCurrentUser, getDevRoleOverride, logout, Role, setDevRoleOverride } from '@/lib/auth';
 import { healthAPI } from '@/lib/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -14,12 +14,19 @@ export default function Navigation() {
     const pathname = usePathname();
     const [user, setUser] = useState<any>(null);
     const [devRole, setDevRole] = useState<string>('');
+    const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
+    const [actualRole, setActualRole] = useState<Role | string | null>(null);
     const isDev = process.env.NODE_ENV !== 'production';
 
     useEffect(() => {
         const currentUser = getCurrentUser();
         setUser(currentUser);
-        if (isDev) {
+        setActualRole(getActualUserRole());
+        setShowRoleSwitcher(
+            typeof window !== 'undefined' &&
+            (process.env.NODE_ENV !== 'production' || window.location.hostname === 'localhost')
+        );
+        if (isDev || (typeof window !== 'undefined' && window.location.hostname === 'localhost')) {
             const override = getDevRoleOverride();
             setDevRole(override || '');
         }
@@ -30,6 +37,10 @@ export default function Navigation() {
         }
         return;
     }, []);
+
+    useEffect(() => {
+        setActualRole(getActualUserRole());
+    }, [pathname]);
 
     const navContainerRef = useRef<HTMLDivElement | null>(null);
     const [openGroup, setOpenGroup] = useState<NavGroup | null>(null);
@@ -150,11 +161,13 @@ export default function Navigation() {
                         <span className="user-name">{user.name}</span>
                         <span className="user-role">{user.role}</span>
                     </div>
-                    {isDev && (user.role === 'ADMIN' || user.role === 'MANAGER') && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}>
+                    {showRoleSwitcher && (actualRole === 'ADMIN' || actualRole === 'MANAGER') && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }} title="Preview the app as another role (e.g. Consultant, SALES) without logging in as a different user. For testing only.">
                             <span style={{ fontSize: '10px', fontWeight: 700, color: '#ef4444' }}>DEV ONLY</span>
                             <select
                                 value={devRole || 'none'}
+                                title="Preview as role"
+                                aria-label="Preview app as role (development only)"
                                 onChange={(e) => {
                                     const next = e.target.value;
                                     if (next === 'none') {
@@ -175,7 +188,6 @@ export default function Navigation() {
                                     background: '#fff',
                                     color: '#0f172a',
                                 }}
-                                aria-label="Development role switcher"
                             >
                                 <option value="none">Role</option>
                                 {Object.values(Role).map((role) => (
