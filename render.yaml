@@ -71,20 +71,19 @@ services:
           type: redis
           property: connectionString
       - key: SECRET_KEY
-        fromService:
-          name: delivery-backend
-          type: web
-          property: envVars.SECRET_KEY
+        generateValue: true
       - key: FRONTEND_URL
         value: https://delivery-frontend.onrender.com
       - key: AI_MODE
         value: full
 
-  # Redis Service
+  # Redis (Key Value) Service - ipAllowList required by Render
   - type: redis
     name: delivery-redis
     plan: free
     region: oregon
+    ipAllowList:
+      - 0.0.0.0/0
 
 databases:
   - name: delivery-db

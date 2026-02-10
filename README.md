@@ -231,6 +231,8 @@ If your Render dashboard shows only `delivery-backend`, `delivery-frontend`, `de
    - **Create Background Worker**.  
    - After the first deploy, the worker will process enqueued jobs; Job Queue status should move from Queued to Running/Success.
 
+   **Note:** The blueprint gives the worker its own generated `SECRET_KEY` (Render does not support copying env vars from another service). If your app requires the worker to use the same secret as the backend (e.g. for JWT), set `SECRET_KEY` on the **delivery-worker** service in the Render dashboard to the same value as **delivery-backend**.
+
 3. **Frontend deploy failed**  
    - Fix any build errors (e.g. TypeScript) and push to `main`; Render will redeploy the frontend.  
    - If the frontend service uses a different URL (e.g. `delivery-frontend-60cf.onrender.com`), set **NEXT_PUBLIC_API_URL** on the frontend service to your backend URL, and set **CORS_ORIGINS** and **FRONTEND_URL** on the backend to that frontend URL.
