@@ -105,7 +105,7 @@ DEMO_USERS = [
 
 
 def seed_admin_user(db):
-    """Seed default admin user if not exists (password: Admin@123)"""
+    """Seed default admin user; create or update password to Admin@123 so login always works."""
     admin_email = "subramaniyam.webdesigner@gmail.com"
     existing = db.query(User).filter(User.email == admin_email).first()
     if not existing:
@@ -120,11 +120,14 @@ def seed_admin_user(db):
         db.commit()
         logger.info(f"Admin user created: {admin_email}")
     else:
-        logger.info(f"Admin user already exists: {admin_email}")
+        existing.password_hash = get_password_hash(SEED_PASSWORD)
+        existing.is_active = True
+        db.commit()
+        logger.info(f"Admin user password synced: {admin_email}")
 
 
 def seed_demo_users(db):
-    """Seed all demo users for localhost and Render (password: Admin@123). Creates only if not exists."""
+    """Seed all demo users for localhost and Render (password: Admin@123). Create or sync password."""
     for role, email, name in DEMO_USERS:
         existing = db.query(User).filter(User.email == email).first()
         if not existing:
@@ -138,6 +141,13 @@ def seed_demo_users(db):
             db.add(user)
             db.commit()
             logger.info(f"Demo user created: {email} ({role.value})")
+        else:
+            existing.password_hash = get_password_hash(SEED_PASSWORD)
+            existing.role = role
+            existing.name = name
+            existing.is_active = True
+            db.commit()
+            logger.info(f"Demo user synced: {email} ({role.value})")
 
 
 # Create FastAPI app
