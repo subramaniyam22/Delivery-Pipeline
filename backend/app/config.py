@@ -45,9 +45,10 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     AI_MODE: str = "full"  # disabled | basic | full
     
-    # CORS - parse from environment variable
+    # CORS - parse from environment variable (comma-separated). Use CORS_ORIGIN_REGEX for patterns (e.g. *.onrender.com).
     CORS_ORIGINS: str = "http://localhost:3000"
-    
+    CORS_ORIGIN_REGEX: Optional[str] = None  # e.g. "^https://[a-zA-Z0-9-]+\\.onrender\\.com$"
+
     # Frontend URL for client links
     FRONTEND_URL: str = "http://localhost:3000"
 

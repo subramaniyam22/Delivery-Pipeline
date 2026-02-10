@@ -238,7 +238,7 @@ If your Render dashboard shows only `delivery-backend`, `delivery-frontend`, `de
 
 4. **Frontend deploy failed**  
    - Fix any build errors (e.g. TypeScript) and push to `main`; Render will redeploy the frontend.  
-   - If the frontend service uses a different URL (e.g. `delivery-frontend-60cf.onrender.com`), set **NEXT_PUBLIC_API_URL** on the frontend service to your backend URL, and set **CORS_ORIGINS** and **FRONTEND_URL** on the backend to that frontend URL.
+   - If the frontend service uses a different URL (e.g. `delivery-frontend-39z8.onrender.com`), set **NEXT_PUBLIC_API_URL** on the frontend to your backend URL. The backend blueprint sets **CORS_ORIGIN_REGEX** so any `https://*.onrender.com` origin is allowed; if you still see a login "Network Error" or CORS block, ensure the backend env has **CORS_ORIGIN_REGEX** = `^https://[a-zA-Z0-9-]+\.onrender\.com$` (or add your frontend URL to **CORS_ORIGINS**).
 
 ### Stop services
 

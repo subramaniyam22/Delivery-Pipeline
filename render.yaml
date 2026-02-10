@@ -25,6 +25,8 @@ services:
         generateValue: true
       - key: CORS_ORIGINS
         value: https://delivery-frontend.onrender.com
+      - key: CORS_ORIGIN_REGEX
+        value: "^https://[a-zA-Z0-9-]+\\.onrender\\.com$"
       - key: FRONTEND_URL
         value: https://delivery-frontend.onrender.com
       - key: PYTHON_VERSION

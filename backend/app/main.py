@@ -142,10 +142,11 @@ allowed_origins = settings.cors_origins_list
 if settings.FRONTEND_URL and settings.FRONTEND_URL not in allowed_origins:
     allowed_origins.append(settings.FRONTEND_URL)
 
-# Add CORS middleware
+# Add CORS middleware (allow_origin_regex lets Render frontends like delivery-frontend-39z8.onrender.com work)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=settings.CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
