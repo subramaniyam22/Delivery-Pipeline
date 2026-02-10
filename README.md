@@ -200,6 +200,41 @@ Stage work (Build, Test, Onboarding, etc.) runs via a **job queue** and a **back
 
 **On Render:** Jobs will stay **Queued** until the **worker** service is running. In `render.yaml` the worker is `delivery-worker` (type: worker). Ensure it is deployed and running in your Render dashboard (same Redis and DB as the backend). If you only deploy the web backend and frontend, enqueued jobs will never run.
 
+#### Render: Add the worker (step-by-step)
+
+If your Render dashboard shows only `delivery-backend`, `delivery-frontend`, `delivery-db`, and `delivery-redis` (no worker), add the worker so Job Queue jobs can run:
+
+1. **Option A – Deploy from blueprint (recommended)**  
+   - In Render dashboard: **Projects** → your project (or **+ New** → **Blueprint**).  
+   - Connect the repo if needed, then use **Apply** / **Deploy** from the blueprint that includes `render.yaml`.  
+   - That will create/update all services in `render.yaml`, including **delivery-worker**.  
+   - After deploy, in **Overview** you should see **delivery-worker** with status **Available** (or **Running**).
+
+2. **Option B – Create the worker service by hand**  
+   - **+ New** → **Background Worker**.  
+   - **Connect repository**: same repo as backend (e.g. `subramaniyam22/Delivery-Pipeline`), branch `main`.  
+   - **Name**: `delivery-worker` (so it matches the rest of the stack).  
+   - **Region**: same as backend (e.g. Oregon).  
+   - **Root Directory**: `backend`.  
+   - **Runtime**: Python.  
+   - **Build Command**:  
+     `apt-get update && apt-get install -y nodejs npm git && npm install -g lighthouse && pip install -r requirements.txt && python -m playwright install --with-deps chromium`  
+   - **Start Command**:  
+     `python -m app.jobs.worker`  
+   - **Environment**: Add the same env vars as the backend (required):  
+     - `DATABASE_URL` → from **delivery-db** → **connectionString**  
+     - `REDIS_URL` → from **delivery-redis** → **connectionString**  
+     - `SECRET_KEY` → copy the value from **delivery-backend** (same secret so tokens match)  
+     - `FRONTEND_URL` → your frontend URL (e.g. `https://delivery-frontend-60cf.onrender.com`)  
+     - `AI_MODE` → `full`  
+   - **Plan**: Starter (or same as backend if you prefer).  
+   - **Create Background Worker**.  
+   - After the first deploy, the worker will process enqueued jobs; Job Queue status should move from Queued to Running/Success.
+
+3. **Frontend deploy failed**  
+   - Fix any build errors (e.g. TypeScript) and push to `main`; Render will redeploy the frontend.  
+   - If the frontend service uses a different URL (e.g. `delivery-frontend-60cf.onrender.com`), set **NEXT_PUBLIC_API_URL** on the frontend service to your backend URL, and set **CORS_ORIGINS** and **FRONTEND_URL** on the backend to that frontend URL.
+
 ### Stop services
 
 ```powershell

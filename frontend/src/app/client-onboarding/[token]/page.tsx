@@ -554,7 +554,7 @@ export default function ClientOnboardingPage() {
     // Dynamic AI Hints
     const hintedPhasesRef = useRef<Set<string>>(new Set());
     const hintedFieldsRef = useRef<Set<string>>(new Set());
-    const fieldHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const fieldHintTimerRef = useRef<number | null>(null);
 
     // Section-level hints
     useEffect(() => {
