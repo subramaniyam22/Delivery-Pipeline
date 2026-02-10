@@ -233,7 +233,10 @@ If your Render dashboard shows only `delivery-backend`, `delivery-frontend`, `de
 
    **Note:** The blueprint gives the worker its own generated `SECRET_KEY` (Render does not support copying env vars from another service). If your app requires the worker to use the same secret as the backend (e.g. for JWT), set `SECRET_KEY` on the **delivery-worker** service in the Render dashboard to the same value as **delivery-backend**.
 
-3. **Frontend deploy failed**  
+3. **Backend/worker build failed (read-only file system)**  
+   - Render's build environment does not allow `apt-get` or other system installs. The blueprint uses only `pip install -r requirements.txt` and `playwright install chromium`. Node/npm and Lighthouse are not installed on Render; QA features that need them may be limited unless you use a Docker-based deploy.
+
+4. **Frontend deploy failed**  
    - Fix any build errors (e.g. TypeScript) and push to `main`; Render will redeploy the frontend.  
    - If the frontend service uses a different URL (e.g. `delivery-frontend-60cf.onrender.com`), set **NEXT_PUBLIC_API_URL** on the frontend service to your backend URL, and set **CORS_ORIGINS** and **FRONTEND_URL** on the backend to that frontend URL.
 
