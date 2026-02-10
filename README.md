@@ -114,26 +114,38 @@ This will:
 - Start FastAPI backend on http://localhost:8000
 - Start Next.js frontend on http://localhost:3000
 
-### 4. Create Admin User
-```bash
-# Option 1: Using seed script
-docker compose exec backend python scripts/seed_admin.py
+### 4. Seed users (optional)
+The backend **seeds all demo users on startup** (see Login section for the list; password `Admin@123`). If you need to re-run seeds:
 
-# Option 2: Seed all default users/roles
+```bash
+# Seed all roles (resets passwords to Admin@123 for listed users)
 docker compose exec backend python scripts/seed_users.py
 
-# Option 3: Using API endpoint (only works if no users exist)
-curl -X POST http://localhost:8000/users/seed
+# Or admin only
+docker compose exec backend python scripts/seed_admin.py
 ```
 
 ### 5. Login
-Open http://localhost:3000/login
+Open http://localhost:3000/login (or your Render frontend URL).
 
-**Default credentials:**
-- Email: `subramaniyam.webdesigner@gmail.com`
-- Password: `admin123`
+**Seed users (password for all: `Admin@123`)** — seeded on backend startup (localhost and Render):
 
-⚠️ **Change password after first login!**
+| Role | Email | Password |
+|------|--------|----------|
+| **Admin** | subramaniyam.webdesigner@gmail.com | Admin@123 |
+| **Consultant** | subramaniyam@consultant.com | Admin@123 |
+| | jane@consultant.com | Admin@123 |
+| **PC** | subramaniyam@pc.com | Admin@123 |
+| | john@pc.com | Admin@123 |
+| **Builder** | subramaniyam@builder.com | Admin@123 |
+| | bob@builder.com | Admin@123 |
+| **Tester** | subramaniyam@tester.com | Admin@123 |
+| | alice@tester.com | Admin@123 |
+| **Manager** | subramaniyam@manager.com | Admin@123 |
+| | alice@manager.com | Admin@123 |
+| | subramaniyam@usmanager.com | Admin@123 |
+| **Sales** | subramaniyam@sales.com | Admin@123 |
+| | alice@sales.com | Admin@123 |
 
 ## 🧪 End-to-end testing
 
@@ -158,13 +170,14 @@ Wait ~30 seconds for the backend to run migrations, then:
 | **API docs** | http://localhost:8000/docs |
 | **Health**   | http://localhost:8000/health |
 
-### Seed users (if needed)
+### Seed users
+The backend seeds all demo users (see table above) on **startup** (localhost and Render). To re-seed or reset passwords to `Admin@123`:
 
 ```powershell
 docker-compose run --rm backend python scripts/seed_users.py
 ```
 
-Or seed admin only: `docker-compose run --rm backend python scripts/seed_admin.py`
+Or admin only: `docker-compose run --rm backend python scripts/seed_admin.py`
 
 ### Suggested E2E flow (manual)
 

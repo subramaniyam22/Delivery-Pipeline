@@ -83,15 +83,36 @@ def run_migrations():
         logger.error(f"Failed to run DB migrations: {e}")
 
 
+SEED_PASSWORD = "Admin@123"
+
+# All demo users seeded on startup (localhost and Render). Password for all: Admin@123
+DEMO_USERS = [
+    (Role.ADMIN, "subramaniyam.webdesigner@gmail.com", "Admin User"),
+    (Role.CONSULTANT, "subramaniyam@consultant.com", "Subramaniyam Consultant"),
+    (Role.CONSULTANT, "jane@consultant.com", "Jane Consultant"),
+    (Role.PC, "subramaniyam@pc.com", "Subramaniyam PC"),
+    (Role.PC, "john@pc.com", "John PC"),
+    (Role.BUILDER, "subramaniyam@builder.com", "Subramaniyam Builder"),
+    (Role.BUILDER, "bob@builder.com", "Bob Builder"),
+    (Role.TESTER, "subramaniyam@tester.com", "Subramaniyam Tester"),
+    (Role.TESTER, "alice@tester.com", "Alice Tester"),
+    (Role.MANAGER, "subramaniyam@manager.com", "Subramaniyam Manager"),
+    (Role.MANAGER, "alice@manager.com", "Alice Manager"),
+    (Role.MANAGER, "subramaniyam@usmanager.com", "Subramaniyam US Manager"),
+    (Role.SALES, "subramaniyam@sales.com", "Subramaniyam Sales"),
+    (Role.SALES, "alice@sales.com", "Alice Sales"),
+]
+
+
 def seed_admin_user(db):
-    """Seed default admin user if not exists"""
+    """Seed default admin user if not exists (password: Admin@123)"""
     admin_email = "subramaniyam.webdesigner@gmail.com"
     existing = db.query(User).filter(User.email == admin_email).first()
     if not existing:
         admin = User(
             name="Admin User",
             email=admin_email,
-            password_hash=get_password_hash("admin123"),
+            password_hash=get_password_hash(SEED_PASSWORD),
             role=Role.ADMIN,
             is_active=True
         )
@@ -101,26 +122,22 @@ def seed_admin_user(db):
     else:
         logger.info(f"Admin user already exists: {admin_email}")
 
-def seed_manager_users(db):
-    """Seed default manager users if not exist"""
-    managers = [
-        {"email": "subramaniyam@manager.com", "name": "Subramaniyam Manager"},
-        {"email": "alice@manager.com", "name": "Alice Manager"}
-    ]
-    
-    for mgr_data in managers:
-        existing = db.query(User).filter(User.email == mgr_data["email"]).first()
+
+def seed_demo_users(db):
+    """Seed all demo users for localhost and Render (password: Admin@123). Creates only if not exists."""
+    for role, email, name in DEMO_USERS:
+        existing = db.query(User).filter(User.email == email).first()
         if not existing:
-            manager = User(
-                name=mgr_data["name"],
-                email=mgr_data["email"],
-                password_hash=get_password_hash("manager123"),
-                role=Role.MANAGER,
+            user = User(
+                name=name,
+                email=email,
+                password_hash=get_password_hash(SEED_PASSWORD),
+                role=role,
                 is_active=True
             )
-            db.add(manager)
+            db.add(user)
             db.commit()
-            logger.info(f"Manager user created: {mgr_data['email']}")
+            logger.info(f"Demo user created: {email} ({role.value})")
 
 
 # Create FastAPI app
@@ -173,7 +190,7 @@ async def startup_event():
         db = SessionLocal()
         seed_default_configs(db)
         seed_admin_user(db)
-        seed_manager_users(db)
+        seed_demo_users(db)
         db.close()
 
         # Ensure notifications table exists

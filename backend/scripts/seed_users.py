@@ -21,6 +21,7 @@ USERS = [
     # Manager
     {"email": "subramaniyam@manager.com", "password": "Admin@123", "role": Role.MANAGER},
     {"email": "alice@manager.com", "password": "Admin@123", "role": Role.MANAGER},
+    {"email": "subramaniyam@usmanager.com", "password": "Admin@123", "role": Role.MANAGER},
     # Sales
     {"email": "subramaniyam@sales.com", "password": "Admin@123", "role": Role.SALES},
     {"email": "alice@sales.com", "password": "Admin@123", "role": Role.SALES},

@@ -28,7 +28,7 @@ def seed_admin():
         admin = User(
             name="Admin User",
             email="subramaniyam.webdesigner@gmail.com",
-            password_hash=hash_password("admin123"),
+            password_hash=hash_password("Admin@123"),
             role=Role.ADMIN,
             is_active=True
         )
@@ -37,9 +37,8 @@ def seed_admin():
         
         print("✓ Admin user created successfully!")
         print("  Email: subramaniyam.webdesigner@gmail.com")
-        print("  Password: admin123")
+        print("  Password: Admin@123")
         print("  Role: ADMIN")
-        print("\n⚠️  Please change the password after first login!")
         
     except Exception as e:
         print(f"Error creating admin user: {e}")
