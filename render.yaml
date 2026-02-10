@@ -77,13 +77,13 @@ services:
       - key: AI_MODE
         value: full
 
-  # Redis (Key Value) Service - ipAllowList required by Render
+  # Redis (Key Value) Service - ipAllowList required by Render (each entry is { source: "CIDR" })
   - type: redis
     name: delivery-redis
     plan: free
     region: oregon
     ipAllowList:
-      - 0.0.0.0/0
+      - source: 0.0.0.0/0
 
 databases:
   - name: delivery-db
