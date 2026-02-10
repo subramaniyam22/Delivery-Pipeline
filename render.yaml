@@ -51,7 +51,7 @@ services:
       - key: NODE_VERSION
         value: 20
 
-  # Background Worker Service
+  # Background Worker Service (use Python 3.11 to match backend and avoid pandas 3.13 build failure)
   - type: worker
     name: delivery-worker
     runtime: python
@@ -61,6 +61,8 @@ services:
     buildCommand: pip install -r requirements.txt && python -m playwright install chromium
     startCommand: python -m app.jobs.worker
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
       - key: DATABASE_URL
         fromDatabase:
           name: delivery-db
