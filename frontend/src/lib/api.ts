@@ -54,15 +54,21 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
-// Response interceptor to handle 401
+// Response interceptor to handle 401 (don't redirect if the failed request was login itself)
 api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // Clear any legacy localStorage data and redirect to login
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('user');
-            window.location.href = '/login';
+            const requestUrl = error.config?.url ?? '';
+            const isLoginRequest = typeof requestUrl === 'string' && (
+                requestUrl.endsWith('/auth/login') || requestUrl.includes('/auth/login')
+            );
+            if (!isLoginRequest) {
+                // Only clear and redirect when an authenticated request fails (e.g. /users/me), not when login fails
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('user');
+                window.location.href = '/login';
+            }
         }
         return Promise.reject(error);
     }
