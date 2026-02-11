@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Enum, Text, Integer, Float, Date, Index
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Enum, Text, Integer, Float, Date, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime, date
@@ -343,6 +343,7 @@ class TemplateRegistry(Base):
     __tablename__ = "templates"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug = Column(String(255), nullable=True, index=True)  # uniqueness with version: (slug, version)
     name = Column(String(255), nullable=False)
     repo_url = Column(String(1000), nullable=True)
     default_branch = Column(String(255), nullable=True, default="main")
@@ -351,7 +352,8 @@ class TemplateRegistry(Base):
     features_json = Column(JSONB, default=list)
     preview_url = Column(String(1000), nullable=True)
     source_type = Column(String(20), default="ai", nullable=False)
-    intent = Column(Text, nullable=True)
+    intent = Column(Text, nullable=True)  # template_intent
+    generator_prompt = Column(Text, nullable=True)
     preview_status = Column(String(30), default="not_generated", nullable=False)
     preview_last_generated_at = Column(DateTime, nullable=True)
     preview_error = Column(Text, nullable=True)
@@ -359,6 +361,25 @@ class TemplateRegistry(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     is_active = Column(Boolean, default=True)
     is_published = Column(Boolean, default=True)
+    # Extended registry fields
+    category = Column(String(50), nullable=True)
+    style = Column(String(50), nullable=True)
+    feature_tags_json = Column(JSONB, default=list)
+    status = Column(String(30), default="draft", nullable=False)  # draft | preview_ready | validated | published | archived
+    is_default = Column(Boolean, default=False)
+    is_recommended = Column(Boolean, default=False)
+    repo_path = Column(String(1000), nullable=True)
+    pages_json = Column(JSONB, default=list)  # [{slug, title, sections:[]}]
+    required_inputs_json = Column(JSONB, default=list)
+    optional_inputs_json = Column(JSONB, default=list)
+    default_config_json = Column(JSONB, default=dict)
+    rules_json = Column(JSONB, default=list)
+    validation_results_json = Column(JSONB, default=dict)
+    version = Column(Integer, default=1)
+    changelog = Column(Text, nullable=True)
+    parent_template_id = Column(UUID(as_uuid=True), nullable=True)
+
+    __table_args__ = (UniqueConstraint("slug", "version", name="uq_templates_slug_version"),)
 
 
 class AdminConfig(Base):
