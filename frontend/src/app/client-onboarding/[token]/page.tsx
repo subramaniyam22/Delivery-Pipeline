@@ -1516,7 +1516,7 @@ export default function ClientOnboardingPage() {
                                     ))}
                                 </div>
                                 )
-                                )}
+                                }
                                 </>
                             ) : (
                                 <div className="custom-design-section">
