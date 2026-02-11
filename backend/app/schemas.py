@@ -358,6 +358,22 @@ class TemplateCreate(BaseModel):
     preview_thumbnail_url: Optional[str] = None
     is_active: Optional[bool] = True
     is_published: Optional[bool] = True
+    category: Optional[str] = None
+    style: Optional[str] = None
+    feature_tags_json: Optional[List[str]] = None
+    status: Optional[str] = "draft"
+    is_default: Optional[bool] = False
+    is_recommended: Optional[bool] = False
+    repo_path: Optional[str] = None
+    pages_json: Optional[List[Any]] = None
+    required_inputs_json: Optional[List[Any]] = None
+    optional_inputs_json: Optional[List[Any]] = None
+    default_config_json: Optional[Dict[str, Any]] = None
+    rules_json: Optional[List[Any]] = None
+    validation_results_json: Optional[Dict[str, Any]] = None
+    version: Optional[int] = 1
+    changelog: Optional[str] = None
+    parent_template_id: Optional[UUID] = None
 
 
 class TemplateUpdate(BaseModel):
@@ -376,6 +392,26 @@ class TemplateUpdate(BaseModel):
     preview_thumbnail_url: Optional[str] = None
     is_active: Optional[bool] = None
     is_published: Optional[bool] = None
+    category: Optional[str] = None
+    style: Optional[str] = None
+    feature_tags_json: Optional[List[str]] = None
+    status: Optional[str] = None
+    is_default: Optional[bool] = None
+    is_recommended: Optional[bool] = None
+    repo_path: Optional[str] = None
+    pages_json: Optional[List[Any]] = None
+    required_inputs_json: Optional[List[Any]] = None
+    optional_inputs_json: Optional[List[Any]] = None
+    default_config_json: Optional[Dict[str, Any]] = None
+    rules_json: Optional[List[Any]] = None
+    validation_results_json: Optional[Dict[str, Any]] = None
+    version: Optional[int] = None
+    changelog: Optional[str] = None
+    parent_template_id: Optional[UUID] = None
+
+
+class SetRecommendedBody(BaseModel):
+    value: bool
 
 
 class TemplateResponse(BaseModel):
@@ -398,6 +434,22 @@ class TemplateResponse(BaseModel):
     created_at: datetime
     is_active: bool
     is_published: bool
+    category: Optional[str] = None
+    style: Optional[str] = None
+    feature_tags_json: Optional[List[str]] = None
+    status: Optional[str] = "draft"
+    is_default: Optional[bool] = False
+    is_recommended: Optional[bool] = False
+    repo_path: Optional[str] = None
+    pages_json: Optional[List[Any]] = None
+    required_inputs_json: Optional[List[Any]] = None
+    optional_inputs_json: Optional[List[Any]] = None
+    default_config_json: Optional[Dict[str, Any]] = None
+    rules_json: Optional[List[Any]] = None
+    validation_results_json: Optional[Dict[str, Any]] = None
+    version: Optional[int] = 1
+    changelog: Optional[str] = None
+    parent_template_id: Optional[UUID] = None
 
 
 # ============= Sentiment Schemas =============
