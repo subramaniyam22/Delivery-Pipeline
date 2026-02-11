@@ -23,9 +23,9 @@ services:
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
-      # Allow both default and instance-specific frontend URLs (e.g. delivery-frontend-39z8.onrender.com)
+      # Add your frontend URL(s) in Dashboard if different (comma-separated for multiple)
       - key: CORS_ORIGINS
-        value: "https://delivery-frontend.onrender.com,https://delivery-frontend-39z8.onrender.com"
+        value: "https://delivery-frontend.onrender.com"
       - key: CORS_ORIGIN_REGEX
         value: "^https://[a-zA-Z0-9-]+\\.onrender\\.com$"
       - key: FRONTEND_URL
@@ -38,6 +38,11 @@ services:
         value: 30
       - key: RATE_LIMIT_PUBLIC_PER_MINUTE
         value: 60
+      - key: ENVIRONMENT
+        value: production
+      # Set BACKEND_URL in Dashboard to this service's URL (e.g. https://delivery-backend.onrender.com) for preview links
+      - key: BACKEND_URL
+        value: https://delivery-backend.onrender.com
 
   # Frontend Service
   - type: web
@@ -49,8 +54,9 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: node_modules/.bin/next start -H 0.0.0.0 -p $PORT
     envVars:
+      # Must match your backend URL (Dashboard → delivery-backend → URL). Override in Dashboard if different.
       - key: NEXT_PUBLIC_API_URL
-        value: https://delivery-backend-vx6f.onrender.com
+        value: https://delivery-backend.onrender.com
       - key: NODE_VERSION
         value: 20
 
@@ -79,6 +85,8 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         value: https://delivery-frontend.onrender.com
+      - key: ENVIRONMENT
+        value: production
       - key: AI_MODE
         value: full
 

@@ -238,7 +238,7 @@ If your Render dashboard shows only `delivery-backend`, `delivery-frontend`, `de
      - `DATABASE_URL` → from **delivery-db** → **connectionString**  
      - `REDIS_URL` → from **delivery-redis** → **connectionString**  
      - `SECRET_KEY` → copy the value from **delivery-backend** (same secret so tokens match)  
-     - `FRONTEND_URL` → your frontend URL (e.g. `https://delivery-frontend-60cf.onrender.com`)  
+     - `FRONTEND_URL` → your frontend URL (e.g. `https://delivery-frontend-liwm.onrender.com`)  
      - `AI_MODE` → `full`  
    - **Plan**: Starter (or same as backend if you prefer).  
    - **Create Background Worker**.  
@@ -333,8 +333,9 @@ pip install -r requirements.txt
 # Setup database (ensure PostgreSQL is running)
 createdb delivery_db
 
-# Run migrations
+# Run migrations (includes Template Registry extended fields: k5e6f7a8b9c0)
 alembic upgrade head
+# Or from backend folder: .\run_migration.bat (Windows) or ./run_migration.sh (Unix)
 
 # Create admin user
 python scripts/seed_admin.py
@@ -447,7 +448,7 @@ Preview generation:
 ```bash
 curl -X POST http://localhost:8000/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"subramaniyam.webdesigner@gmail.com","password":"admin123"}'
+  -d '{"email":"subramaniyam.webdesigner@gmail.com","password":"Admin@123"}'
 ```
 
 ### Test RBAC
@@ -536,6 +537,21 @@ Delivery-Pipeline/
 ├── .env.example
 └── README.md
 ```
+
+## 🌐 Render Environment Variables
+
+The blueprint (`render.yaml`) sets DATABASE_URL, REDIS_URL, SECRET_KEY, CORS, FRONTEND_URL, and NEXT_PUBLIC_API_URL. After deploy, add or override in the **Render Dashboard** (each service → Environment):
+
+| Variable | Where to get it |
+|----------|------------------|
+| **NEXT_PUBLIC_API_URL** (Frontend) | Your backend URL: Dashboard → delivery-backend → **URL** (e.g. `https://delivery-backend.onrender.com`) |
+| **FRONTEND_URL**, **CORS_ORIGINS** (Backend) | Your frontend URL: Dashboard → delivery-frontend → **URL** |
+| **BACKEND_URL** (Backend) | Same as backend URL (preview links, webhooks) |
+| **OPENAI_API_KEY** | [OpenAI API Keys](https://platform.openai.com/api-keys) — for AI workflow and consultant |
+| **RESEND_API_KEY** | [Resend](https://resend.com) — for onboarding/completion emails |
+| **SENTRY_DSN** | [Sentry](https://sentry.io) — for error tracking |
+
+Full list and optional vars (SMTP, S3, webhooks): see **[docs/RENDER_ENV.md](docs/RENDER_ENV.md)**.
 
 ## 🔒 Security Notes
 
