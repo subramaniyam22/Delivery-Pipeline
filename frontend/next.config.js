@@ -1,3 +1,5 @@
+const { withSentryConfig } = require('@sentry/nextjs');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     // Security headers (CSP removed temporarily for Render compatibility)
@@ -61,4 +63,9 @@ const nextConfig = {
     reactStrictMode: true,
 };
 
-module.exports = nextConfig;
+const sentryOptions = {
+    org: process.env.SENTRY_ORG || '',
+    project: process.env.SENTRY_PROJECT || '',
+    silent: !process.env.CI,
+};
+module.exports = withSentryConfig(nextConfig, sentryOptions);

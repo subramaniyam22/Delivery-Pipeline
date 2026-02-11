@@ -10,10 +10,12 @@ if _backend not in sys.path:
     sys.path.insert(0, _backend)
 
 # Import after path fix
+from scripts.seed.common import check_db_connection
 from scripts.seed.seed_templates_demo import main as seed_templates_demo_main
 
 
 def main():
+    check_db_connection()
     print("Running demo seed (templates + demo dataset keys)...")
     seed_templates_demo_main()
     print("Demo dataset key: pmc_default_v1 (use GET /api/templates/demo-dataset?key=pmc_default_v1)")

@@ -393,12 +393,20 @@ export const capacityAPI = {
 
 // Configuration API (Admin/Manager)
 export const configurationAPI = {
-    getTemplates: () => api.get('/api/templates'),
+    getTemplates: (params?: { q?: string; status?: string; category?: string; style?: string; tag?: string }) =>
+        api.get('/api/templates', { params: params || {} }),
     createTemplate: (data: any) => api.post('/api/templates', data),
     getTemplate: (id: string) => api.get(`/api/templates/${id}`),
     updateTemplate: (id: string, data: any) => api.put(`/api/templates/${id}`, data),
     deleteTemplate: (id: string) => api.delete(`/api/templates/${id}`),
     generateTemplatePreview: (id: string) => api.post(`/api/templates/${id}/generate-preview`),
+    duplicateTemplate: (id: string) => api.post(`/api/templates/${id}/duplicate`),
+    validateTemplate: (id: string) => api.post(`/api/templates/${id}/validate`),
+    publishTemplate: (id: string) => api.post(`/api/templates/${id}/publish`),
+    archiveTemplate: (id: string) => api.post(`/api/templates/${id}/archive`),
+    setDefaultTemplate: (id: string) => api.post(`/api/templates/${id}/set-default`),
+    setRecommendedTemplate: (id: string, value: boolean) =>
+        api.post(`/api/templates/${id}/set-recommended`, { value }),
 
     // SLA Configuration
     getSLAConfigs: () => api.get('/sla/configurations'),

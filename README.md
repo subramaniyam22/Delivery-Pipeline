@@ -550,8 +550,9 @@ The blueprint (`render.yaml`) sets DATABASE_URL, REDIS_URL, SECRET_KEY, CORS, FR
 | **OPENAI_API_KEY** | [OpenAI API Keys](https://platform.openai.com/api-keys) — for AI workflow and consultant |
 | **RESEND_API_KEY** | [Resend](https://resend.com) — for onboarding/completion emails |
 | **SENTRY_DSN** | [Sentry](https://sentry.io) — for error tracking |
+| **AWS S3** (optional) | Set **STORAGE_BACKEND=s3** and **S3_BUCKET**, **S3_ACCESS_KEY**, **S3_SECRET_KEY**, **S3_REGION** from [AWS IAM](https://console.aws.amazon.com/iam/) / S3 or Cloudflare R2. See [docs/RENDER_ENV.md](docs/RENDER_ENV.md#optional-aws-s3-or-s3-compatible-storage). |
 
-Full list and optional vars (SMTP, S3, webhooks): see **[docs/RENDER_ENV.md](docs/RENDER_ENV.md)**.
+Full list and optional vars (SMTP, webhooks): see **[docs/RENDER_ENV.md](docs/RENDER_ENV.md)**.
 
 ## 🔒 Security Notes
 

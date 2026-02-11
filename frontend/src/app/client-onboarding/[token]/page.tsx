@@ -9,9 +9,15 @@ interface Template {
     name: string;
     description: string;
     preview_url: string;
+    preview_thumbnail_url?: string;
     colors: { primary: string; secondary: string; accent: string };
     features: string[];
     actual_web_url?: string;
+    category?: string;
+    style?: string;
+    pages_json?: Array<{ slug?: string; title?: string; sections?: unknown[] }>;
+    required_inputs_json?: string[];
+    optional_inputs_json?: string[];
 }
 
 interface PricingTier {
@@ -434,6 +440,9 @@ export default function ClientOnboardingPage() {
     // Phase 2 & 3 Enhancements State
     const [showBrandGuidelines, setShowBrandGuidelines] = useState(false);
     const [showReviewModal, setShowReviewModal] = useState(false);
+    const [browseTemplatesOpen, setBrowseTemplatesOpen] = useState(false);
+    const [templateDetailDrawer, setTemplateDetailDrawer] = useState<Template | null>(null);
+    const [templateGalleryFilters, setTemplateGalleryFilters] = useState<{ category?: string; style?: string; tag?: string }>({});
     const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
 
     // Effect to initialize toggles based on data
@@ -1408,7 +1417,23 @@ export default function ClientOnboardingPage() {
                             </div>
 
                             {formData.data.requirements?.template_mode !== 'NEW' ? (
-                                (formData.templates?.length ?? 0) === 0 ? (
+                                <>
+                                <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBrowseTemplatesOpen(true)}
+                                        style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #2563eb', background: '#eff6ff', color: '#2563eb', fontWeight: 600, cursor: 'pointer' }}
+                                    >
+                                        Browse Templates
+                                    </button>
+                                    {formData.data.selected_template_id && (() => {
+                                        const t = formData.templates?.find(x => x.id === formData.data.selected_template_id);
+                                        return t ? (
+                                            <span style={{ fontSize: '14px', color: '#64748b' }}>Selected: <strong>{t.name}</strong></span>
+                                        ) : null;
+                                    })()}
+                                </div>
+                                {(formData.templates?.length ?? 0) === 0 ? (
                                     <div className="form-group" style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', color: '#64748b' }}>
                                         No validated templates are configured yet. Add and publish templates in the app Config &gt; Templates section to see them here.
                                     </div>
@@ -1491,6 +1516,8 @@ export default function ClientOnboardingPage() {
                                     ))}
                                 </div>
                                 )
+                                )}
+                                </>
                             ) : (
                                 <div className="custom-design-section">
                                     <label>Select Design Package</label>
@@ -1989,6 +2016,91 @@ export default function ClientOnboardingPage() {
                     />
                 )
             }
+
+            {browseTemplatesOpen && formData?.templates && (
+                <div className="modal-overlay" onClick={() => { setBrowseTemplatesOpen(false); setTemplateDetailDrawer(null); }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+                    <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: '16px', maxWidth: '900px', width: '100%', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+                        <div style={{ padding: '20px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h2 style={{ margin: 0, fontSize: '20px' }}>Browse Templates</h2>
+                            <button type="button" onClick={() => { setBrowseTemplatesOpen(false); setTemplateDetailDrawer(null); }} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white', cursor: 'pointer' }}>Close</button>
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                            <input type="text" placeholder="Category" value={templateGalleryFilters.category || ''} onChange={e => setTemplateGalleryFilters(f => ({ ...f, category: e.target.value || undefined }))} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }} />
+                            <input type="text" placeholder="Style" value={templateGalleryFilters.style || ''} onChange={e => setTemplateGalleryFilters(f => ({ ...f, style: e.target.value || undefined }))} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }} />
+                            <input type="text" placeholder="Tag" value={templateGalleryFilters.tag || ''} onChange={e => setTemplateGalleryFilters(f => ({ ...f, tag: e.target.value || undefined }))} style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }} />
+                        </div>
+                        {(() => {
+                            const templates = formData.templates;
+                            const filtered = templates.filter(t => {
+                                if (templateGalleryFilters.category && (t.category || '') !== templateGalleryFilters.category) return false;
+                                if (templateGalleryFilters.style && (t.style || '') !== templateGalleryFilters.style) return false;
+                                if (templateGalleryFilters.tag && !(t.features || []).some((f: string) => (f || '').toLowerCase().includes((templateGalleryFilters.tag || '').toLowerCase()))) return false;
+                                return true;
+                            });
+                            const domainType = formData.data.requirements?.domain_type || '';
+                            const wcag = formData.data.wcag_compliance_required;
+                            const customCopy = formData.data.use_custom_copy;
+                            const recommended = [...filtered].sort((a, b) => {
+                                let scoreA = 0, scoreB = 0;
+                                if (domainType === 'Multi' && (a.features || []).some((f: string) => /multi|location/i.test(f))) scoreA += 2;
+                                if (domainType === 'Multi' && (b.features || []).some((f: string) => /multi|location/i.test(f))) scoreB += 2;
+                                if (wcag && (a.features || []).some((f: string) => /accessibility/i.test(f))) scoreA += 2;
+                                if (wcag && (b.features || []).some((f: string) => /accessibility/i.test(f))) scoreB += 2;
+                                if (customCopy && (a.style || '').match(/corporate|editorial/i)) scoreA += 1;
+                                if (customCopy && (b.style || '').match(/corporate|editorial/i)) scoreB += 1;
+                                return scoreB - scoreA;
+                            }).slice(0, 3);
+                            return (
+                                <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
+                                    <div style={{ flex: 1, padding: '20px' }}>
+                                        {recommended.length > 0 && (
+                                            <div style={{ marginBottom: '20px' }}>
+                                                <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#64748b' }}>Recommended for you</h4>
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                                                    {recommended.map(t => (
+                                                        <div key={t.id} onClick={() => setTemplateDetailDrawer(t)} style={{ border: '2px solid #2563eb', borderRadius: '12px', overflow: 'hidden', cursor: 'pointer', background: '#eff6ff' }}>
+                                                            {(t.preview_thumbnail_url || t.preview_url) ? <img src={t.preview_thumbnail_url || t.preview_url} alt="" style={{ width: '100%', height: '100px', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100px', background: `linear-gradient(135deg, ${t.colors?.primary || '#2563eb'}, ${t.colors?.secondary || '#1e40af'})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>{t.name?.slice(0, 2).toUpperCase()}</div>}
+                                                            <div style={{ padding: '10px' }}><strong>{t.name}</strong></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#64748b' }}>All templates</h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
+                                            {filtered.map(t => (
+                                                <div key={t.id} onClick={() => setTemplateDetailDrawer(t)} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', cursor: 'pointer' }}>
+                                                    {(t.preview_thumbnail_url || t.preview_url) ? <img src={t.preview_thumbnail_url || t.preview_url} alt="" style={{ width: '100%', height: '100px', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; }} /> : <div style={{ width: '100%', height: '100px', background: `linear-gradient(135deg, ${t.colors?.primary || '#2563eb'}, ${t.colors?.secondary || '#1e40af'})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>{t.name?.slice(0, 2).toUpperCase()}</div>}
+                                                    <div style={{ padding: '10px' }}><strong>{t.name}</strong><div style={{ fontSize: '12px', color: '#64748b' }}>{t.category || t.style || '—'}</div></div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {templateDetailDrawer && (
+                                        <div style={{ width: '320px', borderLeft: '1px solid #e2e8f0', padding: '20px', overflow: 'auto', background: '#f8fafc' }}>
+                                            <h4 style={{ margin: '0 0 12px' }}>{templateDetailDrawer.name}</h4>
+                                            <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#64748b' }}>{templateDetailDrawer.description || '—'}</p>
+                                            <div style={{ marginBottom: '12px' }}>
+                                                <strong style={{ fontSize: '12px' }}>Pages included</strong>
+                                                <ul style={{ margin: '4px 0 0', paddingLeft: '18px', fontSize: '13px' }}>{(templateDetailDrawer.pages_json || []).map((p: any, i: number) => <li key={i}>{p.title || p.slug || 'Page'}</li>)}</ul>
+                                                {((templateDetailDrawer.pages_json || []).length === 0) && <span style={{ fontSize: '12px', color: '#94a3b8' }}>—</span>}
+                                            </div>
+                                            <div style={{ marginBottom: '12px' }}>
+                                                <strong style={{ fontSize: '12px' }}>Required inputs</strong>
+                                                <ul style={{ margin: '4px 0 0', paddingLeft: '18px', fontSize: '13px' }}>{(templateDetailDrawer.required_inputs_json || templateDetailDrawer.features || []).map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>
+                                            </div>
+                                            {templateDetailDrawer.preview_url && (
+                                                <a href={templateDetailDrawer.preview_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginBottom: '12px', fontSize: '13px', color: '#2563eb' }}>Open preview ↗</a>
+                                            )}
+                                            <button type="button" onClick={() => { selectTemplate(templateDetailDrawer.id); setBrowseTemplatesOpen(false); setTemplateDetailDrawer(null); }} style={{ width: '100%', padding: '10px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer' }}>Select Template</button>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
 
             {/* Chatbot Container Removed - Moved to End */}
 

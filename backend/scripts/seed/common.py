@@ -3,16 +3,18 @@ Common seeding utilities: DB session, slugify, upsert_template.
 """
 import os
 import re
+import sys
 from contextlib import contextmanager
 from typing import Any, Dict, Literal, Optional
 
 # Run from backend directory so app is importable
-import sys
 if __name__ == "__main__" or (sys.path and "scripts" in sys.path[0]):
     _backend = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if _backend not in sys.path:
         sys.path.insert(0, _backend)
 
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models import TemplateRegistry
@@ -29,6 +31,22 @@ def slugify(name: str) -> str:
 def get_db() -> Session:
     """Return a DB session (caller must close or use as context)."""
     return SessionLocal()
+
+
+def check_db_connection() -> None:
+    """Verify database is reachable; exit with a clear message if not."""
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+    except OperationalError as e:
+        msg = str(e.orig) if getattr(e, "orig", None) else str(e)
+        if "Connection refused" in msg or "could not connect" in msg.lower():
+            print("Database not available. Start PostgreSQL (e.g. docker-compose up -d) or set DATABASE_URL.", file=sys.stderr)
+            print("Example: DATABASE_URL=postgresql://user:pass@localhost:5432/dbname", file=sys.stderr)
+        else:
+            print(f"Database error: {msg}", file=sys.stderr)
+        sys.exit(1)
 
 
 @contextmanager

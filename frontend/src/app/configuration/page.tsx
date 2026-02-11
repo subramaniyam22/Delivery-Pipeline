@@ -9,6 +9,9 @@ import RequireCapability from '@/components/RequireCapability';
 import { Dialog } from '@/components/ui/dialog';
 import PageHeader from '@/components/PageHeader';
 
+type ConfigTab = 'template_registry' | 'sla' | 'thresholds' | 'preview_strategy' | 'hitl_gates';
+type TemplateDetailSubTab = 'overview' | 'structure' | 'preview' | 'validation' | 'versions';
+
 interface TemplateRegistry {
     id: string;
     name: string;
@@ -25,6 +28,22 @@ interface TemplateRegistry {
     source_type?: 'ai' | 'git' | string;
     is_active: boolean;
     is_published: boolean;
+    category?: string | null;
+    style?: string | null;
+    feature_tags_json?: string[];
+    status?: string;
+    is_default?: boolean;
+    is_recommended?: boolean;
+    repo_path?: string | null;
+    pages_json?: Array<{ slug?: string; title?: string; sections?: unknown[] }>;
+    required_inputs_json?: unknown[];
+    optional_inputs_json?: unknown[];
+    default_config_json?: Record<string, unknown>;
+    rules_json?: unknown[];
+    validation_results_json?: Record<string, unknown>;
+    version?: number;
+    changelog?: string | null;
+    parent_template_id?: string | null;
 }
 
 interface SLAConfig {
@@ -91,6 +110,13 @@ export default function ConfigurationPage() {
         intent: '',
         features_input: '',
     });
+    const [activeConfigTab, setActiveConfigTab] = useState<ConfigTab>('template_registry');
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+    const [templateDetailSubTab, setTemplateDetailSubTab] = useState<TemplateDetailSubTab>('overview');
+    const [showCreateWizard, setShowCreateWizard] = useState(false);
+    const [templateListFilters, setTemplateListFilters] = useState<{ q?: string; status?: string; category?: string; style?: string; tag?: string }>({});
+    const [wizardStep, setWizardStep] = useState(1);
+    const [wizardForm, setWizardForm] = useState<{ source: 'ai' | 'git'; name: string; category: string; style: string; feature_tags: string; intent: string; repo_url: string; repo_branch: string; repo_path: string; preset: string }>({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '' });
 
     type SectionKey = 'templates_default' | 'sla_config' | 'thresholds' | 'preview_strategy' | 'hitl_gates';
     type SectionState = {
@@ -663,6 +689,91 @@ export default function ConfigurationPage() {
         }
     };
 
+    const selectedTemplate = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) ?? null : null;
+    const canPublishTemplate = (t: TemplateRegistry) =>
+        (t.status === 'validated') && (t.preview_status === 'ready');
+    const filteredTemplates = React.useMemo(() => {
+        let list = templates;
+        const { q, status, category, style, tag } = templateListFilters;
+        if (q?.trim()) {
+            const lower = q.trim().toLowerCase();
+            list = list.filter(t =>
+                (t.name || '').toLowerCase().includes(lower) ||
+                (t.description || '').toLowerCase().includes(lower)
+            );
+        }
+        if (status) list = list.filter(t => (t.status || '') === status);
+        if (category) list = list.filter(t => (t.category || '') === category);
+        if (style) list = list.filter(t => (t.style || '') === style);
+        if (tag) list = list.filter(t => (t.feature_tags_json || t.features_json || []).some((f: string) => (f || '').toLowerCase().includes(tag.toLowerCase())));
+        return list;
+    }, [templates, templateListFilters]);
+
+    const handleDuplicateTemplate = async (t: TemplateRegistry) => {
+        if (!canEditTemplates) return;
+        try {
+            const res = await configurationAPI.duplicateTemplate(t.id);
+            setTemplates(prev => [res.data as TemplateRegistry, ...prev]);
+            setSuccess('Template duplicated');
+            setSelectedTemplateId((res.data as TemplateRegistry).id);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to duplicate');
+        }
+    };
+    const handleValidateTemplate = async (t: TemplateRegistry) => {
+        if (!canEditTemplates) return;
+        try {
+            const res = await configurationAPI.validateTemplate(t.id);
+            const updated = await configurationAPI.getTemplate(t.id);
+            updateTemplateInState(updated.data as TemplateRegistry);
+            setSuccess((res.data as { passed?: boolean }).passed ? 'Validation passed' : 'Validation completed (see results)');
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Validation failed');
+        }
+    };
+    const handlePublishTemplate = async (t: TemplateRegistry) => {
+        if (!canEditTemplates || !canPublishTemplate(t)) return;
+        try {
+            await configurationAPI.publishTemplate(t.id);
+            setSuccess('Template published');
+            loadData();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Publish failed');
+        }
+    };
+    const handleArchiveTemplate = async (t: TemplateRegistry) => {
+        if (!canEditTemplates) return;
+        if (!window.confirm(`Archive "${t.name}"? It will be hidden from clients.`)) return;
+        try {
+            await configurationAPI.archiveTemplate(t.id);
+            setSuccess('Template archived');
+            if (selectedTemplateId === t.id) setSelectedTemplateId(null);
+            loadData();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Archive failed');
+        }
+    };
+    const handleSetDefaultTemplateFromCard = async (t: TemplateRegistry) => {
+        try {
+            await configurationAPI.setDefaultTemplate(t.id);
+            setDefaultTemplateId(t.id);
+            await saveDefaultTemplate(t.id);
+            setSuccess('Default template set');
+            loadData();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Set default failed');
+        }
+    };
+    const handleSetRecommendedTemplate = async (t: TemplateRegistry, value: boolean) => {
+        try {
+            await configurationAPI.setRecommendedTemplate(t.id, value);
+            updateTemplateInState({ ...t, is_recommended: value });
+            setSuccess(value ? 'Marked as recommended' : 'Unmarked as recommended');
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Update failed');
+        }
+    };
+
     const pollTemplatePreview = async (templateId: string) => {
         setPreviewPolling(true);
         const start = Date.now();
@@ -709,25 +820,6 @@ export default function ConfigurationPage() {
         setPreviewModalOpen(true);
         if (template.preview_status === 'generating') {
             pollTemplatePreview(template.id);
-        }
-    };
-
-    const handleSetDefaultTemplate = async (id: string) => {
-        try {
-            if (!canEditTemplates) {
-                setError('Only Admin can change this setting.');
-                return;
-            }
-            setDefaultTemplateId(id);
-            await saveDefaultTemplate(id);
-            setSuccess('Default template updated');
-            setValidationErrors('templates_default', []);
-        } catch (err: any) {
-            const message = isConflictError(err)
-                ? conflictMessage
-                : (err.response?.data?.detail || 'Failed to update default template');
-            setError(message);
-            setValidationErrors('templates_default', [message]);
         }
     };
 
@@ -883,8 +975,35 @@ export default function ConfigurationPage() {
                 {error && <div className="alert alert-error">{error}</div>}
                 {success && <div className="alert alert-success">{success}</div>}
 
+                <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                    {(['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates'] as ConfigTab[]).map((tab) => (
+                        <button
+                            key={tab}
+                            type="button"
+                            onClick={() => setActiveConfigTab(tab)}
+                            style={{
+                                padding: '10px 16px',
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
+                                background: activeConfigTab === tab ? '#2563eb' : 'white',
+                                color: activeConfigTab === tab ? 'white' : '#475569',
+                                fontWeight: 600,
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            {tab === 'template_registry' && 'Template Registry'}
+                            {tab === 'sla' && 'SLA Settings'}
+                            {tab === 'thresholds' && 'Quality Thresholds'}
+                            {tab === 'preview_strategy' && 'Preview Strategy'}
+                            {tab === 'hitl_gates' && 'HITL Gates'}
+                        </button>
+                    ))}
+                </div>
+
+                {activeConfigTab === 'template_registry' && (
                 <section style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <PageHeader
                                 title="Template Registry"
@@ -895,199 +1014,151 @@ export default function ConfigurationPage() {
                             {renderDirtyDot('templates_default')}
                             {renderStatusChip('templates_default')}
                         </div>
-                        <button
-                            className="btn-primary"
-                            onClick={() => {
-                                if (!canEditTemplates) return;
-                                if (showAddForm) {
-                                    setShowAddForm(false);
-                                    setNewTemplate({ name: '', repo_url: '', default_branch: 'main', description: '', intent: '', features_input: '' });
-                                    setTemplateSource('ai');
-                                    setShowAdvanced(false);
-                                } else {
-                                    setShowAddForm(true);
-                                }
-                            }}
-                            disabled={!canEditTemplates}
-                            style={{
-                                padding: '8px 16px',
-                                background: '#2563eb',
-                                color: 'white',
-                                borderRadius: '6px',
-                                border: 'none',
-                                cursor: canEditTemplates ? 'pointer' : 'not-allowed',
-                                fontSize: '13px',
-                                opacity: canEditTemplates ? 1 : 0.6,
-                            }}
-                        >
-                            {showAddForm ? 'Cancel' : '+ Add Template'}
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <label style={{ fontSize: '13px', color: '#64748b' }}>Default</label>
+                            <select
+                                value={defaultTemplateId}
+                                onChange={(e) => { const id = e.target.value; setDefaultTemplateId(id); saveDefaultTemplate(id); }}
+                                disabled={!canEditTemplates}
+                                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                            >
+                                <option value="">Select default</option>
+                                {templates.filter(t => t.is_published).map((t) => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => setShowCreateWizard(true)}
+                                disabled={!canEditTemplates}
+                                style={{ padding: '8px 16px', background: '#2563eb', color: 'white', borderRadius: '6px', border: 'none', cursor: canEditTemplates ? 'pointer' : 'not-allowed', fontSize: '13px' }}
+                            >
+                                Create Template
+                            </button>
+                        </div>
                     </div>
                     {!canEditTemplates && (
-                        <p style={{ marginTop: 0, marginBottom: '16px', color: '#64748b', fontSize: '12px' }}>
-                            Only Admin can change this setting.
-                        </p>
+                        <p style={{ marginTop: 0, marginBottom: '8px', color: '#64748b', fontSize: '12px' }}>Only Admin can change templates.</p>
                     )}
-                    <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <label style={{ fontSize: '13px', color: '#64748b' }}>Default Template</label>
-                        <select
-                            value={defaultTemplateId}
-                            onChange={(e) => handleSetDefaultTemplate(e.target.value)}
-                            disabled={!canEditTemplates}
-                            style={{
-                                padding: '6px 10px',
-                                borderRadius: '6px',
-                                border: '1px solid #cbd5e1',
-                                fontSize: '13px',
-                                opacity: canEditTemplates ? 1 : 0.6,
-                                cursor: canEditTemplates ? 'pointer' : 'not-allowed',
-                            }}
-                        >
-                            <option value="">Select default</option>
-                            {templates.filter(t => t.is_published).map((t) => (
-                                <option key={t.id} value={t.id}>{t.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {showAddForm && canEditTemplates && (
-                        <form onSubmit={handleAddTemplate} style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', marginBottom: '16px', border: '1px solid #e2e8f0' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-                                <label style={{ fontSize: '13px', fontWeight: 600 }}>Template Source</label>
-                                <div style={{ display: 'inline-flex', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setTemplateSource('ai')}
-                                        style={{
-                                            padding: '6px 12px',
-                                            border: 'none',
-                                            background: templateSource === 'ai' ? '#2563eb' : 'transparent',
-                                            color: templateSource === 'ai' ? 'white' : '#475569',
-                                            cursor: 'pointer',
-                                            fontSize: '12px',
-                                        }}
-                                    >
-                                        AI Generated
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setTemplateSource('git')}
-                                        style={{
-                                            padding: '6px 12px',
-                                            border: 'none',
-                                            background: templateSource === 'git' ? '#2563eb' : 'transparent',
-                                            color: templateSource === 'git' ? 'white' : '#475569',
-                                            cursor: 'pointer',
-                                            fontSize: '12px',
-                                        }}
-                                    >
-                                        Git Repository
-                                    </button>
-                                </div>
-                                {templateSource === 'ai' && (
-                                    <span style={{ fontSize: '12px', color: '#64748b' }}>Preview generated by AI. Repo/Branch optional.</span>
-                                )}
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>Name</label>
-                                    <input
-                                        required
-                                        type="text"
-                                        value={newTemplate.name}
-                                        onChange={e => setNewTemplate({ ...newTemplate, name: e.target.value })}
-                                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                                    />
-                                </div>
-                                <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>
-                                        Template Intent {templateSource === 'ai' && <span style={{ color: '#2563eb' }}>(recommended)</span>}
-                                    </label>
-                                    <textarea
-                                        rows={3}
-                                        value={newTemplate.intent}
-                                        onChange={e => setNewTemplate({ ...newTemplate, intent: e.target.value })}
-                                        placeholder="Modern property listing site for rentals with gallery, enquiry form, map."
-                                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                                    />
-                                </div>
-                                <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>Description</label>
-                                    <input
-                                        type="text"
-                                        value={newTemplate.description}
-                                        onChange={e => setNewTemplate({ ...newTemplate, description: e.target.value })}
-                                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                                    />
-                                </div>
-                                <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>Features</label>
-                                    <input
-                                        type="text"
-                                        value={newTemplate.features_input}
-                                        onChange={e => setNewTemplate({ ...newTemplate, features_input: e.target.value })}
-                                        placeholder="Gallery grid, map section, contact form, pricing table"
-                                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                                    />
-                                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>Comma-separated list.</span>
-                                </div>
-                            </div>
-
-                            <div style={{ marginBottom: '16px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAdvanced(!showAdvanced)}
-                                    style={{ padding: '6px 12px', border: '1px solid #e2e8f0', background: 'white', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 320px) 1fr', gap: '24px', minHeight: '480px' }}>
+                        <div style={{ borderRight: '1px solid #e2e8f0', paddingRight: '16px' }}>
+                            <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                <input
+                                    type="text"
+                                    placeholder="Search..."
+                                    value={templateListFilters.q || ''}
+                                    onChange={(e) => setTemplateListFilters(f => ({ ...f, q: e.target.value || undefined }))}
+                                    style={{ flex: 1, minWidth: '100px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                                />
+                                <select
+                                    value={templateListFilters.status || ''}
+                                    onChange={(e) => setTemplateListFilters(f => ({ ...f, status: e.target.value || undefined }))}
+                                    style={{ padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '12px' }}
                                 >
-                                    {showAdvanced || templateSource === 'git' ? 'Hide Advanced' : 'Show Advanced'}
-                                </button>
+                                    <option value="">All statuses</option>
+                                    <option value="draft">draft</option>
+                                    <option value="preview_ready">preview_ready</option>
+                                    <option value="validated">validated</option>
+                                    <option value="published">published</option>
+                                    <option value="archived">archived</option>
+                                </select>
                             </div>
-
-                            {(templateSource === 'git' || showAdvanced) && (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                                    <div style={{ gridColumn: 'span 2' }}>
-                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>
-                                            Repo URL {templateSource === 'git' && <span style={{ color: '#ef4444' }}>*</span>}
-                                        </label>
-                                        <input
-                                            required={templateSource === 'git'}
-                                            type="text"
-                                            value={newTemplate.repo_url}
-                                            onChange={e => setNewTemplate({ ...newTemplate, repo_url: e.target.value })}
-                                            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '4px' }}>Default Branch</label>
-                                        <input
-                                            type="text"
-                                            value={newTemplate.default_branch}
-                                            onChange={e => setNewTemplate({ ...newTemplate, default_branch: e.target.value })}
-                                            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-                                        />
-                                    </div>
+                            {loading ? (
+                                <div style={{ padding: '24px', textAlign: 'center', color: '#64748b' }}>Loading...</div>
+                            ) : filteredTemplates.length === 0 ? (
+                                <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '8px' }}>No templates. Create one to get started.</div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {filteredTemplates.map((t) => (
+                                        <div
+                                            key={t.id}
+                                            onClick={() => setSelectedTemplateId(t.id)}
+                                            style={{
+                                                padding: '12px',
+                                                borderRadius: '8px',
+                                                border: '1px solid',
+                                                borderColor: selectedTemplateId === t.id ? '#2563eb' : '#e2e8f0',
+                                                background: selectedTemplateId === t.id ? '#eff6ff' : 'white',
+                                                cursor: 'pointer',
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                                {t.preview_thumbnail_url ? (
+                                                    <img src={t.preview_thumbnail_url} alt="" style={{ width: '56px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
+                                                ) : (
+                                                    <div style={{ width: '56px', height: '40px', borderRadius: '6px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: '#64748b' }}>{t.name?.slice(0, 2).toUpperCase()}</div>
+                                                )}
+                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontWeight: 600, fontSize: '13px' }}>{t.name}</div>
+                                                    <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '10px', background: t.status === 'published' ? '#ecfdf5' : t.status === 'draft' ? '#f1f5f9' : '#eff6ff', color: t.status === 'published' ? '#047857' : '#475569' }}>{t.status || 'draft'}</span>
+                                                    <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                        {(t.feature_tags_json || t.features_json || []).slice(0, 3).map((tag: string) => (
+                                                            <span key={tag} style={{ fontSize: '10px', color: '#64748b' }}>{tag}</span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                            {!selectedTemplate ? (
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '14px' }}>Select a template</div>
+                            ) : (
+                                <>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+                                        {(['overview', 'structure', 'preview', 'validation', 'versions'] as TemplateDetailSubTab[]).map((sub) => (
+                                            <button key={sub} type="button" onClick={() => setTemplateDetailSubTab(sub)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: templateDetailSubTab === sub ? '#2563eb' : 'white', color: templateDetailSubTab === sub ? 'white' : '#475569', fontSize: '12px', cursor: 'pointer' }}>{sub}</button>
+                                        ))}
+                                    </div>
+                                    <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                        <button type="button" onClick={() => handleDuplicateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Duplicate</button>
+                                        <button type="button" onClick={() => handleArchiveTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Archive</button>
+                                        <button type="button" onClick={() => handleSetRecommendedTemplate(selectedTemplate, !selectedTemplate.is_recommended)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>{selectedTemplate.is_recommended ? 'Unrecommend' : 'Recommend'}</button>
+                                        <button type="button" onClick={() => handleSetDefaultTemplateFromCard(selectedTemplate)} disabled={!canEditTemplates || !selectedTemplate.is_published} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && selectedTemplate.is_published ? 'pointer' : 'not-allowed' }}>Set Default</button>
+                                        <button type="button" onClick={() => handleGeneratePreview(selectedTemplate)} disabled={!canEditTemplates || selectedTemplate.source_type === 'git'} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && selectedTemplate.source_type !== 'git' ? 'pointer' : 'not-allowed' }}>Generate Preview</button>
+                                        <button type="button" onClick={() => handleValidateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Validate</button>
+                                        <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Must be validated and preview ready' : ''} style={{ padding: '6px 12px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>Publish</button>
+                                        <button type="button" onClick={() => handleOpenPreview(selectedTemplate)} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Preview</button>
+                                        <button type="button" onClick={() => handleDeleteTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Delete</button>
+                                    </div>
+                                    {templateDetailSubTab === 'overview' && (
+                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
+                                            <h4 style={{ margin: '0 0 8px' }}>{selectedTemplate.name}</h4>
+                                            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>{selectedTemplate.description || 'No description'}</p>
+                                            <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Status: {selectedTemplate.status || 'draft'} · Preview: {getPreviewStatusLabel(selectedTemplate)}</p>
+                                        </div>
+                                    )}
+                                    {templateDetailSubTab === 'structure' && (
+                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+                                            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(selectedTemplate.pages_json || [], null, 2)}</pre>
+                                        </div>
+                                    )}
+                                    {templateDetailSubTab === 'preview' && (
+                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
+                                            {selectedTemplate.preview_status === 'ready' && selectedTemplate.preview_url ? (
+                                                <iframe title="Preview" src={selectedTemplate.preview_url} style={{ width: '100%', height: '400px', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
+                                            ) : (
+                                                <p style={{ margin: 0, color: '#64748b' }}>Generate preview first. Status: {getPreviewStatusLabel(selectedTemplate)}</p>
+                                            )}
+                                        </div>
+                                    )}
+                                    {templateDetailSubTab === 'validation' && (
+                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+                                            <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{JSON.stringify(selectedTemplate.validation_results_json || {}, null, 2)}</pre>
+                                        </div>
+                                    )}
+                                    {templateDetailSubTab === 'versions' && (
+                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>Version: {selectedTemplate.version ?? 1}. Changelog: {selectedTemplate.changelog || '—'}</div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </div>
 
-                            <div style={{ padding: '12px', borderRadius: '8px', border: '1px dashed #cbd5e1', background: '#f8fafc', marginBottom: '16px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                    <strong style={{ fontSize: '13px' }}>Preview</strong>
-                                    <span style={{ fontSize: '12px', padding: '2px 8px', borderRadius: '12px', background: '#f1f5f9', color: '#475569' }}>
-                                        Not generated
-                                    </span>
-                                </div>
-                                <p style={{ fontSize: '12px', color: '#64748b', margin: 0 }}>
-                                    Save the template to enable AI preview generation.
-                                </p>
-                            </div>
-                            <button type="submit" style={{ padding: '8px 24px', background: '#10b981', color: 'white', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                                Save Template
-                            </button>
-                        </form>
-                    )}
-
-                    <div style={{ overflowX: 'auto' }}>
+                    <div style={{ overflowX: 'auto', display: 'none' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                             <thead>
                                 <tr style={{ background: '#f8fafc', color: '#64748b', textAlign: 'left' }}>
@@ -1222,6 +1293,110 @@ export default function ConfigurationPage() {
                         </table>
                     </div>
                 </section>
+                )}
+
+                {showCreateWizard && (
+                <Dialog
+                    open={showCreateWizard}
+                    onOpenChange={(open) => { if (!open) { setShowCreateWizard(false); setWizardStep(1); setWizardForm({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '' }); } }}
+                    title="Create Template"
+                >
+                    <div style={{ padding: '16px', minWidth: '400px' }}>
+                        {wizardStep === 1 && (
+                            <div>
+                                <p style={{ marginBottom: '12px', fontSize: '13px' }}>Source</p>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button type="button" onClick={() => setWizardForm(f => ({ ...f, source: 'ai' }))} style={{ padding: '10px 16px', border: '1px solid', borderColor: wizardForm.source === 'ai' ? '#2563eb' : '#e2e8f0', background: wizardForm.source === 'ai' ? '#eff6ff' : 'white', borderRadius: '8px', cursor: 'pointer' }}>AI Generated</button>
+                                    <button type="button" onClick={() => setWizardForm(f => ({ ...f, source: 'git' }))} style={{ padding: '10px 16px', border: '1px solid', borderColor: wizardForm.source === 'git' ? '#2563eb' : '#e2e8f0', background: wizardForm.source === 'git' ? '#eff6ff' : 'white', borderRadius: '8px', cursor: 'pointer' }}>Git Repository</button>
+                                </div>
+                            </div>
+                        )}
+                        {wizardStep === 2 && (
+                            <div style={{ display: 'grid', gap: '12px' }}>
+                                <label style={{ fontSize: '13px' }}>Name <input type="text" value={wizardForm.name} onChange={e => setWizardForm(f => ({ ...f, name: e.target.value }))} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required /></label>
+                                <label style={{ fontSize: '13px' }}>Category <input type="text" value={wizardForm.category} onChange={e => setWizardForm(f => ({ ...f, category: e.target.value }))} placeholder="e.g. Residential" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
+                                <label style={{ fontSize: '13px' }}>Style <input type="text" value={wizardForm.style} onChange={e => setWizardForm(f => ({ ...f, style: e.target.value }))} placeholder="e.g. Modern" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
+                                <label style={{ fontSize: '13px' }}>Feature tags (comma-separated) <input type="text" value={wizardForm.feature_tags} onChange={e => setWizardForm(f => ({ ...f, feature_tags: e.target.value }))} placeholder="gallery, contact, map" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
+                            </div>
+                        )}
+                        {wizardStep === 3 && (
+                            <div style={{ display: 'grid', gap: '12px' }}>
+                                {wizardForm.source === 'ai' ? (
+                                    <label style={{ fontSize: '13px' }}>Template intent <textarea value={wizardForm.intent} onChange={e => setWizardForm(f => ({ ...f, intent: e.target.value }))} rows={3} placeholder="e.g. Modern property listing with gallery, enquiry form" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
+                                ) : (
+                                    <>
+                                        <label style={{ fontSize: '13px' }}>Repo URL <input type="text" value={wizardForm.repo_url} onChange={e => setWizardForm(f => ({ ...f, repo_url: e.target.value }))} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
+                                        <label style={{ fontSize: '13px' }}>Branch <input type="text" value={wizardForm.repo_branch} onChange={e => setWizardForm(f => ({ ...f, repo_branch: e.target.value }))} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
+                                        <label style={{ fontSize: '13px' }}>Repo path <input type="text" value={wizardForm.repo_path} onChange={e => setWizardForm(f => ({ ...f, repo_path: e.target.value }))} placeholder="optional" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                        {wizardStep === 4 && (
+                            <div>
+                                <p style={{ marginBottom: '12px', fontSize: '13px' }}>Preset pack (optional)</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {['Residential Modern', 'Corporate Trust', 'Luxury Lifestyle'].map(p => (
+                                        <button key={p} type="button" onClick={() => setWizardForm(f => ({ ...f, preset: p }))} style={{ padding: '10px', border: '1px solid', borderColor: wizardForm.preset === p ? '#2563eb' : '#e2e8f0', background: wizardForm.preset === p ? '#eff6ff' : 'white', borderRadius: '8px', cursor: 'pointer', textAlign: 'left' }}>{p}</button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
+                            <button type="button" onClick={() => setWizardStep(s => Math.max(1, s - 1))} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer' }}>Back</button>
+                            {wizardStep < 4 ? (
+                                <button type="button" onClick={() => setWizardStep(s => s + 1)} style={{ padding: '8px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Next</button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        const tags = wizardForm.feature_tags.split(',').map(x => x.trim()).filter(Boolean);
+                                        const presetPayload: Record<string, unknown> = {};
+                                        if (wizardForm.preset === 'Residential Modern') {
+                                            presetPayload.pages_json = [{ slug: 'home', title: 'Home', sections: ['hero', 'cta'] }, { slug: 'contact', title: 'Contact', sections: ['form'] }];
+                                            presetPayload.required_inputs_json = ['logo', 'images', 'copy_text'];
+                                            presetPayload.optional_inputs_json = ['floor_plans'];
+                                            presetPayload.default_config_json = { colors: { primary: '#2563eb', secondary: '#1e40af', accent: '#3b82f6' } };
+                                            presetPayload.rules_json = [];
+                                        } else if (wizardForm.preset === 'Corporate Trust') {
+                                            presetPayload.pages_json = [{ slug: 'home', title: 'Home', sections: ['hero', 'cta'] }, { slug: 'about', title: 'About', sections: [] }, { slug: 'contact', title: 'Contact', sections: ['form'] }];
+                                            presetPayload.required_inputs_json = ['logo', 'copy_text'];
+                                            presetPayload.optional_inputs_json = ['images'];
+                                            presetPayload.default_config_json = { colors: { primary: '#0f766e', secondary: '#134e4a', accent: '#2dd4bf' } };
+                                            presetPayload.rules_json = [];
+                                        } else if (wizardForm.preset === 'Luxury Lifestyle') {
+                                            presetPayload.pages_json = [{ slug: 'home', title: 'Home', sections: ['hero', 'gallery', 'cta'] }, { slug: 'contact', title: 'Contact', sections: ['form'] }];
+                                            presetPayload.required_inputs_json = ['logo', 'images', 'copy_text'];
+                                            presetPayload.optional_inputs_json = ['floor_plans', 'virtual_tours'];
+                                            presetPayload.default_config_json = { colors: { primary: '#78350f', secondary: '#92400e', accent: '#f59e0b' } };
+                                            presetPayload.rules_json = [];
+                                        }
+                                        const payload: any = { name: wizardForm.name, description: '', intent: wizardForm.intent || null, source_type: wizardForm.source, feature_tags_json: tags.length ? tags : undefined, category: wizardForm.category || null, style: wizardForm.style || null, ...presetPayload };
+                                        if (wizardForm.source === 'git') {
+                                            payload.repo_url = wizardForm.repo_url;
+                                            payload.default_branch = wizardForm.repo_branch;
+                                            payload.repo_path = wizardForm.repo_path || null;
+                                        }
+                                        try {
+                                            await configurationAPI.createTemplate(payload);
+                                            setSuccess('Template created');
+                                            setShowCreateWizard(false);
+                                            setWizardStep(1);
+                                            setWizardForm({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '' });
+                                            loadData();
+                                        } catch (err: any) {
+                                            setError(err.response?.data?.detail || 'Failed to create template');
+                                        }
+                                    }}
+                                    style={{ padding: '8px 16px', background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                                >
+                                    Create
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </Dialog>
+                )}
 
                 <Dialog
                     open={previewModalOpen}
@@ -1314,6 +1489,7 @@ export default function ConfigurationPage() {
                     )}
                 </Dialog>
 
+                {activeConfigTab === 'sla' && (
                 <section style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '24px' }}>
                     <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <PageHeader
@@ -1381,7 +1557,9 @@ export default function ConfigurationPage() {
                         </button>
                     </div>
                 </section>
+                )}
 
+                {activeConfigTab === 'thresholds' && (
                 <section style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '24px' }}>
                     <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <PageHeader
@@ -1506,7 +1684,9 @@ export default function ConfigurationPage() {
                         </button>
                     </div>
                 </section>
+                )}
 
+                {activeConfigTab === 'preview_strategy' && (
                 <section style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '24px' }}>
                     <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <PageHeader
@@ -1579,7 +1759,9 @@ export default function ConfigurationPage() {
                         </button>
                     </div>
                 </section>
+                )}
 
+                {activeConfigTab === 'hitl_gates' && (
                 <section style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '24px' }}>
                     <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <PageHeader
@@ -1626,6 +1808,8 @@ export default function ConfigurationPage() {
                         </button>
                     </div>
                 </section>
+                )}
+
                 {getDirtySections().length > 0 && (
                     <div
                         style={{

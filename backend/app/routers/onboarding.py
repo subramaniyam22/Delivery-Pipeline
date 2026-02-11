@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.db import get_db
-from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus, ThemeTemplate, OnboardingReviewStatus
+from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus, TemplateRegistry, OnboardingReviewStatus
 from app.schemas import (
     OnboardingDataCreate,
     OnboardingDataUpdate,
@@ -700,29 +700,41 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
     }
 
 def get_active_templates(db: Session):
+    """Return published TemplateRegistry templates for client onboarding (replaces ThemeTemplate)."""
     try:
-        # Only show active AND published templates to clients
-        db_templates = db.query(ThemeTemplate).filter(
-            ThemeTemplate.is_active == True,
-            ThemeTemplate.is_published == True
+        from uuid import UUID
+        # Only show active AND (published status or is_published) templates to clients
+        from sqlalchemy import or_
+        db_templates = db.query(TemplateRegistry).filter(
+            TemplateRegistry.is_active == True,
+            or_(TemplateRegistry.status == "published", TemplateRegistry.is_published == True)
         ).all()
         if db_templates:
-            return [
-                {
-                    "id": t.id,
+            out = []
+            for t in db_templates:
+                tid = str(t.id) if isinstance(t.id, UUID) else t.id
+                # Build colors from default_config_json or placeholder for client UI
+                colors = (t.default_config_json or {}).get("colors") if getattr(t, "default_config_json", None) else None
+                if not colors or not isinstance(colors, dict):
+                    colors = {"primary": "#2563eb", "secondary": "#1e40af", "accent": "#3b82f6"}
+                out.append({
+                    "id": tid,
                     "name": t.name,
-                    "description": t.description,
+                    "description": t.description or "",
                     "preview_url": t.preview_url,
-                    "actual_web_url": t.actual_web_url,
-                    "colors": t.colors_json,
-                    "features": t.features_json
-                }
-                for t in db_templates
-            ]
+                    "preview_thumbnail_url": getattr(t, "preview_thumbnail_url", None),
+                    "actual_web_url": t.preview_url,
+                    "colors": colors,
+                    "features": getattr(t, "feature_tags_json", None) or t.features_json or [],
+                    "category": getattr(t, "category", None),
+                    "style": getattr(t, "style", None),
+                    "pages_json": getattr(t, "pages_json", None) or [],
+                    "required_inputs_json": getattr(t, "required_inputs_json", None) or [],
+                    "optional_inputs_json": getattr(t, "optional_inputs_json", None) or [],
+                })
+            return out
     except Exception:
-        # Fallback if table doesn't exist or DB error
         pass
-    # Only show templates configured in Config > Templates; no hardcoded fallback
     return []
 
 
