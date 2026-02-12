@@ -2,7 +2,7 @@
 # https://render.com/docs/blueprint-spec
 
 services:
-  # Backend API Service
+  # Backend API Service (free tier: migrations in startCommand; paid tier can use preDeployCommand)
   - type: web
     name: delivery-backend
     runtime: python
@@ -10,8 +10,7 @@ services:
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python -m playwright install chromium
-    preDeployCommand: alembic upgrade head
-    startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 60 --keep-alive 5
+    startCommand: alembic upgrade head && gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 60 --keep-alive 5
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL

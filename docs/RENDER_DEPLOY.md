@@ -16,8 +16,8 @@ The worker **must** be Docker-based on Render so it includes Node, Lighthouse, a
 
 ## Backend: migrations on deploy
 
-- **preDeployCommand** in `render.yaml` is set to `alembic upgrade head`.
-- Render runs this **after** build and **before** starting the new instance, so migrations run automatically on every deploy.
+- **Free tier:** Render does not support Pre-Deploy Command on free tier. The blueprint runs migrations in the **Start Command**: `alembic upgrade head && gunicorn ...`, so migrations run when the app starts.
+- **Paid tier:** You can move migrations to **Pre-Deploy Command** in the dashboard (or in `render.yaml` with `preDeployCommand: alembic upgrade head`) so they run before the new instance starts.
 - Optional: to seed data once, run from Render shell or a one-off job: `python -m scripts.seed.seed_all_prod`.
 
 If you configure the service in the Dashboard instead of the blueprint, set **Pre-Deploy Command** to:
