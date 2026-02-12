@@ -225,6 +225,18 @@ export default function ConfigurationPage() {
     const [blueprintRunDetails, setBlueprintRunDetails] = useState<Record<string, unknown> | null>(null);
     const [validationJobPolling, setValidationJobPolling] = useState(false);
 
+    const [newTemplate, setNewTemplate] = useState({
+        name: '',
+        repo_url: '',
+        default_branch: 'main',
+        description: '',
+        intent: '',
+        features_input: '',
+    });
+    const [activeConfigTab, setActiveConfigTab] = useState<ConfigTab>('template_registry');
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+    const [templateDetailSubTab, setTemplateDetailSubTab] = useState<TemplateDetailSubTab>('overview');
+
     useEffect(() => {
         configurationAPI.getSystemHealth().then((r: any) => {
             const d = r.data;
@@ -238,17 +250,7 @@ export default function ConfigurationPage() {
             .then((r: any) => setBlueprintStatusData(r.data))
             .catch(() => setBlueprintStatusData(null));
     }, [selectedTemplateId, templateDetailSubTab]);
-    const [newTemplate, setNewTemplate] = useState({
-        name: '',
-        repo_url: '',
-        default_branch: 'main',
-        description: '',
-        intent: '',
-        features_input: '',
-    });
-    const [activeConfigTab, setActiveConfigTab] = useState<ConfigTab>('template_registry');
-    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-    const [templateDetailSubTab, setTemplateDetailSubTab] = useState<TemplateDetailSubTab>('overview');
+
     const [showCreateWizard, setShowCreateWizard] = useState(false);
     const [templateListFilters, setTemplateListFilters] = useState<{ q?: string; status?: string; category?: string; style?: string; tag?: string }>({});
     const [wizardStep, setWizardStep] = useState(1);
