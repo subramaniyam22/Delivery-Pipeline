@@ -268,11 +268,16 @@ def get_llm(task: Optional[str] = None):
     if settings.OPENAI_API_KEY:
         try:
             from langchain_openai import ChatOpenAI
-            return ChatOpenAI(
-                model="gpt-4",
-                temperature=0.7,
-                openai_api_key=settings.OPENAI_API_KEY
+            kwargs = dict(
+                model=settings.OPENAI_MODEL,
+                temperature=settings.OPENAI_TEMPERATURE,
+                openai_api_key=settings.OPENAI_API_KEY,
+                request_timeout=settings.OPENAI_TIMEOUT_SECONDS,
             )
+            if settings.OPENAI_MAX_TOKENS is not None:
+                kwargs["model_kwargs"] = kwargs.get("model_kwargs") or {}
+                kwargs["model_kwargs"]["max_tokens"] = settings.OPENAI_MAX_TOKENS
+            return ChatOpenAI(**kwargs)
         except Exception as e:
             print(f"Failed to initialize OpenAI LLM: {e}. Falling back to FakeLLM.")
             return FakeLLM()

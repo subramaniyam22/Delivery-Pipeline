@@ -41,9 +41,13 @@ class Settings(BaseSettings):
     # Redis (for rate limiting and caching)
     REDIS_URL: str = "redis://localhost:6379"
     
-    # OpenAI (optional)
+    # OpenAI (optional) - centralized model and params
     OPENAI_API_KEY: Optional[str] = None
     AI_MODE: str = "full"  # disabled | basic | full
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_TEMPERATURE: float = 0.2
+    OPENAI_MAX_TOKENS: Optional[int] = None
+    OPENAI_TIMEOUT_SECONDS: int = 60
     
     # CORS - parse from environment variable (comma-separated). Use CORS_ORIGIN_REGEX for patterns (e.g. *.onrender.com).
     CORS_ORIGINS: str = "http://localhost:3000"

@@ -14,7 +14,7 @@ def _valid_blueprint_minimal() -> dict:
             "style": "modern",
             "tags": [],
             "generated_at": "2025-01-01T00:00:00Z",
-            "generator": {"model": "gpt-4", "temperature": 0.3},
+            "generator": {"model": "gpt-4o-mini", "temperature": 0.2},
         },
         "tokens": {
             "colors": {"primary": "#2563eb", "secondary": "#1e40af", "background": "#fff", "text": "#0f172a", "accent": "#22d3ee"},

@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict
 
+from app.config import settings
 from app.agents.prompts import get_llm
 from app.agents.templates.prompts import GENERATOR_SYSTEM, GENERATOR_USER
 from app.models import TemplateRegistry
@@ -66,7 +67,7 @@ def generate_blueprint(template: TemplateRegistry, demo_context: Dict[str, Any])
         raw.setdefault("schema_version", 1)
         meta = raw.get("meta") or {}
         meta.setdefault("generated_at", datetime.utcnow().isoformat() + "Z")
-        meta.setdefault("generator", {"model": "gpt-4", "temperature": 0.7})
+        meta.setdefault("generator", {"model": settings.OPENAI_MODEL, "temperature": settings.OPENAI_TEMPERATURE})
         raw["meta"] = meta
         valid, errors = validate_blueprint_v1(raw)
         if valid:

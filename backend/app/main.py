@@ -194,7 +194,13 @@ app.add_middleware(SecurityHeadersMiddleware)
 async def startup_event():
     """Initialize application on startup"""
     logger.info("Starting Delivery Automation Suite...")
-    
+    logger.info("AI_MODE=%s OPENAI_MODEL=%s", settings.AI_MODE, settings.OPENAI_MODEL)
+    if (settings.AI_MODE or "full").lower() != "disabled" and not settings.OPENAI_API_KEY:
+        logger.warning(
+            "OPENAI_API_KEY is not set but AI_MODE=%s. AI routes will return 503 or fallback responses.",
+            settings.AI_MODE,
+        )
+
     # Create upload directory
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     logger.info(f"Upload directory created: {settings.UPLOAD_DIR}")

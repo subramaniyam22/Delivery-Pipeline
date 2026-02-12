@@ -92,7 +92,7 @@ def run_template_blueprint_pipeline(
             prompt_log.append({
                 "iteration": i + 1,
                 "event": "critique",
-                "model": "gpt-4",
+                "model": settings.OPENAI_MODEL,
                 "summary": (critic_result.get("summary") or "")[:500],
             })
             if _meets_thresholds(scorecard, hard_checks):

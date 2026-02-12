@@ -74,11 +74,15 @@ async def validate_onboarding_submission(db: Session, project_id: str, onboardin
         - Copy Scope Notes: {copy_notes}
         """
 
+        model_kwargs = {"response_format": {"type": "json_object"}}
+        if settings.OPENAI_MAX_TOKENS is not None:
+            model_kwargs["max_tokens"] = settings.OPENAI_MAX_TOKENS
         chat = ChatOpenAI(
-            api_key=settings.OPENAI_API_KEY, 
-            model="gpt-4-turbo-preview",
-            temperature=0.2,
-            model_kwargs={"response_format": {"type": "json_object"}}
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.OPENAI_MODEL,
+            temperature=settings.OPENAI_TEMPERATURE,
+            request_timeout=settings.OPENAI_TIMEOUT_SECONDS,
+            model_kwargs=model_kwargs,
         )
 
         messages = [

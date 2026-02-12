@@ -99,6 +99,9 @@ cp .env.example .env
 Recommended local values:
 ```
 BACKEND_URL=http://localhost:8000
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TEMPERATURE=0.2
+OPENAI_TIMEOUT_SECONDS=60
 CHAT_LOG_WEBHOOK_URL=
 CHAT_LOG_WEBHOOK_SECRET=
 ```
@@ -387,9 +390,10 @@ Stage nodes delegate to dedicated agent classes in `backend/app/agents/` (onboar
 - human approval gates can be enabled per stage (HITL)
 
 ### LLM Integration
-- Uses OpenAI GPT-4 if `OPENAI_API_KEY` is provided
+- Uses OpenAI (model from **OPENAI_MODEL**, default `gpt-4o-mini`) if `OPENAI_API_KEY` is provided
 - Falls back to **FakeLLM** (deterministic mock) if no API key
 - All workflow logic works without external LLM dependencies
+- **If blueprint generation fails**, first verify `OPENAI_MODEL` is set and not deprecated (e.g. use `gpt-4o-mini` or `gpt-4o`)
 
 ## 🔌 Connector Stubs
 
@@ -548,11 +552,19 @@ The blueprint (`render.yaml`) sets DATABASE_URL, REDIS_URL, SECRET_KEY, CORS, FR
 | **FRONTEND_URL**, **CORS_ORIGINS** (Backend) | Your frontend URL: Dashboard → delivery-frontend → **URL** |
 | **BACKEND_URL** (Backend) | Same as backend URL (preview links, webhooks) |
 | **OPENAI_API_KEY** | [OpenAI API Keys](https://platform.openai.com/api-keys) — for AI workflow and consultant |
+| **OPENAI_MODEL** | Model name (default: `gpt-4o-mini`). Use a current model (e.g. `gpt-4o`, `gpt-4o-mini`) to avoid deprecated errors. |
+| **OPENAI_TEMPERATURE** | 0.0–1.0 (default: `0.2`). Lower = more deterministic. |
+| **OPENAI_MAX_TOKENS** | Optional. Leave unset for library default. |
+| **OPENAI_TIMEOUT_SECONDS** | Request timeout (default: `60`). |
 | **RESEND_API_KEY** | [Resend](https://resend.com) — for onboarding/completion emails |
 | **SENTRY_DSN** | [Sentry](https://sentry.io) — for error tracking |
 | **AWS S3** (optional) | Set **STORAGE_BACKEND=s3** and **S3_BUCKET**, **S3_ACCESS_KEY**, **S3_SECRET_KEY**, **S3_REGION** from [AWS IAM](https://console.aws.amazon.com/iam/) / S3 or Cloudflare R2. See [docs/RENDER_ENV.md](docs/RENDER_ENV.md#optional-aws-s3-or-s3-compatible-storage). |
 
 Full list and optional vars (SMTP, webhooks): see **[docs/RENDER_ENV.md](docs/RENDER_ENV.md)**.
+
+### Verifying OpenAI at runtime
+- **Active model**: On startup, the backend logs `AI_MODE` and `OPENAI_MODEL`. Check container logs (e.g. `docker compose logs backend`) to confirm which model is in use.
+- **Test AI consultant**: `POST /api/ai/consult` with a JSON body `{"message": "Hello", "project_id": "<uuid>"}` (and optional `context`). Use the API docs at `http://localhost:8000/docs` or curl. If `OPENAI_API_KEY` is missing and AI is enabled, the endpoint returns **503** with a clear message.
 
 ## 🔒 Security Notes
 

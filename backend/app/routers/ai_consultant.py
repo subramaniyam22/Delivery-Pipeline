@@ -164,41 +164,23 @@ async def consult_ai(request: Request, chat_request: ChatRequest, db: Session = 
         return {"response": fallback_response, "action": None}
 
     if not settings.OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY not found in settings; using fallback response")
-        fallback_response = (
-            "I’m currently running in limited mode and can’t access the AI service. "
-            "Please continue with the form, and if you need help, a consultant will assist you."
+        logger.warning("OPENAI_API_KEY not set; AI consultant unavailable (returning 503)")
+        raise HTTPException(
+            status_code=503,
+            detail="AI service is not configured. Set OPENAI_API_KEY to enable the consultant.",
         )
-        if project_id:
-            try:
-                new_bot_log = ChatLog(project_id=project_id, sender="bot", message=fallback_response)
-                db.add(new_bot_log)
-                db.commit()
-                db.refresh(new_bot_log)
-                await manager.broadcast({
-                    "id": str(new_bot_log.id),
-                    "sender": "bot",
-                    "message": fallback_response,
-                    "created_at": new_bot_log.created_at.isoformat()
-                }, project_id)
-                asyncio.create_task(send_chat_log_webhook({
-                    "id": str(new_bot_log.id),
-                    "project_id": str(project_id),
-                    "sender": "bot",
-                    "message": fallback_response,
-                    "created_at": new_bot_log.created_at.isoformat()
-                }))
-            except Exception as e:
-                logger.error(f"Failed to log fallback bot chat: {e}")
-        return {"response": fallback_response, "action": None}
 
     try:
         # Initialize Chat Client
-        chat = ChatOpenAI(
-            api_key=settings.OPENAI_API_KEY, 
-            model="gpt-4-turbo-preview",
-            temperature=0.7
+        chat_kwargs = dict(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.OPENAI_MODEL,
+            temperature=settings.OPENAI_TEMPERATURE,
+            request_timeout=settings.OPENAI_TIMEOUT_SECONDS,
         )
+        if settings.OPENAI_MAX_TOKENS is not None:
+            chat_kwargs["model_kwargs"] = {"max_tokens": settings.OPENAI_MAX_TOKENS}
+        chat = ChatOpenAI(**chat_kwargs)
         
         # System Prompt
         system_prompt = """You are an experienced and empathetic Digital Project Consultant named 'Consultant AI'. 
@@ -233,8 +215,15 @@ Guidelines:
         messages.append(HumanMessage(content=chat_request.message))
         
         logger.info(f"Sending request to OpenAI: {chat_request.message}")
-        response = chat.invoke(messages)
-        content = response.content
+        try:
+            response = chat.invoke(messages)
+            content = response.content
+        except Exception as e:
+            logger.exception("AI consultant LLM invoke failed: %s", e)
+            raise HTTPException(
+                status_code=503,
+                detail="The AI service is temporarily unavailable. Please try again later.",
+            )
         logger.info("Received response from OpenAI")
         
         action = None

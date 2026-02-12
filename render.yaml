@@ -90,7 +90,7 @@ services:
       - key: AI_MODE
         value: full
       - key: STORAGE_BACKEND
-        value: local
+        value: s3
       - key: LIGHTHOUSE_ENABLED
         value: "true"
       - key: AXE_ENABLED
