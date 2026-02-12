@@ -2619,6 +2619,42 @@
                     gap: var(--space-md);
                 }
 
+                .client-preview-section {
+                    background: var(--bg-card);
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-lg);
+                    padding: var(--space-lg);
+                    margin-bottom: var(--space-xl);
+                }
+                .client-preview-content {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    gap: var(--space-md);
+                }
+                .client-preview-thumb img {
+                    max-width: 200px;
+                    max-height: 120px;
+                    object-fit: cover;
+                    border-radius: var(--radius-md);
+                }
+                .client-preview-status { margin: 0; color: var(--text-secondary); }
+                .client-preview-status.generating { color: var(--color-info); }
+                .client-preview-status.failed { color: var(--color-error); }
+                .client-preview-error { margin: 4px 0 0; font-size: 12px; color: var(--color-error); }
+                .client-preview-meta { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
+                .client-preview-badge {
+                    display: inline-block;
+                    padding: 4px 10px;
+                    border-radius: var(--radius-full);
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+                .client-preview-badge.status-ready { background: var(--color-success-bg); color: var(--color-success); }
+                .client-preview-badge.status-generating { background: var(--color-info-bg); color: var(--color-info); }
+                .client-preview-badge.status-failed { background: var(--color-error-bg); color: var(--color-error); }
+                .client-preview-badge.status-not_generated { background: var(--bg-secondary); color: var(--text-muted); }
+
                 .team-card {
                     background: var(--bg-secondary);
                     border: 2px solid var(--border-light);
@@ -2666,6 +2702,34 @@
                 .team-member-info .member-email {
                     font-size: 12px;
                     color: var(--text-muted);
+                }
+
+                .assignment-badge {
+                    display: inline-block;
+                    font-size: 11px;
+                    padding: 2px 8px;
+                    border-radius: var(--radius-full);
+                    margin-top: 4px;
+                }
+                .assignment-badge.auto {
+                    background: var(--color-info-bg);
+                    color: var(--color-info);
+                }
+                .assignment-badge.manual {
+                    background: var(--color-warning-bg);
+                    color: var(--color-warning);
+                }
+                .rationale-details {
+                    margin-top: 6px;
+                    font-size: 12px;
+                    color: var(--text-secondary);
+                }
+                .rationale-details summary {
+                    cursor: pointer;
+                }
+                .rationale-details ul {
+                    margin: 4px 0 0 1em;
+                    padding-left: 0;
                 }
 
                 .unassigned-label {

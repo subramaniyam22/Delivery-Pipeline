@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, cast
 from sqlalchemy.dialects.postgresql import JSONB
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from datetime import datetime
 import os
 import html
@@ -12,7 +12,7 @@ import uuid
 from app.db import get_db
 from app.db import SessionLocal
 from app.deps import get_current_active_user
-from app.models import TemplateRegistry, User, AuditLog
+from app.models import TemplateRegistry, User, AuditLog, TemplateBlueprintJob, TemplateValidationJob, TemplateEvolutionProposal, ClientSentiment
 from app.schemas import TemplateCreate, TemplateUpdate, TemplateResponse, SetRecommendedBody
 from app.config import settings
 from app.rbac import require_admin_manager
@@ -116,41 +116,11 @@ def _build_preview_html(template: TemplateRegistry) -> str:
 """
 
 
-# Preview generation: stubbed implementation. To plug real preview infra (e.g. headless browser,
-# static export from framework), replace _build_preview_html and file write with your pipeline.
-def _generate_template_preview(template_id: str) -> None:
-    db = SessionLocal()
-    try:
-        template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
-        if not template:
-            return
-        preview_root = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "generated_previews"
-        )
-        os.makedirs(preview_root, exist_ok=True)
-        template_dir = os.path.join(preview_root, str(template.id))
-        os.makedirs(template_dir, exist_ok=True)
-        html_content = _build_preview_html(template)
-        index_path = os.path.join(template_dir, "index.html")
-        with open(index_path, "w", encoding="utf-8") as handle:
-            handle.write(html_content)
-        base_url = settings.BACKEND_URL or "http://localhost:8000"
-        template.preview_url = f"{base_url}/previews/{template.id}/index.html"
-        template.preview_status = "ready"
-        template.preview_error = None
-        template.preview_last_generated_at = datetime.utcnow()
-        db.commit()
-    except Exception as exc:
-        if template_id:
-            template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
-            if template:
-                template.preview_status = "failed"
-                template.preview_error = str(exc)
-                template.preview_last_generated_at = datetime.utcnow()
-                db.commit()
-    finally:
-        db.close()
+def _run_template_preview_pipeline(task_template_id: str) -> None:
+    """Background task: run real preview pipeline (render + storage + thumbnail)."""
+    from app.jobs.template_preview import run_template_preview_pipeline
+    from uuid import UUID
+    run_template_preview_pipeline(UUID(task_template_id))
 
 
 @router.get("/templates", response_model=List[TemplateResponse])
@@ -358,6 +328,7 @@ def generate_template_preview(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    body: Optional[dict] = None,
 ):
     _require_admin_manager(current_user)
     template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
@@ -365,10 +336,19 @@ def generate_template_preview(
         raise HTTPException(status_code=404, detail="Template not found")
     if template.source_type == "git":
         raise HTTPException(status_code=400, detail="Preview generation is only supported for AI templates")
+    blueprint = getattr(template, "blueprint_json", None)
+    if not blueprint or not isinstance(blueprint, dict):
+        raise HTTPException(status_code=400, detail="Generate blueprint first")
+    data = body or {}
+    force = data.get("force", False)
+    if not force and (template.preview_status or "") == "ready" and getattr(template, "blueprint_hash", None):
+        existing_hash = getattr(template, "blueprint_hash", None)
+        if existing_hash:
+            raise HTTPException(status_code=409, detail="Preview already up-to-date")
     template.preview_status = "generating"
     template.preview_error = None
     db.commit()
-    background_tasks.add_task(_generate_template_preview, template_id)
+    background_tasks.add_task(_run_template_preview_pipeline, template_id)
     return {"preview_status": "generating"}
 
 
@@ -467,21 +447,54 @@ def duplicate_template(
 @router.post("/api/templates/{template_id}/validate", response_model=dict)
 def validate_template(
     template_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    body: Optional[dict] = None,
 ):
     _require_admin_manager(current_user)
     template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    passed, results = _run_validation_checks(template)
-    existing = getattr(template, "validation_results_json", None) or {}
-    template.validation_results_json = dict(existing, **results, passed=passed)
-    if passed:
-        template.status = "validated"
+    data = body or {}
+    force = data.get("force", False)
+    job = TemplateValidationJob(
+        template_id=uuid.UUID(template_id),
+        status="queued",
+        payload_json={"force": force},
+    )
+    db.add(job)
     db.commit()
-    db.refresh(template)
-    return {"passed": passed, "results": results, "status": template.status}
+    db.refresh(job)
+    from app.jobs.template_validation import run_validation_job
+    if background_tasks:
+        background_tasks.add_task(run_validation_job, job.id)
+    return {"job_id": str(job.id), "template_id": template_id}
+
+
+@router.get("/api/templates/{template_id}/validation-job")
+def get_template_validation_job(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    _require_admin_manager(current_user)
+    job = (
+        db.query(TemplateValidationJob)
+        .filter(TemplateValidationJob.template_id == template_id)
+        .order_by(TemplateValidationJob.created_at.desc())
+        .first()
+    )
+    if not job:
+        return {"job_id": None, "status": None}
+    return {
+        "job_id": str(job.id),
+        "status": job.status,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "error_text": job.error_text,
+        "result_json": job.result_json,
+    }
 
 
 @router.post("/api/templates/{template_id}/publish", response_model=TemplateResponse)
@@ -489,15 +502,22 @@ def publish_template(
     template_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    body: Optional[dict] = None,
 ):
     _require_admin_manager(current_user)
     template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    if (getattr(template, "status", None) or "") != "validated":
-        raise HTTPException(status_code=400, detail="Template must be validated before publish")
     if (template.preview_status or "") != "ready":
         raise HTTPException(status_code=400, detail="Preview must be ready before publish")
+    validation_status = getattr(template, "validation_status", None) or "not_run"
+    if validation_status != "passed":
+        raise HTTPException(status_code=400, detail="Validation must pass before publish. Run validation first.")
+    if (getattr(template, "status", None) or "") != "validated":
+        data = body or {}
+        if not data.get("admin_override"):
+            raise HTTPException(status_code=400, detail="Template must be validated (blueprint) before publish, or use admin_override")
+        # Admin override: allow publish even if status != validated
     # Enforce single default: clear other defaults
     for t in db.query(TemplateRegistry).filter(TemplateRegistry.is_default == True).all():
         t.is_default = False
@@ -515,6 +535,82 @@ def publish_template(
     )
     db.commit()
     return template
+
+
+@router.post("/api/templates/{template_id}/generate-blueprint")
+def generate_template_blueprint(
+    template_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    body: Optional[dict] = None,
+):
+    """Enqueue blueprint generation (Generator + Critic + Refiner). Admin/Manager only."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    data = body or {}
+    regenerate = data.get("regenerate", False)
+    max_iterations = int(data.get("max_iterations", 3))
+    if regenerate:
+        template.status = "draft"
+        db.commit()
+    job = TemplateBlueprintJob(
+        template_id=uuid.UUID(template_id),
+        status="queued",
+        payload_json={"regenerate": regenerate, "max_iterations": max_iterations},
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    from app.jobs.template_blueprint import run_blueprint_job
+    if background_tasks:
+        background_tasks.add_task(run_blueprint_job, job.id)
+    return {"job_id": str(job.id), "template_id": template_id}
+
+
+@router.get("/api/templates/{template_id}/blueprint")
+def get_template_blueprint(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Return blueprint_json only. Admin/Manager only."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    blueprint = getattr(template, "blueprint_json", None)
+    if blueprint is None:
+        raise HTTPException(status_code=404, detail="Blueprint not generated yet")
+    return blueprint
+
+
+@router.get("/api/templates/{template_id}/blueprint-job")
+def get_template_blueprint_job(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Return latest blueprint job for template (for polling). Admin/Manager only."""
+    _require_admin_manager(current_user)
+    job = (
+        db.query(TemplateBlueprintJob)
+        .filter(TemplateBlueprintJob.template_id == template_id)
+        .order_by(TemplateBlueprintJob.created_at.desc())
+        .first()
+    )
+    if not job:
+        return {"job_id": None, "status": None}
+    return {
+        "job_id": str(job.id),
+        "status": job.status,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+        "error_text": job.error_text,
+        "result_json": job.result_json,
+    }
 
 
 @router.post("/api/templates/{template_id}/archive", response_model=TemplateResponse)
@@ -580,3 +676,185 @@ def set_recommended_template(
     db.commit()
     db.refresh(template)
     return template
+
+
+# ---------- Evolution proposals (Prompt 9) ----------
+from datetime import timedelta
+from app.agents.templates.evolution_agent import propose_template_improvements
+
+
+@router.get("/api/templates/{template_id}/evolution-proposals")
+def list_evolution_proposals(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """List evolution proposals for a template (Admin/Manager)."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    proposals = (
+        db.query(TemplateEvolutionProposal)
+        .filter(TemplateEvolutionProposal.template_id == template_id)
+        .order_by(TemplateEvolutionProposal.created_at.desc())
+        .all()
+    )
+    return {
+        "template_id": template_id,
+        "proposals": [
+            {
+                "id": str(p.id),
+                "proposal_json": p.proposal_json,
+                "status": p.status,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "reviewed_at": p.reviewed_at.isoformat() if p.reviewed_at else None,
+                "rejection_reason": p.rejection_reason,
+            }
+            for p in proposals
+        ],
+    }
+
+
+@router.post("/api/templates/{template_id}/propose-evolution")
+def create_evolution_proposal(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Create a new evolution proposal (rate limit: 1 per template per week). Admin/Manager."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    from datetime import datetime
+    week_ago = datetime.utcnow() - timedelta(weeks=1)
+    recent = (
+        db.query(TemplateEvolutionProposal)
+        .filter(
+            TemplateEvolutionProposal.template_id == template_id,
+            TemplateEvolutionProposal.created_at >= week_ago,
+        )
+        .first()
+    )
+    if recent:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit: at most one evolution proposal per template per week",
+        )
+    metrics = getattr(template, "performance_metrics_json", None) or {}
+    recent_feedback = []
+    for s in db.query(ClientSentiment).filter(
+        (ClientSentiment.template_registry_id == template.id) | (ClientSentiment.template_id == str(template.id)),
+    ).order_by(ClientSentiment.submitted_at.desc()).limit(50):
+        recent_feedback.append({
+            "tags_json": getattr(s, "tags_json", None) or [],
+            "rating": s.rating,
+            "overall_score": getattr(s, "overall_score", None),
+        })
+    proposal_json = propose_template_improvements(
+        str(template.id),
+        getattr(template, "version", 1),
+        metrics,
+        recent_feedback,
+    )
+    prop = TemplateEvolutionProposal(
+        template_id=template.id,
+        proposal_json=proposal_json,
+        status="pending",
+    )
+    db.add(prop)
+    db.commit()
+    db.refresh(prop)
+    return {"id": str(prop.id), "proposal_json": proposal_json, "status": "pending"}
+
+
+@router.post("/api/templates/{template_id}/evolve")
+def evolve_template(
+    template_id: str,
+    body: dict,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Approve or reject an evolution proposal. On approve: clone template as new version, apply changes, enqueue preview+validation. Admin/Manager."""
+    _require_admin_manager(current_user)
+    proposal_id = body.get("proposal_id")
+    approve = body.get("approve")
+    rejection_reason = body.get("rejection_reason")
+    if not proposal_id:
+        raise HTTPException(status_code=400, detail="proposal_id required")
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    proposal = (
+        db.query(TemplateEvolutionProposal)
+        .filter(
+            TemplateEvolutionProposal.id == proposal_id,
+            TemplateEvolutionProposal.template_id == template_id,
+            TemplateEvolutionProposal.status == "pending",
+        )
+        .first()
+    )
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found or already reviewed")
+    from datetime import datetime
+    now = datetime.utcnow()
+    proposal.reviewed_at = now
+    proposal.reviewed_by_user_id = current_user.id
+    if approve:
+        # Clone as new version
+        new_version = getattr(template, "version", 1) + 1
+        new_id = uuid.uuid4()
+        blueprint = copy.deepcopy(template.blueprint_json or {})
+        # Attach evolution changes to meta for refinement
+        if not isinstance(blueprint.get("meta"), dict):
+            blueprint["meta"] = {}
+        blueprint["meta"]["_evolution_applied"] = proposal.proposal_json.get("suggested_blueprint_changes") or []
+        new_template = TemplateRegistry(
+            id=new_id,
+            slug=template.slug,
+            name=template.name,
+            repo_url=template.repo_url,
+            default_branch=template.default_branch,
+            meta_json=copy.deepcopy(template.meta_json or {}),
+            description=template.description,
+            features_json=copy.deepcopy(template.features_json or []),
+            preview_url=None,
+            source_type=template.source_type,
+            intent=template.intent,
+            preview_status="not_generated",
+            preview_last_generated_at=None,
+            preview_error=None,
+            preview_thumbnail_url=None,
+            is_active=True,
+            is_published=False,
+            category=template.category,
+            style=template.style,
+            feature_tags_json=copy.deepcopy(getattr(template, "feature_tags_json", None) or []),
+            status="draft",
+            is_default=False,
+            is_recommended=False,
+            version=new_version,
+            parent_template_id=template.id,
+            blueprint_json=blueprint,
+            blueprint_schema_version=getattr(template, "blueprint_schema_version", 1),
+        )
+        db.add(new_template)
+        proposal.status = "approved"
+        db.commit()
+        db.refresh(new_template)
+        # Optional: mark old as deprecated
+        template.is_deprecated = True
+        db.commit()
+        # Enqueue preview generation (blueprint already set)
+        try:
+            background_tasks.add_task(_run_template_preview_pipeline, str(new_template.id))
+        except Exception:
+            pass
+        return {"message": "Evolution approved", "new_template_id": str(new_id), "new_version": new_version}
+    else:
+        proposal.status = "rejected"
+        proposal.rejection_reason = rejection_reason or "Rejected by reviewer"
+        db.commit()
+        return {"message": "Proposal rejected"}

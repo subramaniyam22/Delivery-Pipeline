@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from app.config import settings
-from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant, cache, analytics, websocket, notifications, webhooks, jobs, preview, sentiment_public, sentiments, metrics, audit_logs
+from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant, cache, analytics, websocket, notifications, webhooks, jobs, preview, sentiment_public, sentiments, metrics, audit_logs, pipeline
 from app.services.config_service import seed_default_configs
 from app.db import SessionLocal
 from app.models import User, Role
@@ -245,6 +245,7 @@ app.include_router(websocket.router)
 app.include_router(notifications.router)
 app.include_router(webhooks.router)
 app.include_router(jobs.router)
+app.include_router(pipeline.router, prefix="/projects")
 app.include_router(preview.router)
 app.include_router(sentiment_public.router)
 app.include_router(sentiments.router)
@@ -361,7 +362,24 @@ async def health_check(db: Session = Depends(get_db)):
         health_status["checks"]["redis"] = "error"
         health_status["status"] = "degraded"
         logger.error(f"Redis health check failed: {e}")
-    
+
+    # Check storage (local = ok; s3 = lightweight list/head)
+    try:
+        if (settings.STORAGE_BACKEND or "local").lower() == "s3":
+            from app.services.storage import get_storage_backend
+            backend = get_storage_backend()
+            if hasattr(backend, "client") and backend.client:
+                backend.client.list_objects_v2(Bucket=backend.bucket, MaxKeys=1)
+                health_status["checks"]["storage"] = "ok"
+            else:
+                health_status["checks"]["storage"] = "not_configured"
+        else:
+            health_status["checks"]["storage"] = "ok"
+    except Exception as e:
+        health_status["checks"]["storage"] = "error"
+        health_status["status"] = "degraded"
+        logger.error(f"Storage health check failed: {e}")
+
     return health_status
 
 @app.get("/debug-db")

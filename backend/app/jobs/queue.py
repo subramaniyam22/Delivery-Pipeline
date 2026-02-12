@@ -48,6 +48,9 @@ def enqueue_job(
     actor_user_id: Optional[UUID],
     db: Optional[Session] = None,
     max_attempts: int = 3,
+    correlation_id: Optional[UUID] = None,
+    requested_by: Optional[str] = None,
+    requested_by_user_id: Optional[UUID] = None,
 ) -> UUID:
     session = _get_db(db)
     close_session = db is None
@@ -63,6 +66,9 @@ def enqueue_job(
             request_id=request_id,
             actor_user_id=actor_user_id,
             next_run_at=datetime.utcnow(),
+            correlation_id=correlation_id,
+            requested_by=requested_by,
+            requested_by_user_id=requested_by_user_id,
         )
         session.add(job)
         session.commit()

@@ -1,5 +1,6 @@
 import logging
 import signal
+import subprocess
 import time
 import uuid
 from typing import Optional
@@ -15,6 +16,7 @@ from app.jobs.queue import (
 )
 from app.models import StageStatus, AdminConfig, AuditLog, JobRunStatus, JobRun, Project
 from app.services.workflow_runner import run_stage
+from app.services.pipeline_orchestrator import on_job_success, on_job_failure
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ def _get_stage_timeout_minutes(db, stage) -> int:
             except Exception:
                 return 30
     defaults = {
+        "assignment": 5,
         "build": 30,
         "test": 15,
         "defect_validation": 10,
@@ -118,8 +121,17 @@ def _run_once(worker_id: str) -> bool:
                 mark_needs_human(job.id, report_json=result, db=db)
             elif status == StageStatus.FAILED:
                 mark_failed(job.id, error_json=result, retryable=True, db=db)
+                try:
+                    err_msg = str(result) if result else None
+                    on_job_failure(db, job.project_id, job.stage, job.id, error_message=err_msg)
+                except Exception as hook_err:
+                    logger.warning("Pipeline on_job_failure hook failed: %s", hook_err)
             else:
                 mark_success(job.id, db=db)
+                try:
+                    on_job_success(db, job.project_id, job.stage, job.id)
+                except Exception as hook_err:
+                    logger.warning("Pipeline on_job_success hook failed: %s", hook_err)
             logger.info(
                 "Job completed",
                 extra={
@@ -153,6 +165,10 @@ def _run_once(worker_id: str) -> bool:
                 retryable=False,
                 db=db,
             )
+            try:
+                on_job_failure(db, job.project_id, job.stage, job.id, error_message="Job execution timed out")
+            except Exception as hook_err:
+                logger.warning("Pipeline on_job_failure hook failed: %s", hook_err)
             if actor_id:
                 db.add(
                     AuditLog(
@@ -170,6 +186,10 @@ def _run_once(worker_id: str) -> bool:
         except Exception as exc:
             logger.exception("Job execution failed")
             mark_failed(job.id, error_json={"error": str(exc)}, retryable=True, db=db)
+            try:
+                on_job_failure(db, job.project_id, job.stage, job.id, error_message=str(exc))
+            except Exception as hook_err:
+                logger.warning("Pipeline on_job_failure hook failed: %s", hook_err)
         return True
     finally:
         db.close()
@@ -209,9 +229,29 @@ def _mark_stuck_jobs(db):
     db.commit()
 
 
+def _log_worker_readiness() -> None:
+    """Log node, lighthouse, chromium versions and Worker ready for local + Render debugging."""
+    try:
+        node_v = subprocess.run(["node", "-v"], capture_output=True, text=True, timeout=5)
+        logger.info("node_version=%s", (node_v.stdout or node_v.stderr or "unknown").strip())
+    except Exception as e:
+        logger.info("node_version=not_available (%s)", e)
+    try:
+        lh_v = subprocess.run(["lighthouse", "--version"], capture_output=True, text=True, timeout=5)
+        logger.info("lighthouse_version=%s", (lh_v.stdout or lh_v.stderr or "unknown").strip())
+    except Exception as e:
+        logger.info("lighthouse_version=not_available (%s)", e)
+    try:
+        import playwright
+        logger.info("playwright_chromium=installed (playwright %s)", getattr(playwright, "__version__", "?"))
+    except Exception as e:
+        logger.info("playwright_chromium=not_available (%s)", e)
+
+
 def main(poll_interval_seconds: float = 2.0) -> None:
     worker_id = f"worker-{uuid.uuid4()}"
     logger.info("Worker started: %s", worker_id)
+    _log_worker_readiness()
 
     signal.signal(signal.SIGTERM, _handle_shutdown)
     signal.signal(signal.SIGINT, _handle_shutdown)
@@ -219,6 +259,14 @@ def main(poll_interval_seconds: float = 2.0) -> None:
     db = SessionLocal()
     try:
         max_workers = max(1, _get_worker_concurrency(db))
+        # Verify Redis (used by cache/jobs)
+        try:
+            from app.utils.cache import cache
+            if cache.client:
+                cache.client.ping()
+        except Exception:
+            pass
+        logger.info("Worker ready (db+redis connected, max_parallel_jobs=%s)", max_workers)
     finally:
         db.close()
 

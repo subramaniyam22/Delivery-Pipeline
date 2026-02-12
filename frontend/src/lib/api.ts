@@ -130,6 +130,13 @@ export const projectsAPI = {
     // Team Assignment
     assignTeam: (id: string, data: any) => api.post(`/projects/${id}/team/assign`, data),
     getTeam: (id: string) => api.get(`/projects/${id}/team`),
+    getAssignments: (id: string) => api.get(`/projects/${id}/assignments`),
+    autoAssign: (id: string, body: { force?: boolean } = {}) => api.post(`/projects/${id}/auto-assign`, body),
+    overrideAssignment: (id: string, body: { role: string; user_id: string; comment?: string }) =>
+        api.post(`/projects/${id}/assignments/override`, body),
+    getClientPreview: (id: string) => api.get(`/projects/${id}/client-preview`),
+    generateClientPreview: (id: string, body: { force?: boolean } = {}) =>
+        api.post(`/projects/${id}/generate-client-preview`, body),
     getStageOutputs: (id: string, stage?: string) =>
         api.get(`/projects/${id}/stage-outputs`, { params: stage ? { stage } : {} }),
     uploadBuildChecklist: (id: string, file: File) => {
@@ -205,6 +212,10 @@ export const configAPI = {
             value_json: valueJson,
             ...(typeof version === 'number' ? { version } : {}),
         }),
+    getLearningProposals: () => api.get('/admin/config/learning-proposals'),
+    runLearningProposals: () => api.post('/admin/config/learning-proposals/run'),
+    applyLearningProposal: (index: number) => api.post('/admin/config/learning-proposals/apply', { index }),
+    runTemplateMetrics: () => api.post('/admin/config/run-template-metrics'),
 };
 
 export const projectConfigAPI = {
@@ -399,14 +410,27 @@ export const configurationAPI = {
     getTemplate: (id: string) => api.get(`/api/templates/${id}`),
     updateTemplate: (id: string, data: any) => api.put(`/api/templates/${id}`, data),
     deleteTemplate: (id: string) => api.delete(`/api/templates/${id}`),
-    generateTemplatePreview: (id: string) => api.post(`/api/templates/${id}/generate-preview`),
+    generateTemplatePreview: (id: string, body?: { force?: boolean }) =>
+        api.post(`/api/templates/${id}/generate-preview`, body || {}),
+    generateBlueprint: (id: string, body?: { regenerate?: boolean; max_iterations?: number }) =>
+        api.post(`/api/templates/${id}/generate-blueprint`, body || {}),
+    getTemplateBlueprint: (id: string) => api.get(`/api/templates/${id}/blueprint`),
+    getTemplateBlueprintJob: (id: string) => api.get(`/api/templates/${id}/blueprint-job`),
     duplicateTemplate: (id: string) => api.post(`/api/templates/${id}/duplicate`),
-    validateTemplate: (id: string) => api.post(`/api/templates/${id}/validate`),
-    publishTemplate: (id: string) => api.post(`/api/templates/${id}/publish`),
+    validateTemplate: (id: string, body?: { force?: boolean }) =>
+        api.post(`/api/templates/${id}/validate`, body || {}),
+    getTemplateValidationJob: (id: string) => api.get(`/api/templates/${id}/validation-job`),
+    publishTemplate: (id: string, body?: { admin_override?: boolean }) =>
+        api.post(`/api/templates/${id}/publish`, body || {}),
     archiveTemplate: (id: string) => api.post(`/api/templates/${id}/archive`),
     setDefaultTemplate: (id: string) => api.post(`/api/templates/${id}/set-default`),
     setRecommendedTemplate: (id: string, value: boolean) =>
         api.post(`/api/templates/${id}/set-recommended`, { value }),
+
+    getEvolutionProposals: (id: string) => api.get(`/api/templates/${id}/evolution-proposals`),
+    proposeEvolution: (id: string) => api.post(`/api/templates/${id}/propose-evolution`),
+    evolveTemplate: (id: string, body: { proposal_id: string; approve: boolean; rejection_reason?: string }) =>
+        api.post(`/api/templates/${id}/evolve`, body),
 
     // SLA Configuration
     getSLAConfigs: () => api.get('/sla/configurations'),

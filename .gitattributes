@@ -1,0 +1,4 @@
+# Shell scripts must use LF so shebang works in Linux containers
+*.sh text eol=lf
+backend/scripts/*.sh text eol=lf
+worker/*.sh text eol=lf

@@ -15,6 +15,7 @@ export default function DashboardPage() {
     const [user, setUser] = useState<any>(null);
     const [executiveDashboard, setExecutiveDashboard] = useState<any>(null);
     const [metrics, setMetrics] = useState<any>(null);
+    const [templatesWithPerf, setTemplatesWithPerf] = useState<any[]>([]);
     type Widget = {
         title: string;
         value: string;
@@ -57,12 +58,14 @@ export default function DashboardPage() {
 
             if (currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER') {
                 try {
-                    const [dashboardRes, metricsRes] = await Promise.all([
+                    const [dashboardRes, metricsRes, templatesRes] = await Promise.all([
                         configurationAPI.getExecutiveDashboard(),
                         metricsAPI.get(),
+                        configurationAPI.getTemplates(),
                     ]);
                     setExecutiveDashboard(dashboardRes.data ?? null);
                     setMetrics(metricsRes.data ?? null);
+                    setTemplatesWithPerf(Array.isArray(templatesRes?.data) ? templatesRes.data : []);
                 } catch (e) {
                     console.error('Failed to load dashboard metrics:', e);
                 }
@@ -355,6 +358,62 @@ export default function DashboardPage() {
                         </table>
                     </div>
                 </section>
+
+                {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && templatesWithPerf.length > 0 && (
+                    <section className="template-perf-section" aria-labelledby="template-perf-title">
+                        <h2 id="template-perf-title" className="your-focus-title">Template performance</h2>
+                        {(() => {
+                            const withScore = templatesWithPerf
+                                .filter((t: any) => (t.performance_metrics_json?.weighted_score != null) || (t.performance_metrics_json?.avg_sentiment != null))
+                                .map((t: any) => ({
+                                    ...t,
+                                    _score: t.performance_metrics_json?.weighted_score ?? t.performance_metrics_json?.avg_sentiment ?? 0,
+                                }));
+                            const top = [...withScore].sort((a: any, b: any) => (b._score ?? 0) - (a._score ?? 0)).slice(0, 5);
+                            const under = withScore.filter((t: any) => {
+                                const m = t.performance_metrics_json || {};
+                                const usage = m.usage_count ?? 0;
+                                const sentiment = m.avg_sentiment ?? 5;
+                                const score = m.weighted_score ?? sentiment;
+                                return t.is_deprecated === false && (score < 2.5 || (usage >= 3 && sentiment < 3.5));
+                            });
+                            return (
+                                <div className="template-perf-grid">
+                                    <div className="template-perf-card">
+                                        <h3 className="template-perf-card-title">Top performing</h3>
+                                        {top.length === 0 ? (
+                                            <p className="template-perf-muted">Run &quot;Template metrics&quot; in Configuration to see data.</p>
+                                        ) : (
+                                            <ul className="template-perf-list">
+                                                {top.map((t: any) => (
+                                                    <li key={t.id}>
+                                                        <a href={`/configuration?tab=templates&template=${t.id}`} className="template-perf-link">{t.name}</a>
+                                                        <span className="template-perf-badge">{(t._score ?? 0).toFixed(1)}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                    <div className="template-perf-card">
+                                        <h3 className="template-perf-card-title">Needs improvement</h3>
+                                        {under.length === 0 ? (
+                                            <p className="template-perf-muted">None flagged.</p>
+                                        ) : (
+                                            <ul className="template-perf-list">
+                                                {under.map((t: any) => (
+                                                    <li key={t.id}>
+                                                        <a href={`/configuration?tab=templates&template=${t.id}`} className="template-perf-link template-perf-link--warn">{t.name}</a>
+                                                        <span className="template-perf-badge template-perf-badge--warn">{(t.performance_metrics_json?.avg_sentiment ?? t._score ?? 0).toFixed(1)}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </section>
+                )}
             </main>
 
             <style jsx>{`
@@ -423,6 +482,70 @@ export default function DashboardPage() {
                 }
                 .focus-link--muted {
                     color: var(--text-hint);
+                }
+                .template-perf-section {
+                    margin-top: var(--space-2xl);
+                    margin-bottom: var(--space-2xl);
+                }
+                .template-perf-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                    gap: var(--space-lg);
+                }
+                .template-perf-card {
+                    border: 1px solid var(--border-light);
+                    border-radius: var(--radius-lg);
+                    background: var(--bg-card);
+                    padding: var(--space-lg);
+                }
+                .template-perf-card-title {
+                    margin: 0 0 var(--space-md) 0;
+                    font-size: 1rem;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+                .template-perf-list {
+                    list-style: none;
+                    margin: 0;
+                    padding: 0;
+                }
+                .template-perf-list li {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: var(--space-sm) 0;
+                    border-bottom: 1px solid var(--border-light);
+                }
+                .template-perf-list li:last-child {
+                    border-bottom: none;
+                }
+                .template-perf-link {
+                    color: var(--accent-primary);
+                    font-weight: 500;
+                    text-decoration: none;
+                }
+                .template-perf-link:hover {
+                    text-decoration: underline;
+                }
+                .template-perf-link--warn {
+                    color: var(--warning, #b45309);
+                }
+                .template-perf-badge {
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: var(--text-secondary);
+                    background: var(--bg-secondary);
+                    padding: 2px 8px;
+                    border-radius: var(--radius-sm);
+                }
+                .template-perf-badge--warn {
+                    background: var(--warning-bg, #fef3c7);
+                    color: var(--warning, #b45309);
+                }
+                .template-perf-muted {
+                    margin: 0;
+                    font-size: 14px;
+                    color: var(--text-muted);
                 }
             `}</style>
         </div>

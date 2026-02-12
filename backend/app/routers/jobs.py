@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import get_current_active_user
 from app.jobs.queue import enqueue_job, list_jobs
-from app.models import JobRun, Project, Role, Stage, User, AdminConfig, AuditLog, JobRunStatus
+from app.models import JobRun, JobRunStatus, Project, Role, Stage, User, AdminConfig, AuditLog
 from app.schemas import JobEnqueueRequest, JobRunResponse
 from datetime import datetime
 
@@ -16,16 +16,10 @@ router = APIRouter(tags=["jobs"])
 
 
 def _can_enqueue_stage(role: Role, stage: Stage) -> bool:
+    # Manual enqueue is Admin/Manager only (autopilot is primary)
     if role in [Role.ADMIN, Role.MANAGER]:
         return True
-    allowed = {
-        Role.BUILDER: [Stage.BUILD],
-        Role.TESTER: [Stage.TEST],
-        Role.PC: [Stage.ASSIGNMENT],
-        Role.CONSULTANT: [Stage.ONBOARDING],
-        Role.SALES: [Stage.SALES],
-    }
-    return stage in allowed.get(role, [])
+    return False
 
 
 @router.post(
@@ -54,10 +48,13 @@ def enqueue_stage_job(
     job_id = enqueue_job(
         project_id=project_id,
         stage=stage,
-        payload_json=data.payload_json,
+        payload_json=data.payload_json or {},
         request_id=request_id,
         actor_user_id=current_user.id,
         db=db,
+        correlation_id=uuid.uuid4(),
+        requested_by="manual",
+        requested_by_user_id=current_user.id,
     )
     db.add(
         AuditLog(

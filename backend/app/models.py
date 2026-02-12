@@ -105,6 +105,14 @@ class User(Base):
     
     # Manager Assignment - For team hierarchy
     manager_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    # Auto-assignment: skills, capacity, availability
+    skills_json = Column(JSONB, default=list, nullable=True)
+    capacity = Column(Integer, default=1, nullable=False)
+    availability_status = Column(String(30), default="available", nullable=False)
+    timezone = Column(String(64), nullable=True)
+    performance_score = Column(Float, nullable=True)
+    active_assignments_count = Column(Integer, default=0, nullable=False)
     
     # Relationships
     manager = relationship("User", remote_side=[id], backref="team_members", foreign_keys=[manager_id])
@@ -164,6 +172,12 @@ class Project(Base):
     archived_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     archive_reason = Column(Text, nullable=True)
 
+    # Quality validation overrides (merge over global thresholds)
+    quality_overrides_json = Column(JSONB, default=dict, nullable=True)
+
+    # Assignment rationale from auto-assign (explainable decisions)
+    assignment_rationale_json = Column(JSONB, default=dict, nullable=True)
+
     # Minimum requirements overrides (Admin-configurable)
     minimum_requirements_override = Column(JSONB, nullable=True)  # List of required onboarding fields
     allow_requirements_exceptions = Column(Boolean, default=False)
@@ -179,6 +193,23 @@ class Project(Base):
     # Agent / automation tracking (e.g. "ONBOARDING_AGENT", "ASSIGNMENT_AGENT", "BUILDER_AGENT")
     created_by_agent_type = Column(String(100), nullable=True)
     last_handled_by_agent_type = Column(String(100), nullable=True)
+
+    # Client preview (auto-generated from template + onboarding)
+    client_preview_url = Column(String(1000), nullable=True)
+    client_preview_thumbnail_url = Column(String(1000), nullable=True)
+    client_preview_status = Column(String(30), default="not_generated", nullable=False)  # not_generated | generating | ready | failed
+    client_preview_last_generated_at = Column(DateTime, nullable=True)
+    client_preview_hash = Column(String(64), nullable=True)
+    client_preview_error = Column(Text, nullable=True)
+
+    # Autopilot
+    autopilot_enabled = Column(Boolean, default=True, nullable=False)
+    autopilot_mode = Column(String(30), default="conditional", nullable=False)  # off | conditional | full
+    autopilot_paused_reason = Column(Text, nullable=True)
+    autopilot_failure_count = Column(Integer, default=0, nullable=False)
+    autopilot_last_action_at = Column(DateTime, nullable=True)
+    autopilot_lock_until = Column(DateTime, nullable=True)
+    contract_build_error = Column(Text, nullable=True)  # set when contract build fails; cleared on success
 
     # Team Assignments
     manager_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
@@ -208,6 +239,11 @@ class Project(Base):
     job_runs = relationship("JobRun", back_populates="project", cascade="all, delete-orphan")
     project_config = relationship("ProjectConfig", back_populates="project", uselist=False, cascade="all, delete-orphan")
     sentiments = relationship("ClientSentiment", back_populates="project", cascade="all, delete-orphan")
+    project_stage_states = relationship("ProjectStageState", back_populates="project", cascade="all, delete-orphan")
+    pipeline_events = relationship("PipelineEvent", back_populates="project", cascade="all, delete-orphan")
+    stage_approvals = relationship("StageApproval", back_populates="project", cascade="all, delete-orphan")
+    project_contract = relationship("ProjectContract", back_populates="project", uselist=False, cascade="all, delete-orphan")
+    delivery_outcomes = relationship("DeliveryOutcome", back_populates="project", cascade="all, delete-orphan")
 
 
 class Task(Base):
@@ -247,8 +283,43 @@ class JobRun(Base):
     locked_by = Column(String(100), nullable=True, index=True)
     locked_at = Column(DateTime, nullable=True)
     
+    correlation_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    requested_by = Column(String(50), nullable=True)  # "system" | "manual"
+    requested_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
     project = relationship("Project", back_populates="job_runs")
     stage_outputs = relationship("StageOutput", back_populates="job_run", cascade="all, delete-orphan")
+
+
+class ProjectStageState(Base):
+    __tablename__ = "project_stage_state"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    stage_key = Column(String(50), nullable=False, index=True)
+    status = Column(String(30), default="not_started", nullable=False)
+    last_job_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    last_error = Column(Text, nullable=True)
+    blocked_reasons_json = Column(JSONB, default=list)
+    required_actions_json = Column(JSONB, default=list)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (UniqueConstraint("project_id", "stage_key", name="uq_project_stage_state_project_stage"),)
+    project = relationship("Project", back_populates="project_stage_states")
+
+
+class PipelineEvent(Base):
+    __tablename__ = "pipeline_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    stage_key = Column(String(50), nullable=True, index=True)
+    event_type = Column(String(50), nullable=False, index=True)
+    details_json = Column(JSONB, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="pipeline_events")
 
 
 class StageOutput(Base):
@@ -375,11 +446,67 @@ class TemplateRegistry(Base):
     default_config_json = Column(JSONB, default=dict)
     rules_json = Column(JSONB, default=list)
     validation_results_json = Column(JSONB, default=dict)
+    validation_status = Column(String(30), default="not_run", nullable=False)  # not_run | running | passed | failed
+    validation_last_run_at = Column(DateTime, nullable=True)
+    validation_hash = Column(String(64), nullable=True)
     version = Column(Integer, default=1)
     changelog = Column(Text, nullable=True)
     parent_template_id = Column(UUID(as_uuid=True), nullable=True)
+    # Blueprint (AI-generated, versioned)
+    blueprint_json = Column(JSONB, nullable=True)
+    blueprint_schema_version = Column(Integer, default=1, nullable=False)
+    blueprint_quality_json = Column(JSONB, default=dict)
+    prompt_log_json = Column(JSONB, default=list)
+    blueprint_hash = Column(String(64), nullable=True)
+    # Template performance metrics (Prompt 9, aggregated from sentiment + delivery_outcomes)
+    performance_metrics_json = Column(JSONB, default=dict)  # usage_count, avg_sentiment, avg_cycle_time_days, avg_defects, conversion_proxy, last_updated_at
+    is_deprecated = Column(Boolean, default=False)
 
     __table_args__ = (UniqueConstraint("slug", "version", name="uq_templates_slug_version"),)
+
+
+class TemplateEvolutionProposal(Base):
+    """Evolution proposals for templates (Prompt 9). Human-approved only."""
+    __tablename__ = "template_evolution_proposals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    proposal_json = Column(JSONB, nullable=False)  # change_summary, rationale, suggested_blueprint_changes, expected_impact
+    status = Column(String(30), default="pending", nullable=False)  # pending | approved | rejected
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+
+    template = relationship("TemplateRegistry", backref="evolution_proposals")
+
+
+class TemplateBlueprintJob(Base):
+    __tablename__ = "template_blueprint_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String(30), default="queued", nullable=False, index=True)  # queued | running | success | failed
+    payload_json = Column(JSONB, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    error_text = Column(Text, nullable=True)
+    result_json = Column(JSONB, default=dict)
+
+
+class TemplateValidationJob(Base):
+    __tablename__ = "template_validation_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String(30), default="queued", nullable=False, index=True)  # queued | running | success | failed
+    payload_json = Column(JSONB, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    error_text = Column(Text, nullable=True)
+    result_json = Column(JSONB, default=dict)
 
 
 class AdminConfig(Base):
@@ -395,15 +522,46 @@ class AdminConfig(Base):
 
 class ProjectConfig(Base):
     __tablename__ = "project_configs"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, unique=True, index=True)
     stage_gates_json = Column(JSONB, nullable=True)
     thresholds_json = Column(JSONB, nullable=True)
     hitl_enabled = Column(Boolean, default=False, nullable=False)
+    hitl_overrides_json = Column(JSONB, default=list, nullable=True)  # per-stage HITL overrides
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     project = relationship("Project", back_populates="project_config")
+
+
+class StageApproval(Base):
+    __tablename__ = "stage_approvals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    stage_key = Column(String(50), nullable=False, index=True)
+    status = Column(String(30), nullable=False, index=True)  # pending | approved | rejected | expired | invalidated
+    reviewer_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reviewer_role = Column(String(50), nullable=True)
+    comment = Column(Text, nullable=True)
+    gate_snapshot_json = Column(JSONB, default=dict)
+    inputs_fingerprint = Column(String(128), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="stage_approvals")
+
+
+class ProjectContract(Base):
+    __tablename__ = "project_contracts"
+
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), primary_key=True)
+    contract_json = Column(JSONB, nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="project_contract")
 
 
 class AuditLog(Base):
@@ -1167,6 +1325,24 @@ class ClientReminderLog(Base):
     sent_by = relationship("User", backref="sent_reminders")
 
 
+class DeliveryOutcome(Base):
+    """Delivery outcomes per project for template/agent learning (Prompt 9)."""
+    __tablename__ = "delivery_outcomes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False, index=True)
+    template_registry_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    cycle_time_days = Column(Integer, nullable=True)
+    defect_count = Column(Integer, default=0, nullable=False)
+    reopened_defects_count = Column(Integer, default=0, nullable=False)
+    on_time_delivery = Column(Boolean, nullable=True)
+    final_quality_score = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="delivery_outcomes")
+    template = relationship("TemplateRegistry", backref="delivery_outcomes")
+
+
 class ClientSentiment(Base):
     __tablename__ = "client_sentiments"
 
@@ -1180,6 +1356,13 @@ class ClientSentiment(Base):
     created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_by_type = Column(String(50), default="client")
     submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Sentiment enrichment (Prompt 9)
+    overall_score = Column(Float, nullable=True)  # 1-5 or 0-100 normalized
+    nps_score = Column(Integer, nullable=True)
+    tags_json = Column(JSONB, default=list)  # e.g. ["design_clarity", "navigation_confusion"]
+    free_text_feedback = Column(Text, nullable=True)
+    template_registry_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    template_version = Column(Integer, nullable=True)
 
     project = relationship("Project", back_populates="sentiments")
 

@@ -447,9 +447,19 @@ class TemplateResponse(BaseModel):
     default_config_json: Optional[Dict[str, Any]] = None
     rules_json: Optional[List[Any]] = None
     validation_results_json: Optional[Dict[str, Any]] = None
+    validation_status: Optional[str] = None
+    validation_last_run_at: Optional[datetime] = None
+    validation_hash: Optional[str] = None
     version: Optional[int] = 1
     changelog: Optional[str] = None
     parent_template_id: Optional[UUID] = None
+    blueprint_json: Optional[Dict[str, Any]] = None
+    blueprint_schema_version: Optional[int] = 1
+    blueprint_quality_json: Optional[Dict[str, Any]] = None
+    prompt_log_json: Optional[List[Any]] = None
+    blueprint_hash: Optional[str] = None
+    performance_metrics_json: Optional[Dict[str, Any]] = None
+    is_deprecated: Optional[bool] = False
 
 
 # ============= Sentiment Schemas =============
@@ -473,6 +483,29 @@ class SentimentResponse(BaseModel):
     created_by_type: Optional[str] = None
     project_title: Optional[str] = None
     client_name: Optional[str] = None
+
+
+# ============= Delivery Outcome Schemas (Prompt 9) =============
+class DeliveryOutcomeCreate(BaseModel):
+    template_registry_id: Optional[UUID] = None
+    cycle_time_days: Optional[int] = None
+    defect_count: int = 0
+    reopened_defects_count: int = 0
+    on_time_delivery: Optional[bool] = None
+    final_quality_score: Optional[float] = None
+
+
+class DeliveryOutcomeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    project_id: UUID
+    template_registry_id: Optional[UUID] = None
+    cycle_time_days: Optional[int] = None
+    defect_count: int
+    reopened_defects_count: int
+    on_time_delivery: Optional[bool] = None
+    final_quality_score: Optional[float] = None
+    created_at: datetime
 
 
 # ============= Workflow Schemas =============

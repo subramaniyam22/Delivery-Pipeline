@@ -63,6 +63,7 @@ interface OnboardingFormData {
     missing_fields: string[];
     submitted_at?: string | null;
     missing_fields_eta_json?: Record<string, string>;
+    client_preview?: { preview_url?: string; status?: string } | null;
     data: {
         logo_url: string | null;
         logo_file_path: string | null;
@@ -1029,6 +1030,18 @@ export default function ClientOnboardingPage() {
                 <div className="alert alert-success" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>{success}</span>
                     <button onClick={() => setSuccess('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '0 4px' }}>×</button>
+                </div>
+            )}
+
+            {(formData.submitted_at || success) && formData.client_preview && (
+                <div className="alert alert-info" style={{ marginTop: 8 }}>
+                    {formData.client_preview.status === 'ready' && formData.client_preview.preview_url ? (
+                        <a href={formData.client_preview.preview_url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
+                            View your draft site
+                        </a>
+                    ) : (
+                        <span>Your draft site is being prepared. We will notify you when it is ready.</span>
+                    )}
                 </div>
             )}
 

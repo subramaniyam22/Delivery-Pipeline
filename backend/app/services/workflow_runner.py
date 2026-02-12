@@ -29,6 +29,7 @@ from app.runners.site_builder import build_and_package
 from app.runners.self_review import run_self_review
 from app.runners.qa_runner import run_qa, run_targeted_tests
 from app.agents.defect_management_agent import DefectManagementAgent
+from app.jobs.auto_assignment import run_auto_assignment
 from app.services.email_service import EmailService
 from app.utils.sentiment_tokens import generate_sentiment_token
 from app.config import settings
@@ -106,6 +107,27 @@ def run_stage(
 
     stage_key = stage.value.lower()
     gate_enabled = bool(stage_gates.get(stage_key, False))
+
+    # Auto-assignment: run assignment engine + optional AI re-rank; no StageOutput
+    if stage == Stage.ASSIGNMENT:
+        force = bool(payload.get("force", False)) if isinstance(payload, dict) else False
+        result = run_auto_assignment(project_id, force=force, db=db)
+        if result.get("status") == "error":
+            return {
+                "status": StageStatus.FAILED,
+                "summary": result.get("error", "Auto-assignment failed"),
+                "stage": stage.value,
+                "project_id": str(project.id),
+            }
+        summary_msg = result.get("message") or "Auto-assignment completed"
+        if result.get("blocked_reasons"):
+            summary_msg += "; " + "; ".join(result["blocked_reasons"])
+        return {
+            "status": StageStatus.SUCCESS,
+            "summary": summary_msg,
+            "stage": stage.value,
+            "project_id": str(project.id),
+        }
 
     summary = f"Stage {stage.value} executed via job {job_id}"
 

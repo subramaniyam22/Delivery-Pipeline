@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from app.db import get_db
-from app.models import User, Role, Project, Region, ProjectTask, SLAConfiguration, OnboardingData, ProjectStatus, ProjectConfig, Stage, StageOutput, TaskStatus, AuditLog, OnboardingReviewStatus, StageStatus
+from app.models import User, Role, Project, Region, ProjectTask, SLAConfiguration, OnboardingData, ProjectStatus, ProjectConfig, Stage, StageOutput, TaskStatus, AuditLog, OnboardingReviewStatus, StageStatus, PipelineEvent, DeliveryOutcome
 from app.schemas import (
     ProjectCreate,
     ProjectResponse,
@@ -11,7 +11,7 @@ from app.schemas import (
     TeamAssignmentRequest,
     OnboardingReviewAction
 )
-from app.schemas import ProjectConfigUpdate, ProjectConfigResponse, StageOutputResponse
+from app.schemas import ProjectConfigUpdate, ProjectConfigResponse, StageOutputResponse, DeliveryOutcomeCreate, DeliveryOutcomeResponse
 from app.deps import get_current_active_user
 from app.services import project_service, artifact_service, config_service
 from app.rbac import check_full_access, can_access_stage, require_admin_manager
@@ -24,6 +24,20 @@ from datetime import datetime
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+class AutoAssignRequest(BaseModel):
+    force: bool = False
+
+
+class AssignmentOverrideRequest(BaseModel):
+    role: str  # consultant | builder | tester
+    user_id: UUID
+    comment: Optional[str] = None
+
+
+class GenerateClientPreviewRequest(BaseModel):
+    force: bool = False
 
 
 def _normalize_locations(value: Optional[str], names: Optional[List[str]]) -> List[str]:
@@ -1073,7 +1087,23 @@ def assign_team(
     
     db.commit()
     db.refresh(project)
-    
+
+    try:
+        from app.services.contract_service import create_or_update_contract
+        create_or_update_contract(db, project_id, source="user:assignment_update")
+    except Exception:
+        pass
+    try:
+        from app.services.hitl_service import invalidate_pending_approvals_if_stale
+        invalidate_pending_approvals_if_stale(db, project_id)
+    except Exception:
+        pass
+    try:
+        from app.services.pipeline_orchestrator import auto_advance
+        auto_advance(db, project_id, trigger_source="assignment_updated")
+    except Exception:
+        pass  # do not fail the request if autopilot advance fails
+
     return project
 
 
@@ -1176,6 +1206,196 @@ def get_team_assignments(
             )
         }
     }
+
+
+@router.post("/{project_id}/auto-assign")
+def auto_assign_project(
+    project_id: UUID,
+    body: AutoAssignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Enqueue auto-assignment job (Admin/Manager only)."""
+    require_admin_manager(current_user)
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    from app.jobs.queue import enqueue_job
+    job_id = enqueue_job(
+        project_id=project_id,
+        stage=Stage.ASSIGNMENT,
+        payload_json={"force": body.force},
+        request_id=None,
+        actor_user_id=current_user.id,
+        db=db,
+        requested_by="user",
+        requested_by_user_id=current_user.id,
+    )
+    return {"message": "Auto-assignment job enqueued", "job_id": str(job_id)}
+
+
+@router.get("/{project_id}/assignments")
+def get_project_assignments(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Return current consultant/builder/tester assignments and rationale (Admin/Manager/PC)."""
+    allowed_roles = [Role.ADMIN, Role.MANAGER, Role.PC]
+    if current_user.role not in allowed_roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Admin, Manager, and PC can view assignments")
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    team = {}
+    for attr, key in [("consultant_user_id", "consultant"), ("builder_user_id", "builder"), ("tester_user_id", "tester")]:
+        uid = getattr(project, attr)
+        if uid:
+            u = db.query(User).filter(User.id == uid).first()
+            if u:
+                team[key] = {"id": str(u.id), "name": u.name, "email": u.email, "role": u.role.value}
+    rationale = getattr(project, "assignment_rationale_json", None) or {}
+    return {"team": team, "rationale": rationale}
+
+
+@router.post("/{project_id}/assignments/override")
+def override_assignment(
+    project_id: UUID,
+    body: AssignmentOverrideRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Override assignment for a role (Admin/Manager only). Updates counts, rationale, emits event, triggers auto_advance."""
+    require_admin_manager(current_user)
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    role_map = {"consultant": "consultant_user_id", "builder": "builder_user_id", "tester": "tester_user_id"}
+    if body.role not in role_map:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="role must be consultant, builder, or tester")
+    attr = role_map[body.role]
+    new_user = db.query(User).filter(User.id == body.user_id).first()
+    if not new_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    from app.jobs.auto_assignment import _dec_user_assignment_count, _inc_user_assignment_count
+    from app.services.contract_service import create_or_update_contract
+    from app.services.pipeline_orchestrator import auto_advance
+    old_id = getattr(project, attr)
+    _dec_user_assignment_count(db, old_id)
+    setattr(project, attr, body.user_id)
+    _inc_user_assignment_count(db, body.user_id)
+    rationale = dict(getattr(project, "assignment_rationale_json", None) or {})
+    role_key = body.role
+    rationale[role_key] = {
+        "user_id": str(body.user_id),
+        "reasons": [body.comment or "Manual override"],
+        "score": None,
+        "auto_assigned": False,
+        "overridden_by": str(current_user.id),
+        "override_comment": body.comment,
+    }
+    project.assignment_rationale_json = rationale
+    db.add(PipelineEvent(project_id=project_id, stage_key="2_assignment", event_type="ASSIGNMENT_OVERRIDDEN", details_json={"role": body.role, "user_id": str(body.user_id), "comment": body.comment}))
+    try:
+        create_or_update_contract(db, project_id, source="user:assignment_override")
+    except Exception:
+        pass
+    db.commit()
+    try:
+        auto_advance(db, project_id, trigger_source="assignment_override")
+    except Exception:
+        pass
+    return {"message": "Assignment overridden", "role": body.role, "user_id": str(body.user_id)}
+
+
+@router.post("/{project_id}/generate-client-preview")
+def generate_client_preview(
+    project_id: UUID,
+    body: GenerateClientPreviewRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Enqueue client preview pipeline (Admin/Manager only). Runs in background."""
+    require_admin_manager(current_user)
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    def _run():
+        from app.jobs.client_preview import run_client_preview_pipeline
+        run_client_preview_pipeline(project_id, force=body.force)
+
+    background_tasks.add_task(_run)
+    return {"message": "Client preview generation started", "project_id": str(project_id)}
+
+
+@router.get("/{project_id}/client-preview")
+def get_client_preview(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Return client preview url, thumbnail, status, last_generated_at, error."""
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    # Allow project members and Admin/Manager
+    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
+        if current_user.id not in (
+            project.consultant_user_id,
+            project.pc_user_id,
+            project.builder_user_id,
+            project.tester_user_id,
+            project.manager_user_id,
+            project.sales_user_id,
+            project.created_by_user_id,
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project's preview")
+    return {
+        "preview_url": getattr(project, "client_preview_url", None),
+        "thumbnail_url": getattr(project, "client_preview_thumbnail_url", None),
+        "status": getattr(project, "client_preview_status", "not_generated"),
+        "last_generated_at": project.client_preview_last_generated_at.isoformat() if getattr(project, "client_preview_last_generated_at", None) else None,
+        "error": getattr(project, "client_preview_error", None),
+    }
+
+
+@router.post("/{project_id}/delivery-outcome", response_model=DeliveryOutcomeResponse, status_code=status.HTTP_201_CREATED)
+def record_delivery_outcome(
+    project_id: UUID,
+    data: DeliveryOutcomeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Record delivery outcome for a project (Prompt 9). Admin/Manager or project members."""
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
+        if current_user.id not in (
+            project.consultant_user_id,
+            project.pc_user_id,
+            project.builder_user_id,
+            project.tester_user_id,
+            project.manager_user_id,
+            project.sales_user_id,
+            project.created_by_user_id,
+        ):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to record delivery outcome")
+    outcome = DeliveryOutcome(
+        project_id=project_id,
+        template_registry_id=data.template_registry_id,
+        cycle_time_days=data.cycle_time_days,
+        defect_count=data.defect_count,
+        reopened_defects_count=data.reopened_defects_count,
+        on_time_delivery=data.on_time_delivery,
+        final_quality_score=data.final_quality_score,
+    )
+    db.add(outcome)
+    db.commit()
+    db.refresh(outcome)
+    return outcome
 
 
 @router.get("/{project_id}/config", response_model=ProjectConfigResponse)

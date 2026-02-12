@@ -82,6 +82,14 @@ class Settings(BaseSettings):
     # Rate limits
     RATE_LIMIT_AI_PER_MINUTE: int = 30
     RATE_LIMIT_PUBLIC_PER_MINUTE: int = 60
+
+    # Preview thumbnails: "simple" (PIL) | "playwright"
+    PREVIEW_THUMBNAIL_MODE: str = "simple"
+    PLAYWRIGHT_ENABLED: bool = False
+
+    # Feature flags (worker + validation); missing = sensible defaults
+    LIGHTHOUSE_ENABLED: bool = True
+    AXE_ENABLED: bool = True
     
     @property
     def database_url_fixed(self) -> str:

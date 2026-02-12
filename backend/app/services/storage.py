@@ -198,3 +198,126 @@ def get_storage_backend() -> StorageBackend:
             public_base_url=public_base,
         )
     return LocalDiskStorage()
+
+
+# --- Preview bundle helpers (retry + prefix) ---
+import time
+from typing import Dict, Union
+
+PREVIEW_BUNDLE_MAX_BYTES = 10 * 1024 * 1024  # 10MB
+UPLOAD_RETRIES = 3
+UPLOAD_RETRY_BACKOFF = 1.0
+
+
+def _previews_base_dir() -> str:
+    """Directory for local preview files (served at /previews)."""
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "generated_previews")
+
+
+def get_preview_storage_backend() -> StorageBackend:
+    """Storage backend for template preview bundles; local writes to generated_previews for /previews mount."""
+    backend = (settings.STORAGE_BACKEND or "local").lower()
+    s3_config = _resolve_s3_config()
+    if backend == "s3" and s3_config:
+        bucket, access_key, secret_key, region, endpoint, public_base = s3_config
+        return S3CompatibleStorage(
+            bucket=bucket,
+            access_key=access_key,
+            secret_key=secret_key,
+            region=region,
+            endpoint_url=endpoint,
+            public_base_url=public_base,
+        )
+    if s3_config and backend != "local":
+        bucket, access_key, secret_key, region, endpoint, public_base = s3_config
+        return S3CompatibleStorage(
+            bucket=bucket,
+            access_key=access_key,
+            secret_key=secret_key,
+            region=region,
+            endpoint_url=endpoint,
+            public_base_url=public_base,
+        )
+    base_url = (settings.BACKEND_URL or "http://localhost:8000").rstrip("/") + "/previews"
+    return LocalDiskStorage(base_dir=_previews_base_dir(), public_base_url=base_url)
+
+
+def _retry_upload(fn, *args, **kwargs):
+    last_err = None
+    for attempt in range(UPLOAD_RETRIES):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            last_err = e
+            if attempt < UPLOAD_RETRIES - 1:
+                time.sleep(UPLOAD_RETRY_BACKOFF * (attempt + 1))
+    raise last_err
+
+
+def upload_preview_bundle(prefix: str, files: Dict[str, Union[str, bytes]]) -> str:
+    """
+    Upload a set of files under prefix (e.g. templates/residential-modern/v1).
+    Returns base URL (no trailing slash) to the bundle root.
+    """
+    backend = get_preview_storage_backend()
+    total = 0
+    for k, v in files.items():
+        data = v.encode("utf-8") if isinstance(v, str) else v
+        total += len(data)
+        if total > PREVIEW_BUNDLE_MAX_BYTES:
+            raise RuntimeError(f"Preview bundle exceeds {PREVIEW_BUNDLE_MAX_BYTES} bytes")
+    base_url = None
+    for rel_path, content in files.items():
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        key = f"{prefix.rstrip('/')}/{rel_path}" if prefix else rel_path
+
+        def _put():
+            backend.save_bytes(key, data, content_type=None)
+            return backend.get_url(key, expires_seconds=86400 * 365)
+
+        result = _retry_upload(_put)
+        if result and base_url is None:
+            # Base URL = result without the file part (e.g. .../templates/slug/v1)
+            base_url = result.rsplit("/", 1)[0] if "/" in result else result
+    if base_url is None:
+        base_url = getattr(backend, "public_base_url", None) or ""
+        if prefix:
+            base_url = f"{base_url.rstrip('/')}/{prefix.rstrip('/')}"
+    return base_url.rstrip("/")
+
+
+def upload_thumbnail(prefix: str, image_bytes: bytes) -> str:
+    """Upload thumbnail image; returns public URL."""
+    key = f"{prefix.rstrip('/')}/thumbnail.png" if prefix else "thumbnail.png"
+
+    def _put():
+        backend = get_preview_storage_backend()
+        backend.save_bytes(key, image_bytes, content_type="image/png")
+        return backend.get_url(key, expires_seconds=86400 * 365)
+
+    url = _retry_upload(_put)
+    if not url:
+        raise RuntimeError("Thumbnail upload did not return URL")
+    return url
+
+
+def delete_preview_bundle(prefix: str) -> None:
+    """Optionally delete all objects under prefix (best-effort)."""
+    backend = get_preview_storage_backend()
+    if hasattr(backend, "client") and hasattr(backend, "bucket"):
+        try:
+            paginator = backend.client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=backend.bucket, Prefix=prefix):
+                for obj in page.get("Contents") or []:
+                    backend.delete(obj["Key"])
+        except Exception:
+            pass
+    # Local: delete directory under base_dir
+    if hasattr(backend, "base_dir") and hasattr(backend, "_full_path"):
+        import shutil
+        full = backend._full_path(prefix)
+        if os.path.isdir(full):
+            try:
+                shutil.rmtree(full)
+            except Exception:
+                pass

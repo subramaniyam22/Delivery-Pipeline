@@ -37,7 +37,21 @@ async def upload_artifact(
         notes=notes,
         user=current_user
     )
-    
+    try:
+        from app.services.contract_service import create_or_update_contract
+        create_or_update_contract(db, project_id, source="user:artifact_upload")
+    except Exception:
+        pass
+    try:
+        from app.services.hitl_service import invalidate_pending_approvals_if_stale
+        invalidate_pending_approvals_if_stale(db, project_id)
+    except Exception:
+        pass
+    try:
+        from app.services.pipeline_orchestrator import auto_advance
+        auto_advance(db, project_id, trigger_source="artifact_upload")
+    except Exception:
+        pass  # do not fail the request if autopilot advance fails
     return artifact
 
 

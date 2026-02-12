@@ -9,8 +9,8 @@ import RequireCapability from '@/components/RequireCapability';
 import { Dialog } from '@/components/ui/dialog';
 import PageHeader from '@/components/PageHeader';
 
-type ConfigTab = 'template_registry' | 'sla' | 'thresholds' | 'preview_strategy' | 'hitl_gates';
-type TemplateDetailSubTab = 'overview' | 'structure' | 'preview' | 'validation' | 'versions';
+type ConfigTab = 'template_registry' | 'sla' | 'thresholds' | 'preview_strategy' | 'hitl_gates' | 'learning';
+type TemplateDetailSubTab = 'overview' | 'structure' | 'preview' | 'validation' | 'versions' | 'blueprint' | 'performance' | 'evolution';
 
 interface TemplateRegistry {
     id: string;
@@ -41,9 +41,123 @@ interface TemplateRegistry {
     default_config_json?: Record<string, unknown>;
     rules_json?: unknown[];
     validation_results_json?: Record<string, unknown>;
+    validation_status?: string | null;
+    validation_last_run_at?: string | null;
+    validation_hash?: string | null;
     version?: number;
     changelog?: string | null;
     parent_template_id?: string | null;
+    performance_metrics_json?: Record<string, unknown> | null;
+    is_deprecated?: boolean;
+    blueprint_json?: Record<string, unknown> | null;
+    blueprint_schema_version?: number | null;
+    blueprint_quality_json?: Record<string, unknown> | null;
+    blueprint_hash?: string | null;
+}
+
+function EvolutionTab({ templateId }: { templateId: string }) {
+    const [proposals, setProposals] = useState<Array<{ id: string; proposal_json: any; status: string; created_at: string | null; rejection_reason?: string }>>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [evolving, setEvolving] = useState<string | null>(null);
+    useEffect(() => {
+        configurationAPI.getEvolutionProposals(templateId)
+            .then((r: any) => { setProposals(r.data?.proposals || []); setError(''); })
+            .catch((e: any) => { setError(e.response?.data?.detail || 'Failed to load'); setProposals([]); })
+            .finally(() => setLoading(false));
+    }, [templateId]);
+    const handlePropose = () => {
+        setLoading(true);
+        configurationAPI.proposeEvolution(templateId)
+            .then(() => configurationAPI.getEvolutionProposals(templateId))
+            .then((r: any) => setProposals(r.data?.proposals || []))
+            .catch((e: any) => setError(e.response?.data?.detail || 'Propose failed'))
+            .finally(() => setLoading(false));
+    };
+    const handleEvolve = (proposalId: string, approve: boolean, rejectionReason?: string) => {
+        setEvolving(proposalId);
+        configurationAPI.evolveTemplate(templateId, { proposal_id: proposalId, approve, rejection_reason: rejectionReason })
+            .then(() => configurationAPI.getEvolutionProposals(templateId))
+            .then((r: any) => setProposals(r.data?.proposals || []))
+            .catch((e: any) => setError(e.response?.data?.detail || 'Action failed'))
+            .finally(() => setEvolving(null));
+    };
+    if (loading && proposals.length === 0) return <div style={{ padding: 16 }}>Loading proposals…</div>;
+    return (
+        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+            {error && <p style={{ color: '#dc2626', marginBottom: 12 }}>{error}</p>}
+            <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
+                <button type="button" onClick={handlePropose} disabled={loading} style={{ padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: loading ? 'not-allowed' : 'pointer' }}>Propose evolution</button>
+            </div>
+            <h4 style={{ margin: '0 0 8px' }}>Proposals</h4>
+            {proposals.length === 0 ? <p style={{ margin: 0, color: '#64748b' }}>No proposals. Click &quot;Propose evolution&quot; to generate one (rate limit: 1 per week).</p> : (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {proposals.map((p) => (
+                        <li key={p.id} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                            <div><strong>Status:</strong> {p.status} · {p.created_at ? new Date(p.created_at).toLocaleString() : ''}</div>
+                            {p.proposal_json?.change_summary && <div style={{ marginTop: 6 }}>{p.proposal_json.change_summary}</div>}
+                            {p.rejection_reason && <div style={{ marginTop: 4, color: '#64748b' }}>Rejection: {p.rejection_reason}</div>}
+                            {p.status === 'pending' && (
+                                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                                    <button type="button" onClick={() => handleEvolve(p.id, true)} disabled={!!evolving} style={{ padding: '4px 10px', background: '#10b981', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Approve</button>
+                                    <button type="button" onClick={() => handleEvolve(p.id, false, 'Rejected by user')} disabled={!!evolving} style={{ padding: '4px 10px', background: '#ef4444', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Reject</button>
+                                </div>
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
+
+function LearningProposalsPanel() {
+    const [proposals, setProposals] = useState<Array<{ policy_key: string; current_value: any; suggested_value: any; rationale: string }>>([]);
+    const [loading, setLoading] = useState(true);
+    const [running, setRunning] = useState(false);
+    const [error, setError] = useState('');
+    useEffect(() => {
+        configAPI.getLearningProposals()
+            .then((r: any) => { setProposals(r.data?.proposals || []); setError(''); })
+            .catch(() => { setProposals([]); })
+            .finally(() => setLoading(false));
+    }, []);
+    const handleRun = () => {
+        setRunning(true);
+        configAPI.runTemplateMetrics()
+            .then(() => configAPI.runLearningProposals())
+            .then((r: any) => setProposals(r.data?.proposals || []))
+            .catch((e: any) => setError(e.response?.data?.detail || 'Run failed'))
+            .finally(() => setRunning(false));
+    };
+    const handleApply = (index: number) => {
+        configAPI.applyLearningProposal(index)
+            .then(() => configAPI.getLearningProposals())
+            .then((r: any) => setProposals(r.data?.proposals || []))
+            .catch((e: any) => setError(e.response?.data?.detail || 'Apply failed'));
+    };
+    if (loading && proposals.length === 0) return <div style={{ padding: 16 }}>Loading…</div>;
+    return (
+        <div>
+            {error && <p style={{ color: '#dc2626', marginBottom: 12 }}>{error}</p>}
+            <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
+                <button type="button" onClick={handleRun} disabled={running} style={{ padding: '8px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}>{running ? 'Running…' : 'Run template metrics & learning'}</button>
+            </div>
+            <h4 style={{ margin: '0 0 8px' }}>Proposals</h4>
+            {proposals.length === 0 ? <p style={{ margin: 0, color: '#64748b' }}>No proposals. Click &quot;Run template metrics &amp; learning&quot; to compute.</p> : (
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {proposals.map((p, i) => (
+                        <li key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                            <div><strong>{p.policy_key}</strong></div>
+                            <div style={{ marginTop: 4 }}>Current: {String(p.current_value)} → Suggested: {String(p.suggested_value)}</div>
+                            <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{p.rationale}</div>
+                            <button type="button" onClick={() => handleApply(i)} style={{ marginTop: 8, padding: '4px 10px', background: '#10b981', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Apply</button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
 }
 
 interface SLAConfig {
@@ -102,6 +216,8 @@ export default function ConfigurationPage() {
     const [previewModalOpen, setPreviewModalOpen] = useState(false);
     const [previewTemplate, setPreviewTemplate] = useState<TemplateRegistry | null>(null);
     const [previewPolling, setPreviewPolling] = useState(false);
+    const [blueprintJobPolling, setBlueprintJobPolling] = useState(false);
+    const [validationJobPolling, setValidationJobPolling] = useState(false);
     const [newTemplate, setNewTemplate] = useState({
         name: '',
         repo_url: '',
@@ -691,7 +807,7 @@ export default function ConfigurationPage() {
 
     const selectedTemplate = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) ?? null : null;
     const canPublishTemplate = (t: TemplateRegistry) =>
-        (t.status === 'validated') && (t.preview_status === 'ready');
+        (t.status === 'validated') && (t.preview_status === 'ready') && ((t.validation_status || '') === 'passed');
     const filteredTemplates = React.useMemo(() => {
         let list = templates;
         const { q, status, category, style, tag } = templateListFilters;
@@ -805,13 +921,20 @@ export default function ConfigurationPage() {
             setError('Preview generation is for AI templates only.');
             return;
         }
+        if (!template.blueprint_json) {
+            setError('Generate blueprint first.');
+            return;
+        }
         try {
-            await configurationAPI.generateTemplatePreview(template.id);
+            await configurationAPI.generateTemplatePreview(template.id, { force: template.preview_status === 'ready' });
             updateTemplateInState({ ...template, preview_status: 'generating', preview_error: null });
             setSuccess('Preview generation started');
             pollTemplatePreview(template.id);
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to start preview generation');
+            const detail = err.response?.data?.detail;
+            const msg = typeof detail === 'string' ? detail : (Array.isArray(detail) ? detail.map((d: any) => d.msg || d).join(', ') : 'Failed to start preview generation');
+            if (err.response?.status === 409) setSuccess('Preview already up-to-date');
+            else setError(msg);
         }
     };
 
@@ -820,6 +943,78 @@ export default function ConfigurationPage() {
         setPreviewModalOpen(true);
         if (template.preview_status === 'generating') {
             pollTemplatePreview(template.id);
+        }
+    };
+
+    const pollBlueprintJob = async (templateId: string) => {
+        setBlueprintJobPolling(true);
+        const start = Date.now();
+        let done = false;
+        while (!done && Date.now() - start < 120000) {
+            await new Promise(r => setTimeout(r, 2500));
+            try {
+                const res = await configurationAPI.getTemplateBlueprintJob(templateId);
+                const d = res.data as { status?: string };
+                if (d.status === 'success' || d.status === 'failed') {
+                    done = true;
+                    const updated = await configurationAPI.getTemplate(templateId);
+                    updateTemplateInState(updated.data as TemplateRegistry);
+                    setSuccess(d.status === 'success' ? 'Blueprint generation finished' : 'Blueprint generation failed');
+                }
+            } catch {
+                done = true;
+            }
+        }
+        setBlueprintJobPolling(false);
+    };
+
+    const handleGenerateBlueprint = async (template: TemplateRegistry, regenerate = false) => {
+        if (!canEditTemplates) {
+            setError('Only Admin can change this.');
+            return;
+        }
+        try {
+            await configurationAPI.generateBlueprint(template.id, { regenerate, max_iterations: 3 });
+            setSuccess(regenerate ? 'Blueprint regeneration started' : 'Blueprint generation started');
+            pollBlueprintJob(template.id);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to start blueprint generation');
+        }
+    };
+
+    const pollValidationJob = async (templateId: string) => {
+        setValidationJobPolling(true);
+        const start = Date.now();
+        let done = false;
+        while (!done && Date.now() - start < 120000) {
+            await new Promise(r => setTimeout(r, 2500));
+            try {
+                const res = await configurationAPI.getTemplateValidationJob(templateId);
+                const d = res.data as { status?: string };
+                if (d.status === 'success' || d.status === 'failed') {
+                    done = true;
+                    const updated = await configurationAPI.getTemplate(templateId);
+                    updateTemplateInState(updated.data as TemplateRegistry);
+                    setSuccess(d.status === 'success' ? 'Validation finished' : 'Validation failed');
+                }
+            } catch {
+                done = true;
+            }
+        }
+        setValidationJobPolling(false);
+    };
+
+    const handleRunValidation = async (template: TemplateRegistry, force = false) => {
+        if (!canEditTemplates) {
+            setError('Only Admin can run validation.');
+            return;
+        }
+        try {
+            await configurationAPI.validateTemplate(template.id, { force });
+            setSuccess('Validation started');
+            pollValidationJob(template.id);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to start validation');
         }
     };
 
@@ -976,7 +1171,7 @@ export default function ConfigurationPage() {
                 {success && <div className="alert alert-success">{success}</div>}
 
                 <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                    {(['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates'] as ConfigTab[]).map((tab) => (
+                    {(['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates', 'learning'] as ConfigTab[]).map((tab) => (
                         <button
                             key={tab}
                             type="button"
@@ -997,6 +1192,7 @@ export default function ConfigurationPage() {
                             {tab === 'thresholds' && 'Quality Thresholds'}
                             {tab === 'preview_strategy' && 'Preview Strategy'}
                             {tab === 'hitl_gates' && 'HITL Gates'}
+                            {tab === 'learning' && 'Learning Proposals'}
                         </button>
                     ))}
                 </div>
@@ -1091,6 +1287,7 @@ export default function ConfigurationPage() {
                                                 <div style={{ flex: 1, minWidth: 0 }}>
                                                     <div style={{ fontWeight: 600, fontSize: '13px' }}>{t.name}</div>
                                                     <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '10px', background: t.status === 'published' ? '#ecfdf5' : t.status === 'draft' ? '#f1f5f9' : '#eff6ff', color: t.status === 'published' ? '#047857' : '#475569' }}>{t.status || 'draft'}</span>
+                                                    {t.preview_status === 'ready' && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '10px', background: '#dcfce7', color: '#166534', marginLeft: '4px' }}>Preview</span>}
                                                     <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                                                         {(t.feature_tags_json || t.features_json || []).slice(0, 3).map((tag: string) => (
                                                             <span key={tag} style={{ fontSize: '10px', color: '#64748b' }}>{tag}</span>
@@ -1109,8 +1306,8 @@ export default function ConfigurationPage() {
                             ) : (
                                 <>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-                                        {(['overview', 'structure', 'preview', 'validation', 'versions'] as TemplateDetailSubTab[]).map((sub) => (
-                                            <button key={sub} type="button" onClick={() => setTemplateDetailSubTab(sub)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: templateDetailSubTab === sub ? '#2563eb' : 'white', color: templateDetailSubTab === sub ? 'white' : '#475569', fontSize: '12px', cursor: 'pointer' }}>{sub}</button>
+                                        {(['overview', 'structure', 'blueprint', 'preview', 'validation', 'versions', 'performance', 'evolution'] as TemplateDetailSubTab[]).map((sub) => (
+                                            <button key={sub} type="button" onClick={() => setTemplateDetailSubTab(sub)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: templateDetailSubTab === sub ? '#2563eb' : 'white', color: templateDetailSubTab === sub ? 'white' : '#475569', fontSize: '12px', cursor: 'pointer' }}>{sub === 'blueprint' ? 'Blueprint' : sub === 'performance' ? 'Performance' : sub === 'evolution' ? 'Evolution' : sub.charAt(0).toUpperCase() + sub.slice(1)}</button>
                                         ))}
                                     </div>
                                     <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -1118,9 +1315,9 @@ export default function ConfigurationPage() {
                                         <button type="button" onClick={() => handleArchiveTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Archive</button>
                                         <button type="button" onClick={() => handleSetRecommendedTemplate(selectedTemplate, !selectedTemplate.is_recommended)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>{selectedTemplate.is_recommended ? 'Unrecommend' : 'Recommend'}</button>
                                         <button type="button" onClick={() => handleSetDefaultTemplateFromCard(selectedTemplate)} disabled={!canEditTemplates || !selectedTemplate.is_published} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && selectedTemplate.is_published ? 'pointer' : 'not-allowed' }}>Set Default</button>
-                                        <button type="button" onClick={() => handleGeneratePreview(selectedTemplate)} disabled={!canEditTemplates || selectedTemplate.source_type === 'git'} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && selectedTemplate.source_type !== 'git' ? 'pointer' : 'not-allowed' }}>Generate Preview</button>
+                                        <button type="button" onClick={() => handleGeneratePreview(selectedTemplate)} disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling} title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : ''} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>Generate Preview</button>
                                         <button type="button" onClick={() => handleValidateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Validate</button>
-                                        <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Must be validated and preview ready' : ''} style={{ padding: '6px 12px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>Publish</button>
+                                        <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires validated blueprint, ready preview, and passed validation' : ''} style={{ padding: '6px 12px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>Publish</button>
                                         <button type="button" onClick={() => handleOpenPreview(selectedTemplate)} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Preview</button>
                                         <button type="button" onClick={() => handleDeleteTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Delete</button>
                                     </div>
@@ -1128,7 +1325,16 @@ export default function ConfigurationPage() {
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
                                             <h4 style={{ margin: '0 0 8px' }}>{selectedTemplate.name}</h4>
                                             <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>{selectedTemplate.description || 'No description'}</p>
-                                            <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Status: {selectedTemplate.status || 'draft'} · Preview: {getPreviewStatusLabel(selectedTemplate)}</p>
+                                            <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Status: {selectedTemplate.status || 'draft'} · Preview: {getPreviewStatusLabel(selectedTemplate)} · Validation: {(selectedTemplate.validation_status || 'not_run').replace('_', ' ')}{selectedTemplate.validation_last_run_at ? ` (${new Date(selectedTemplate.validation_last_run_at).toLocaleString()})` : ''}</p>
+                                            <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                {!selectedTemplate.blueprint_json ? (
+                                                    <button type="button" onClick={() => { setTemplateDetailSubTab('blueprint'); handleGenerateBlueprint(selectedTemplate, false); }} disabled={!canEditTemplates || blueprintJobPolling} style={{ padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && !blueprintJobPolling ? 'pointer' : 'not-allowed' }}>Generate Blueprint</button>
+                                                ) : (selectedTemplate.blueprint_quality_json as Record<string, unknown> | undefined)?.status === 'fail' ? (
+                                                    <button type="button" onClick={() => { setTemplateDetailSubTab('blueprint'); handleGenerateBlueprint(selectedTemplate, true); }} disabled={!canEditTemplates || blueprintJobPolling} style={{ padding: '6px 12px', border: '1px solid #f59e0b', color: '#f59e0b', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && !blueprintJobPolling ? 'pointer' : 'not-allowed' }}>Iterate / Regenerate Blueprint</button>
+                                                ) : (selectedTemplate.blueprint_quality_json as Record<string, unknown> | undefined)?.status === 'pass' ? (
+                                                    <span style={{ background: '#10b981', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>Validated</span>
+                                                ) : null}
+                                            </div>
                                         </div>
                                     )}
                                     {templateDetailSubTab === 'structure' && (
@@ -1136,22 +1342,181 @@ export default function ConfigurationPage() {
                                             <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(selectedTemplate.pages_json || [], null, 2)}</pre>
                                         </div>
                                     )}
+                                    {templateDetailSubTab === 'blueprint' && (
+                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+                                            {(() => {
+                                                const bp = selectedTemplate.blueprint_json as Record<string, unknown> | undefined;
+                                                const quality = selectedTemplate.blueprint_quality_json as Record<string, unknown> | undefined;
+                                                const scorecard = quality?.scorecard as Record<string, number> | undefined;
+                                                const hardChecks = quality?.hard_checks as Record<string, boolean> | undefined;
+                                                const issues = (quality?.issues as Array<{ severity?: string; path?: string; message?: string; fix_hint?: string }>) || [];
+                                                const status = quality?.status as string | undefined;
+                                                const jobRunning = blueprintJobPolling;
+                                                const hasBlueprint = !!bp;
+                                                return (
+                                                    <>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                                                            <button type="button" onClick={() => handleGenerateBlueprint(selectedTemplate, !!hasBlueprint)} disabled={!canEditTemplates || jobRunning} style={{ padding: '8px 16px', background: jobRunning ? '#94a3b8' : '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: canEditTemplates && !jobRunning ? 'pointer' : 'not-allowed' }}>{jobRunning ? 'Running…' : hasBlueprint ? 'Regenerate Blueprint' : 'Generate Blueprint'}</button>
+                                                            {selectedTemplate.blueprint_schema_version != null && <span style={{ color: '#64748b' }}>Schema v{selectedTemplate.blueprint_schema_version}</span>}
+                                                            {selectedTemplate.blueprint_hash && <code style={{ fontSize: '11px', background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{String(selectedTemplate.blueprint_hash).slice(0, 12)}…</code>}
+                                                            {status === 'pass' && <span style={{ background: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>Validated</span>}
+                                                            {status === 'fail' && <span style={{ background: '#f59e0b', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>Below threshold</span>}
+                                                        </div>
+                                                        {!hasBlueprint && !jobRunning && <p style={{ margin: 0, color: '#64748b' }}>No blueprint yet. Click Generate Blueprint to create one.</p>}
+                                                        {hasBlueprint && bp && (
+                                                            <div style={{ marginBottom: '16px' }}>
+                                                                <h5 style={{ margin: '0 0 8px' }}>Summary</h5>
+                                                                <ul style={{ margin: 0, paddingLeft: '20px', color: '#475569' }}>
+                                                                    {bp.pages && Array.isArray(bp.pages) ? <li>Pages: {(bp.pages as unknown[]).length}</li> : null}
+                                                                    {bp.tokens && typeof bp.tokens === 'object' ? <li>Tokens: colors, typography, spacing</li> : null}
+                                                                    {bp.navigation && typeof bp.navigation === 'object' ? <li>Navigation: {(bp.navigation as Record<string, unknown>).items && Array.isArray((bp.navigation as Record<string, unknown>).items) ? ((bp.navigation as Record<string, unknown>).items as unknown[]).length : 0} items</li> : null}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+                                                        {(scorecard || hardChecks) && (
+                                                            <div style={{ marginBottom: '16px' }}>
+                                                                <h5 style={{ margin: '0 0 8px' }}>Scorecard</h5>
+                                                                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                                                                    {scorecard && Object.entries(scorecard).map(([k, v]) => <span key={k} style={{ background: '#e2e8f0', padding: '4px 8px', borderRadius: '4px' }}>{k}: {Number(v)}</span>)}
+                                                                </div>
+                                                                {hardChecks && <div style={{ fontSize: '12px', color: '#64748b' }}>Hard checks: {Object.entries(hardChecks).map(([k, v]) => `${k}=${v}`).join(', ')}</div>}
+                                                            </div>
+                                                        )}
+                                                        {issues.length > 0 && (
+                                                            <div>
+                                                                <h5 style={{ margin: '0 0 8px' }}>Issues</h5>
+                                                                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                                                                    {issues.slice(0, 20).map((i, idx) => <li key={idx} style={{ color: i.severity === 'blocker' ? '#dc2626' : i.severity === 'major' ? '#ea580c' : '#64748b' }}>{i.path}: {i.message}{i.fix_hint ? ` (${i.fix_hint})` : ''}</li>)}
+                                                                </ul>
+                                                                {issues.length > 20 && <p style={{ margin: '4px 0 0', color: '#94a3b8' }}>…and {issues.length - 20} more</p>}
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
                                     {templateDetailSubTab === 'preview' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                                                {selectedTemplate.preview_thumbnail_url ? (
+                                                    <img src={selectedTemplate.preview_thumbnail_url} alt="Preview thumbnail" style={{ width: '120px', height: '80px', borderRadius: '8px', objectFit: 'cover' }} />
+                                                ) : (
+                                                    <div style={{ width: '120px', height: '80px', borderRadius: '8px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', color: '#64748b' }}>No thumbnail</div>
+                                                )}
+                                                <div>
+                                                    <span style={{ fontSize: '12px', padding: '4px 8px', borderRadius: '4px', background: selectedTemplate.preview_status === 'ready' ? '#dcfce7' : selectedTemplate.preview_status === 'failed' ? '#fee2e2' : '#fef3c7', color: selectedTemplate.preview_status === 'ready' ? '#166534' : selectedTemplate.preview_status === 'failed' ? '#991b1b' : '#92400e' }}>
+                                                        {getPreviewStatusLabel(selectedTemplate)}
+                                                    </span>
+                                                    {selectedTemplate.preview_url && (
+                                                        <a href={selectedTemplate.preview_url} target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: '6px', fontSize: '13px', color: '#2563eb' }}>Open preview in new tab</a>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleGeneratePreview(selectedTemplate)}
+                                                    disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling}
+                                                    title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : selectedTemplate.preview_status === 'generating' || previewPolling ? 'Generating…' : ''}
+                                                    style={{ padding: '8px 16px', background: (selectedTemplate.preview_status === 'ready' ? '#e0f2fe' : '#2563eb'), color: (selectedTemplate.preview_status === 'ready' ? '#0369a1' : 'white'), border: '1px solid ' + (selectedTemplate.preview_status === 'ready' ? '#0ea5e9' : '#2563eb'), borderRadius: '6px', fontSize: '13px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}
+                                                >
+                                                    {selectedTemplate.preview_status === 'generating' || previewPolling ? 'Generating…' : selectedTemplate.preview_status === 'ready' ? 'Regenerate Preview' : 'Generate Preview'}
+                                                </button>
+                                            </div>
+                                            {selectedTemplate.preview_status === 'failed' && selectedTemplate.preview_error && (
+                                                <div style={{ padding: '12px', background: '#fee2e2', borderRadius: '8px', color: '#991b1b', fontSize: '13px', marginBottom: '12px' }}>{selectedTemplate.preview_error}</div>
+                                            )}
+                                            {!selectedTemplate.blueprint_json && (
+                                                <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Generate a blueprint first in the Blueprint tab, then generate the preview.</p>
+                                            )}
                                             {selectedTemplate.preview_status === 'ready' && selectedTemplate.preview_url ? (
                                                 <iframe title="Preview" src={selectedTemplate.preview_url} style={{ width: '100%', height: '400px', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
-                                            ) : (
-                                                <p style={{ margin: 0, color: '#64748b' }}>Generate preview first. Status: {getPreviewStatusLabel(selectedTemplate)}</p>
+                                            ) : selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'failed' && (
+                                                <p style={{ margin: 0, color: '#64748b' }}>Status: {getPreviewStatusLabel(selectedTemplate)}. Click Generate Preview to build the static site.</p>
                                             )}
                                         </div>
                                     )}
                                     {templateDetailSubTab === 'validation' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
-                                            <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{JSON.stringify(selectedTemplate.validation_results_json || {}, null, 2)}</pre>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                                                <button type="button" onClick={() => handleRunValidation(selectedTemplate, selectedTemplate.validation_status === 'passed')} disabled={!canEditTemplates || validationJobPolling || selectedTemplate.preview_status !== 'ready'} title={selectedTemplate.preview_status !== 'ready' ? 'Generate preview first' : ''} style={{ padding: '8px 16px', background: validationJobPolling ? '#94a3b8' : '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: (canEditTemplates && !validationJobPolling && selectedTemplate.preview_status === 'ready') ? 'pointer' : 'not-allowed' }}>{validationJobPolling ? 'Running…' : 'Run Validation'}</button>
+                                                <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', background: (selectedTemplate.validation_status || '') === 'passed' ? '#dcfce7' : (selectedTemplate.validation_status || '') === 'failed' ? '#fee2e2' : (selectedTemplate.validation_status || '') === 'running' ? '#fef3c7' : '#f1f5f9', color: (selectedTemplate.validation_status || '') === 'passed' ? '#166534' : (selectedTemplate.validation_status || '') === 'failed' ? '#991b1b' : '#475569' }}>{(selectedTemplate.validation_status || 'not_run').replace('_', ' ')}</span>
+                                                {selectedTemplate.validation_last_run_at && <span style={{ color: '#64748b', fontSize: '12px' }}>Last run: {new Date(selectedTemplate.validation_last_run_at).toLocaleString()}</span>}
+                                            </div>
+                                            {selectedTemplate.preview_status !== 'ready' && <p style={{ margin: 0, color: '#64748b' }}>Generate preview first, then run validation.</p>}
+                                            {(() => {
+                                                const vr = selectedTemplate.validation_results_json as Record<string, unknown> | undefined;
+                                                if (!vr || Object.keys(vr).length === 0) return <p style={{ margin: 0, color: '#64748b' }}>No validation results yet.</p>;
+                                                const lh = vr.lighthouse as Record<string, unknown> | undefined;
+                                                const axe = vr.axe as Record<string, unknown> | undefined;
+                                                const content = vr.content as Record<string, unknown> | undefined;
+                                                const failed = (vr.failed_reasons as string[]) || [];
+                                                return (
+                                                    <>
+                                                        {lh && !lh.error && (lh.scores as Record<string, number>) && (
+                                                            <div style={{ marginBottom: '12px' }}>
+                                                                <h5 style={{ margin: '0 0 6px' }}>Lighthouse</h5>
+                                                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                                    {Object.entries(lh.scores as Record<string, number>).map(([k, v]) => (
+                                                                        <span key={k} style={{ background: '#e2e8f0', padding: '4px 8px', borderRadius: '4px' }}>{k}: {typeof v === 'number' ? Math.round(v * 100) : v}</span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {axe && !axe.error && (
+                                                            <div style={{ marginBottom: '12px' }}>
+                                                                <h5 style={{ margin: '0 0 6px' }}>Axe</h5>
+                                                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                                    {['critical', 'serious', 'moderate', 'minor'].map(imp => (
+                                                                        <span key={imp} style={{ background: '#e2e8f0', padding: '4px 8px', borderRadius: '4px' }}>{imp}: {Number((axe as Record<string, number>)[imp] ?? 0)}</span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {content && !content.error && (
+                                                            <div style={{ marginBottom: '12px' }}>
+                                                                <h5 style={{ margin: '0 0 6px' }}>Content</h5>
+                                                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                                    {['has_home', 'has_cta', 'has_contact_or_lead', 'has_viewport_meta'].map(k => (
+                                                                        <span key={k} style={{ background: (content as Record<string, boolean>)[k] ? '#dcfce7' : '#fee2e2', padding: '4px 8px', borderRadius: '4px' }}>{k}: {(content as Record<string, boolean>)[k] ? 'yes' : 'no'}</span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {failed.length > 0 && (
+                                                            <div style={{ marginBottom: '12px' }}>
+                                                                <h5 style={{ margin: '0 0 6px' }}>Failed reasons</h5>
+                                                                <ul style={{ margin: 0, paddingLeft: '20px', color: '#991b1b' }}>{failed.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                                                                <button type="button" onClick={() => setTemplateDetailSubTab('blueprint')} style={{ marginTop: '8px', padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Fix Blueprint</button>
+                                                            </div>
+                                                        )}
+                                                        <details style={{ marginTop: '12px' }}>
+                                                            <summary style={{ cursor: 'pointer', color: '#64748b' }}>Raw results</summary>
+                                                            <pre style={{ margin: '8px 0 0', whiteSpace: 'pre-wrap', fontSize: '11px' }}>{JSON.stringify(vr, null, 2)}</pre>
+                                                        </details>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     )}
                                     {templateDetailSubTab === 'versions' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>Version: {selectedTemplate.version ?? 1}. Changelog: {selectedTemplate.changelog || '—'}</div>
+                                    )}
+                                    {templateDetailSubTab === 'performance' && (
+                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+                                            <h4 style={{ margin: '0 0 12px' }}>Performance metrics</h4>
+                                            {selectedTemplate.performance_metrics_json && typeof selectedTemplate.performance_metrics_json === 'object' ? (
+                                                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                                                    {Object.entries(selectedTemplate.performance_metrics_json).map(([k, v]) => (
+                                                        <li key={k}><strong>{k}</strong>: {String(v)}</li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <p style={{ margin: 0, color: '#64748b' }}>No metrics yet. Run &quot;Template metrics&quot; in Admin config to aggregate.</p>
+                                            )}
+                                        </div>
+                                    )}
+                                    {templateDetailSubTab === 'evolution' && (
+                                        <EvolutionTab templateId={selectedTemplate.id} />
                                     )}
                                 </>
                             )}
@@ -1438,21 +1803,22 @@ export default function ConfigurationPage() {
                                     const isGitTemplate = previewTemplate.source_type === 'git' || (!previewTemplate.source_type && !!previewTemplate.repo_url);
                                     return (
                                         <>
-                                {previewTemplate.preview_status === 'generating' ? (
+                                {previewTemplate.preview_status === 'generating' || previewPolling ? (
                                     <button disabled style={{ padding: '8px 16px', background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '6px' }}>
                                         Generating...
                                     </button>
                                 ) : (
                                     <button
                                         onClick={() => handleGeneratePreview(previewTemplate)}
-                                        disabled={isGitTemplate || !canEditTemplates}
+                                        disabled={isGitTemplate || !canEditTemplates || !previewTemplate.blueprint_json}
+                                        title={!previewTemplate.blueprint_json ? 'Generate blueprint first' : ''}
                                         style={{
                                             padding: '8px 16px',
                                             background: '#2563eb',
                                             color: 'white',
                                             border: 'none',
                                             borderRadius: '6px',
-                                            cursor: isGitTemplate || !canEditTemplates ? 'not-allowed' : 'pointer',
+                                            cursor: (isGitTemplate || !canEditTemplates || !previewTemplate.blueprint_json) ? 'not-allowed' : 'pointer',
                                             opacity: isGitTemplate || !canEditTemplates ? 0.6 : 1,
                                         }}
                                     >
@@ -1807,6 +2173,13 @@ export default function ConfigurationPage() {
                             {savingGates ? 'Saving...' : 'Save Global Gates'}
                         </button>
                     </div>
+                </section>
+                )}
+
+                {activeConfigTab === 'learning' && (
+                <section style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '24px' }}>
+                    <PageHeader title="Learning Proposals" purpose="Policy suggestions from delivery outcomes and sentiment (shadow mode). Review and apply manually." variant="section" />
+                    <LearningProposalsPanel />
                 </section>
                 )}
 

@@ -675,6 +675,13 @@ export default function ProjectDetailPage() {
         tester_user_id: ''
     });
     const [assigningTeam, setAssigningTeam] = useState(false);
+    const [assignmentRationale, setAssignmentRationale] = useState<Record<string, { user_id?: string; reasons?: string[]; score?: number; auto_assigned?: boolean }>>({});
+    const [autoAssigning, setAutoAssigning] = useState(false);
+    const [showOverrideModal, setShowOverrideModal] = useState(false);
+    const [overrideForm, setOverrideForm] = useState({ role: 'builder', user_id: '', comment: '' });
+    const [overrideSubmitting, setOverrideSubmitting] = useState(false);
+    const [clientPreview, setClientPreview] = useState<{ preview_url?: string; thumbnail_url?: string; status?: string; last_generated_at?: string; error?: string }>({});
+    const [regeneratingPreview, setRegeneratingPreview] = useState(false);
 
     // Capacity State
     const [capacityByRole, setCapacityByRole] = useState<Record<string, UserCapacity[]>>({});
@@ -709,6 +716,7 @@ export default function ProjectDetailPage() {
 
     // Role and assignment checks
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+    const canRunAutoAssign = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const isExecutiveAdmin = user?.role === 'ADMIN';
     const canEnqueueStage = (stage: string) => {
         if (!user?.role) return false;
@@ -802,6 +810,8 @@ export default function ProjectDetailPage() {
 
             // Load team assignments (don't block if it fails)
             loadTeamData().catch(err => console.error('Team data load error:', err));
+            // Load client preview (project members + Admin/Manager)
+            projectsAPI.getClientPreview(projectId).then(r => setClientPreview(r.data || {})).catch(() => setClientPreview({}));
         } catch (error) {
             console.error('Failed to load project data:', error);
             setError('Failed to load project data');
@@ -900,14 +910,24 @@ export default function ProjectDetailPage() {
             const allowedToViewTeam = storedUser?.role && ['ADMIN', 'MANAGER', 'PC'].includes(storedUser.role);
             let teamData: any = { team: {}, permissions: {}, assignment_sequence: {} };
             if (allowedToViewTeam) {
-                const teamRes = await projectsAPI.getTeam(projectId).catch(e => {
-                    console.error('Error loading team:', e);
-                    return { data: { team: {}, permissions: {}, assignment_sequence: {} } };
-                });
+                const [teamRes, assignmentsRes] = await Promise.all([
+                    projectsAPI.getTeam(projectId).catch(e => {
+                        console.error('Error loading team:', e);
+                        return { data: { team: {}, permissions: {}, assignment_sequence: {} } };
+                    }),
+                    projectsAPI.getAssignments(projectId).catch(e => {
+                        console.error('Error loading assignments:', e);
+                        return { data: { team: {}, rationale: {} } };
+                    }),
+                ]);
                 teamData = teamRes.data || { team: {}, permissions: {}, assignment_sequence: {} };
-                setTeamAssignments(teamData?.team || teamData || {});
+                setTeamAssignments(teamData?.team || teamData?.teamAssignments || {});
                 setTeamPermissions(teamData?.permissions || {});
                 setAssignmentSequence(teamData?.assignment_sequence || {});
+                const assignData = assignmentsRes?.data;
+                if (assignData?.rationale && typeof assignData.rationale === 'object') {
+                    setAssignmentRationale(assignData.rationale);
+                }
             }
 
             // Load available users by role with capacity info
@@ -2795,12 +2815,102 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
+                {/* Client Preview - visible to project members and Admin/Manager */}
+                <div className="client-preview-section">
+                    <div className="section-header">
+                        <h2>🌐 Client Preview</h2>
+                        <div className="section-header-actions">
+                            {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
+                                <button
+                                    className="btn-secondary"
+                                    disabled={regeneratingPreview || clientPreview.status === 'generating'}
+                                    onClick={async () => {
+                                        setRegeneratingPreview(true);
+                                        try {
+                                            await projectsAPI.generateClientPreview(projectId, { force: true });
+                                            setSuccess('Client preview generation started. Refresh in a moment.');
+                                            const res = await projectsAPI.getClientPreview(projectId);
+                                            setClientPreview(res.data || {});
+                                        } catch (e: any) {
+                                            setError(e.response?.data?.detail || 'Generate preview failed');
+                                        } finally {
+                                            setRegeneratingPreview(false);
+                                        }
+                                    }}
+                                >
+                                    {regeneratingPreview || clientPreview.status === 'generating' ? '⏳ Generating…' : '🔄 Regenerate Preview'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="client-preview-content">
+                        {clientPreview.status === 'ready' && (
+                            <>
+                                {clientPreview.thumbnail_url && (
+                                    <div className="client-preview-thumb">
+                                        <img src={clientPreview.thumbnail_url} alt="Preview thumbnail" />
+                                    </div>
+                                )}
+                                {clientPreview.preview_url && (
+                                    <a href={clientPreview.preview_url} target="_blank" rel="noopener noreferrer" className="btn-add">
+                                        Open Preview
+                                    </a>
+                                )}
+                                {clientPreview.last_generated_at && (
+                                    <p className="client-preview-meta">Last generated: {new Date(clientPreview.last_generated_at).toLocaleString()}</p>
+                                )}
+                            </>
+                        )}
+                        {clientPreview.status === 'generating' && (
+                            <p className="client-preview-status generating">Preview is being generated…</p>
+                        )}
+                        {clientPreview.status === 'failed' && (
+                            <>
+                                <p className="client-preview-status failed">Preview generation failed.</p>
+                                {clientPreview.error && <p className="client-preview-error">{clientPreview.error}</p>}
+                                {clientPreview.last_generated_at && <p className="client-preview-meta">Last attempt: {new Date(clientPreview.last_generated_at).toLocaleString()}</p>}
+                            </>
+                        )}
+                        {(clientPreview.status === 'not_generated' || !clientPreview.status) && (
+                            <p className="client-preview-status">No preview yet. Complete onboarding and select a template, then generate preview.</p>
+                        )}
+                        <span className={`client-preview-badge status-${clientPreview.status || 'not_generated'}`}>
+                            {clientPreview.status === 'ready' ? 'Ready' : clientPreview.status === 'generating' ? 'Generating' : clientPreview.status === 'failed' ? 'Failed' : 'Not generated'}
+                        </span>
+                    </div>
+                </div>
+
                 {/* Team Assignment Section - Only visible to Admin, Manager, and PC */}
                 {canViewTeam && (
                     <div className="team-section">
                         <div className="section-header">
                             <h2>👥 Team Assignment</h2>
                             <div className="section-header-actions">
+                                {canRunAutoAssign && (
+                                    <button
+                                        className="btn-secondary"
+                                        onClick={async () => {
+                                            setAutoAssigning(true);
+                                            try {
+                                                await projectsAPI.autoAssign(projectId, { force: true });
+                                                setSuccess('Auto-assignment job enqueued. Refresh in a moment.');
+                                                await loadTeamData();
+                                            } catch (e: any) {
+                                                setError(e.response?.data?.detail || 'Auto-assign failed');
+                                            } finally {
+                                                setAutoAssigning(false);
+                                            }
+                                        }}
+                                        disabled={autoAssigning}
+                                    >
+                                        {autoAssigning ? '⏳ Enqueuing…' : '🔄 Re-run auto-assign'}
+                                    </button>
+                                )}
+                                {canRunAutoAssign && (
+                                    <button className="btn-secondary" onClick={() => setShowOverrideModal(true)}>
+                                        Override assignment
+                                    </button>
+                                )}
                                 {canAssignTeam && (
                                     <button className="btn-add" onClick={() => setShowTeamModal(true)}>
                                         ✏️ Manage Team
@@ -2820,6 +2930,17 @@ export default function ProjectDetailPage() {
                                         <div className="team-member-info">
                                             <span className="member-name">{teamAssignments.consultant.name}</span>
                                             <span className="member-email">{teamAssignments.consultant.email}</span>
+                                            {assignmentRationale.consultant && (
+                                                <span className={`assignment-badge ${assignmentRationale.consultant.auto_assigned ? 'auto' : 'manual'}`}>
+                                                    {assignmentRationale.consultant.auto_assigned ? 'Auto-assigned' : 'Manually overridden'}
+                                                </span>
+                                            )}
+                                            {assignmentRationale.consultant?.reasons?.length ? (
+                                                <details className="rationale-details">
+                                                    <summary>Rationale</summary>
+                                                    <ul>{assignmentRationale.consultant.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                                                </details>
+                                            ) : null}
                                         </div>
                                     ) : (
                                         <div className="unassigned-label">Not assigned</div>
@@ -2845,6 +2966,17 @@ export default function ProjectDetailPage() {
                                     <div className="team-member-info">
                                         <span className="member-name">{teamAssignments.builder.name}</span>
                                         <span className="member-email">{teamAssignments.builder.email}</span>
+                                        {assignmentRationale.builder && (
+                                            <span className={`assignment-badge ${assignmentRationale.builder.auto_assigned ? 'auto' : 'manual'}`}>
+                                                {assignmentRationale.builder.auto_assigned ? 'Auto-assigned' : 'Manually overridden'}
+                                            </span>
+                                        )}
+                                        {assignmentRationale.builder?.reasons?.length ? (
+                                            <details className="rationale-details">
+                                                <summary>Rationale</summary>
+                                                <ul>{assignmentRationale.builder.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                                            </details>
+                                        ) : null}
                                     </div>
                                 ) : (
                                     <div className="unassigned-label">Not assigned</div>
@@ -2857,6 +2989,17 @@ export default function ProjectDetailPage() {
                                     <div className="team-member-info">
                                         <span className="member-name">{teamAssignments.tester.name}</span>
                                         <span className="member-email">{teamAssignments.tester.email}</span>
+                                        {assignmentRationale.tester && (
+                                            <span className={`assignment-badge ${assignmentRationale.tester.auto_assigned ? 'auto' : 'manual'}`}>
+                                                {assignmentRationale.tester.auto_assigned ? 'Auto-assigned' : 'Manually overridden'}
+                                            </span>
+                                        )}
+                                        {assignmentRationale.tester?.reasons?.length ? (
+                                            <details className="rationale-details">
+                                                <summary>Rationale</summary>
+                                                <ul>{assignmentRationale.tester.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                                            </details>
+                                        ) : null}
                                     </div>
                                 ) : (
                                     <div className="unassigned-label">Not assigned</div>
@@ -4200,6 +4343,75 @@ export default function ProjectDetailPage() {
                                     disabled={assigningTeam}
                                 >
                                     {assigningTeam ? 'Saving...' : 'Save Assignments'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Override Assignment Modal (Admin/Manager) */}
+                {showOverrideModal && canRunAutoAssign && (
+                    <div className="modal-overlay" onClick={() => setShowOverrideModal(false)}>
+                        <div className="modal" onClick={(e) => e.stopPropagation()}>
+                            <h2>Override assignment</h2>
+                            <p className="modal-description">Select role and user. This will replace the current assignee and record the override.</p>
+                            <div className="form-group">
+                                <label>Role</label>
+                                <select
+                                    value={overrideForm.role}
+                                    onChange={(e) => setOverrideForm({ ...overrideForm, role: e.target.value, user_id: '' })}
+                                >
+                                    <option value="consultant">Consultant</option>
+                                    <option value="builder">Builder</option>
+                                    <option value="tester">Tester</option>
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>User</label>
+                                <select
+                                    value={overrideForm.user_id}
+                                    onChange={(e) => setOverrideForm({ ...overrideForm, user_id: e.target.value })}
+                                >
+                                    <option value="">Select user...</option>
+                                    {(overrideForm.role === 'consultant' ? availableConsultants : overrideForm.role === 'builder' ? availableBuilders2 : availableTesters).map((u: any) => (
+                                        <option key={u.id} value={u.id}>{u.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>Comment (optional)</label>
+                                <textarea
+                                    value={overrideForm.comment}
+                                    onChange={(e) => setOverrideForm({ ...overrideForm, comment: e.target.value })}
+                                    placeholder="Reason for override"
+                                    rows={2}
+                                />
+                            </div>
+                            <div className="modal-actions">
+                                <button className="btn-cancel" onClick={() => setShowOverrideModal(false)}>Cancel</button>
+                                <button
+                                    className="btn-submit"
+                                    disabled={!overrideForm.user_id || overrideSubmitting}
+                                    onClick={async () => {
+                                        if (!overrideForm.user_id) return;
+                                        setOverrideSubmitting(true);
+                                        try {
+                                            await projectsAPI.overrideAssignment(projectId, {
+                                                role: overrideForm.role,
+                                                user_id: overrideForm.user_id,
+                                                comment: overrideForm.comment || undefined,
+                                            });
+                                            setSuccess('Assignment overridden.');
+                                            setShowOverrideModal(false);
+                                            await loadTeamData();
+                                        } catch (e: any) {
+                                            setError(e.response?.data?.detail || 'Override failed');
+                                        } finally {
+                                            setOverrideSubmitting(false);
+                                        }
+                                    }}
+                                >
+                                    {overrideSubmitting ? 'Saving...' : 'Override'}
                                 </button>
                             </div>
                         </div>

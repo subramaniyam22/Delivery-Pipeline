@@ -465,7 +465,23 @@ def update_onboarding_data(
     onboarding.completion_percentage = calculate_completion_percentage(onboarding, required_fields)
     
     db.commit()
-    
+
+    try:
+        from app.services.contract_service import create_or_update_contract
+        create_or_update_contract(db, project_id, source="user:onboarding_update")
+    except Exception as e:
+        logger.warning("Contract sync after onboarding update failed: %s", e)
+    try:
+        from app.services.hitl_service import invalidate_pending_approvals_if_stale
+        invalidate_pending_approvals_if_stale(db, project_id)
+    except Exception as e:
+        logger.warning("HITL invalidation after onboarding update failed: %s", e)
+    try:
+        from app.services.pipeline_orchestrator import auto_advance
+        auto_advance(db, project_id, trigger_source="onboarding_updated")
+    except Exception as e:
+        logger.warning("Pipeline auto_advance after onboarding update failed: %s", e)
+
     # Auto-update task status based on filled fields
     auto_update_task_status(db, project_id, onboarding)
     
@@ -667,6 +683,12 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
     required_fields = resolve_required_fields(db, project)
     missing_fields = get_missing_fields(onboarding, required_fields)
     
+    client_preview = None
+    if project and hasattr(project, "client_preview_status"):
+        client_preview = {
+            "preview_url": getattr(project, "client_preview_url", None),
+            "status": getattr(project, "client_preview_status", "not_generated"),
+        }
     return {
         "project_title": project.title if project else "Unknown Project",
         "project_id": str(onboarding.project_id),
@@ -674,6 +696,7 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
         "missing_fields": missing_fields,
         "submitted_at": onboarding.submitted_at,
         "missing_fields_eta_json": onboarding.missing_fields_eta_json,
+        "client_preview": client_preview,
         "data": {
             "logo_url": onboarding.logo_url,
             "logo_file_path": onboarding.logo_file_path,
@@ -707,8 +730,13 @@ def get_active_templates(db: Session):
         from sqlalchemy import or_
         db_templates = db.query(TemplateRegistry).filter(
             TemplateRegistry.is_active == True,
-            or_(TemplateRegistry.status == "published", TemplateRegistry.is_published == True)
+            or_(TemplateRegistry.status == "published", TemplateRegistry.is_published == True),
+            TemplateRegistry.preview_status == "ready",
+            TemplateRegistry.validation_status == "passed",
         ).all()
+        # Prefer high-performing templates; hide deprecated (Prompt 9)
+        db_templates = [t for t in db_templates if not getattr(t, "is_deprecated", False)]
+        db_templates.sort(key=lambda t: (float((getattr(t, "performance_metrics_json", None) or {}).get("weighted_score") or 0)), reverse=True)
         if db_templates:
             out = []
             for t in db_templates:
@@ -846,6 +874,22 @@ async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db:
         onboarding.ai_review_notes = f"AI Review Failed: {str(e)}"
 
     db.commit()
+
+    try:
+        from app.services.contract_service import create_or_update_contract
+        create_or_update_contract(db, project.id, source="user:onboarding_submit")
+    except Exception as e:
+        logger.warning("Contract sync after onboarding submit failed: %s", e)
+    try:
+        from app.services.hitl_service import invalidate_pending_approvals_if_stale
+        invalidate_pending_approvals_if_stale(db, project.id)
+    except Exception as e:
+        logger.warning("HITL invalidation after onboarding submit failed: %s", e)
+    try:
+        from app.services.pipeline_orchestrator import auto_advance
+        auto_advance(db, project.id, trigger_source="onboarding_saved")
+    except Exception as e:
+        logger.warning("Pipeline auto_advance after onboarding submit failed: %s", e)
 
     notification_sent = False
     notification_sent = False

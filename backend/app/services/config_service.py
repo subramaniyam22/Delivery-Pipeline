@@ -81,7 +81,28 @@ DEFAULT_CONFIGS = {
             "seo": 0.9,
             "best_practices": 0.8
         },
+        "lighthouse": {
+            "performance_min": 0.6,
+            "accessibility_min": 0.9,
+            "best_practices_min": 0.8,
+            "seo_min": 0.8
+        },
+        "axe": {
+            "critical_max": 0,
+            "serious_max": 0,
+            "moderate_max": 5
+        },
         "axe_max_critical": 0,
+        "content": {
+            "require_home": True,
+            "require_cta": True,
+            "require_contact_or_lead": True,
+            "require_mobile_meta": True
+        },
+        "timeouts": {
+            "lighthouse_sec": 120,
+            "axe_sec": 60
+        },
         "stage_timeouts_minutes": {
             "build": 30,
             "test": 15,
