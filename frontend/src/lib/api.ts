@@ -414,8 +414,14 @@ export const configurationAPI = {
         api.post(`/api/templates/${id}/generate-preview`, body || {}),
     generateBlueprint: (id: string, body?: { regenerate?: boolean; max_iterations?: number }) =>
         api.post(`/api/templates/${id}/generate-blueprint`, body || {}),
+    generateBlueprintRun: (id: string, body?: { regenerate?: boolean; max_iterations?: number }) =>
+        api.post(`/api/templates/${id}/blueprint/generate`, body || {}),
     getTemplateBlueprint: (id: string) => api.get(`/api/templates/${id}/blueprint`),
     getTemplateBlueprintJob: (id: string) => api.get(`/api/templates/${id}/blueprint-job`),
+    getTemplateBlueprintStatus: (id: string) => api.get(`/api/templates/${id}/blueprint/status`),
+    listTemplateBlueprintRuns: (id: string) => api.get(`/api/templates/${id}/blueprint/runs`),
+    getBlueprintRunDetails: (runId: string) => api.get(`/api/blueprint-runs/${runId}`),
+    getSystemHealth: () => api.get('/system/health'),
     duplicateTemplate: (id: string) => api.post(`/api/templates/${id}/duplicate`),
     validateTemplate: (id: string, body?: { force?: boolean }) =>
         api.post(`/api/templates/${id}/validate`, body || {}),

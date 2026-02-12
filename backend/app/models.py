@@ -452,12 +452,15 @@ class TemplateRegistry(Base):
     version = Column(Integer, default=1)
     changelog = Column(Text, nullable=True)
     parent_template_id = Column(UUID(as_uuid=True), nullable=True)
-    # Blueprint (AI-generated, versioned)
+    # Blueprint (AI-generated, versioned). Denormalized from latest TemplateBlueprintRun.
     blueprint_json = Column(JSONB, nullable=True)
     blueprint_schema_version = Column(Integer, default=1, nullable=False)
     blueprint_quality_json = Column(JSONB, default=dict)
     prompt_log_json = Column(JSONB, default=list)
     blueprint_hash = Column(String(64), nullable=True)
+    blueprint_status = Column(String(30), nullable=True)  # idle | queued | generating | validating | ready | failed
+    blueprint_last_run_id = Column(UUID(as_uuid=True), nullable=True)  # FK set in migration after table exists
+    blueprint_updated_at = Column(DateTime, nullable=True)
     # Template performance metrics (Prompt 9, aggregated from sentiment + delivery_outcomes)
     performance_metrics_json = Column(JSONB, default=dict)  # usage_count, avg_sentiment, avg_cycle_time_days, avg_defects, conversion_proxy, last_updated_at
     is_deprecated = Column(Boolean, default=False)
@@ -481,13 +484,36 @@ class TemplateEvolutionProposal(Base):
     template = relationship("TemplateRegistry", backref="evolution_proposals")
 
 
+class TemplateBlueprintRun(Base):
+    """Source of truth for a single blueprint generation run (queued -> generating -> validating -> ready/failed)."""
+    __tablename__ = "template_blueprint_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String(30), default="queued", nullable=False, index=True)  # queued | generating | validating | ready | failed
+    schema_version = Column(String(20), default="v1", nullable=False)
+    model_used = Column(String(128), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    error_code = Column(String(64), nullable=True)  # OPENAI_ERROR | VALIDATION_ERROR | PARSE_ERROR | TIMEOUT | INTERNAL
+    error_message = Column(String(1024), nullable=True)  # short, safe for UI
+    error_details = Column(Text, nullable=True)  # admin only: traceback, validation errors
+    raw_output = Column(Text, nullable=True)  # redacted LLM output, admin only
+    blueprint_json = Column(JSONB, nullable=True)  # only when status=ready
+    attempt_number = Column(Integer, default=1, nullable=False)
+    correlation_id = Column(String(64), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    template = relationship("TemplateRegistry", backref="blueprint_runs")
+
+
 class TemplateBlueprintJob(Base):
     __tablename__ = "template_blueprint_jobs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
     status = Column(String(30), default="queued", nullable=False, index=True)  # queued | running | success | failed
-    payload_json = Column(JSONB, default=dict)
+    payload_json = Column(JSONB, default=dict)  # run_id, regenerate, max_iterations
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)

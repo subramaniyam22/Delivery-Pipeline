@@ -53,6 +53,9 @@ interface TemplateRegistry {
     blueprint_schema_version?: number | null;
     blueprint_quality_json?: Record<string, unknown> | null;
     blueprint_hash?: string | null;
+    blueprint_status?: string | null;
+    blueprint_last_run_id?: string | null;
+    blueprint_updated_at?: string | null;
 }
 
 function EvolutionTab({ templateId }: { templateId: string }) {
@@ -217,7 +220,24 @@ export default function ConfigurationPage() {
     const [previewTemplate, setPreviewTemplate] = useState<TemplateRegistry | null>(null);
     const [previewPolling, setPreviewPolling] = useState(false);
     const [blueprintJobPolling, setBlueprintJobPolling] = useState(false);
+    const [blueprintStatusData, setBlueprintStatusData] = useState<{ blueprint_status?: string; latest_run?: { run_id: string; status: string; error_message?: string }; blueprint_preview?: { pages_count: number } } | null>(null);
+    const [workerHealthy, setWorkerHealthy] = useState<boolean | null>(null);
+    const [blueprintRunDetails, setBlueprintRunDetails] = useState<Record<string, unknown> | null>(null);
     const [validationJobPolling, setValidationJobPolling] = useState(false);
+
+    useEffect(() => {
+        configurationAPI.getSystemHealth().then((r: any) => {
+            const d = r.data;
+            setWorkerHealthy(d?.worker_healthy !== false);
+        }).catch(() => setWorkerHealthy(false));
+    }, []);
+
+    useEffect(() => {
+        if (!selectedTemplateId || templateDetailSubTab !== 'blueprint') return;
+        configurationAPI.getTemplateBlueprintStatus(selectedTemplateId)
+            .then((r: any) => setBlueprintStatusData(r.data))
+            .catch(() => setBlueprintStatusData(null));
+    }, [selectedTemplateId, templateDetailSubTab]);
     const [newTemplate, setNewTemplate] = useState({
         name: '',
         repo_url: '',
@@ -946,12 +966,36 @@ export default function ConfigurationPage() {
         }
     };
 
+    const pollBlueprintStatus = async (templateId: string) => {
+        setBlueprintJobPolling(true);
+        const start = Date.now();
+        let done = false;
+        while (!done && Date.now() - start < 120000) {
+            await new Promise(r => setTimeout(r, 3000));
+            try {
+                const res = await configurationAPI.getTemplateBlueprintStatus(templateId);
+                const d = res.data as { blueprint_status?: string; latest_run?: { run_id: string; status: string; error_message?: string } };
+                setBlueprintStatusData(d);
+                const status = d?.latest_run?.status ?? d?.blueprint_status;
+                if (status === 'ready' || status === 'failed') {
+                    done = true;
+                    const updated = await configurationAPI.getTemplate(templateId);
+                    updateTemplateInState(updated.data as TemplateRegistry);
+                    setSuccess(status === 'ready' ? 'Blueprint generation finished' : 'Blueprint generation failed');
+                }
+            } catch {
+                done = true;
+            }
+        }
+        setBlueprintJobPolling(false);
+    };
+
     const pollBlueprintJob = async (templateId: string) => {
         setBlueprintJobPolling(true);
         const start = Date.now();
         let done = false;
         while (!done && Date.now() - start < 120000) {
-            await new Promise(r => setTimeout(r, 2500));
+            await new Promise(r => setTimeout(r, 3000));
             try {
                 const res = await configurationAPI.getTemplateBlueprintJob(templateId);
                 const d = res.data as { status?: string };
@@ -961,6 +1005,8 @@ export default function ConfigurationPage() {
                     updateTemplateInState(updated.data as TemplateRegistry);
                     setSuccess(d.status === 'success' ? 'Blueprint generation finished' : 'Blueprint generation failed');
                 }
+                const statusRes = await configurationAPI.getTemplateBlueprintStatus(templateId);
+                setBlueprintStatusData(statusRes.data as { blueprint_status?: string; latest_run?: { run_id: string; status: string; error_message?: string } });
             } catch {
                 done = true;
             }
@@ -976,6 +1022,7 @@ export default function ConfigurationPage() {
         try {
             await configurationAPI.generateBlueprint(template.id, { regenerate, max_iterations: 3 });
             setSuccess(regenerate ? 'Blueprint regeneration started' : 'Blueprint generation started');
+            setBlueprintStatusData({ blueprint_status: 'queued', latest_run: { run_id: '', status: 'queued' } });
             pollBlueprintJob(template.id);
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to start blueprint generation');
@@ -1344,6 +1391,9 @@ export default function ConfigurationPage() {
                                     )}
                                     {templateDetailSubTab === 'blueprint' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+                                            {workerHealthy === false && (
+                                                <div style={{ padding: '12px', background: '#fef3c7', borderRadius: '8px', color: '#92400e', marginBottom: '12px' }}>Worker not running. Blueprint jobs will not execute.</div>
+                                            )}
                                             {(() => {
                                                 const bp = selectedTemplate.blueprint_json as Record<string, unknown> | undefined;
                                                 const quality = selectedTemplate.blueprint_quality_json as Record<string, unknown> | undefined;
@@ -1353,15 +1403,36 @@ export default function ConfigurationPage() {
                                                 const status = quality?.status as string | undefined;
                                                 const jobRunning = blueprintJobPolling;
                                                 const hasBlueprint = !!bp;
+                                                const runStatus = blueprintStatusData?.latest_run?.status ?? blueprintStatusData?.blueprint_status ?? (hasBlueprint ? 'ready' : 'idle');
+                                                const statusBadge = runStatus === 'ready' ? 'Ready' : runStatus === 'failed' ? 'Failed' : runStatus === 'queued' ? 'Queued' : runStatus === 'generating' ? 'Generating' : runStatus === 'validating' ? 'Validating' : 'Idle';
+                                                const isInProgress = runStatus === 'queued' || runStatus === 'generating' || runStatus === 'validating';
+                                                const errorMessage = blueprintStatusData?.latest_run?.error_message;
+                                                const latestRunId = blueprintStatusData?.latest_run?.run_id;
                                                 return (
                                                     <>
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                                                            <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 500, background: runStatus === 'ready' ? '#dcfce7' : runStatus === 'failed' ? '#fee2e2' : isInProgress ? '#fef3c7' : '#f1f5f9', color: runStatus === 'ready' ? '#166534' : runStatus === 'failed' ? '#991b1b' : isInProgress ? '#92400e' : '#475569' }}>{statusBadge}</span>
                                                             <button type="button" onClick={() => handleGenerateBlueprint(selectedTemplate, !!hasBlueprint)} disabled={!canEditTemplates || jobRunning} style={{ padding: '8px 16px', background: jobRunning ? '#94a3b8' : '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: canEditTemplates && !jobRunning ? 'pointer' : 'not-allowed' }}>{jobRunning ? 'Running…' : hasBlueprint ? 'Regenerate Blueprint' : 'Generate Blueprint'}</button>
                                                             {selectedTemplate.blueprint_schema_version != null && <span style={{ color: '#64748b' }}>Schema v{selectedTemplate.blueprint_schema_version}</span>}
                                                             {selectedTemplate.blueprint_hash && <code style={{ fontSize: '11px', background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{String(selectedTemplate.blueprint_hash).slice(0, 12)}…</code>}
                                                             {status === 'pass' && <span style={{ background: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>Validated</span>}
                                                             {status === 'fail' && <span style={{ background: '#f59e0b', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>Below threshold</span>}
                                                         </div>
+                                                        {isInProgress && <p style={{ margin: '0 0 12px', color: '#64748b' }}>This can take up to 60 seconds.</p>}
+                                                        {runStatus === 'failed' && errorMessage && (
+                                                            <div style={{ marginBottom: '12px', padding: '12px', background: '#fee2e2', borderRadius: '8px', color: '#991b1b' }}>
+                                                                {errorMessage}
+                                                                {latestRunId && canEditTemplates && (
+                                                                    <button type="button" onClick={() => configurationAPI.getBlueprintRunDetails(latestRunId).then((r: any) => setBlueprintRunDetails(r.data)).catch(() => setBlueprintRunDetails(null))} style={{ marginLeft: '12px', padding: '4px 10px', border: '1px solid #991b1b', borderRadius: '6px', background: 'transparent', color: '#991b1b', cursor: 'pointer', fontSize: '12px' }}>View details</button>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {blueprintRunDetails && (
+                                                            <div style={{ marginBottom: '12px', padding: '12px', background: '#f1f5f9', borderRadius: '8px', maxHeight: '300px', overflow: 'auto' }}>
+                                                                <pre style={{ margin: 0, fontSize: '11px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(blueprintRunDetails, null, 2)}</pre>
+                                                                <button type="button" onClick={() => setBlueprintRunDetails(null)} style={{ marginTop: '8px', padding: '4px 8px', fontSize: '12px', cursor: 'pointer' }}>Close</button>
+                                                            </div>
+                                                        )}
                                                         {!hasBlueprint && !jobRunning && <p style={{ margin: 0, color: '#64748b' }}>No blueprint yet. Click Generate Blueprint to create one.</p>}
                                                         {hasBlueprint && bp && (
                                                             <div style={{ marginBottom: '16px' }}>

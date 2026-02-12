@@ -16,7 +16,7 @@ from app.agents.templates.generator import generate_blueprint
 from app.agents.templates.critic import critique_blueprint
 from app.agents.templates.refiner import refine_blueprint
 from app.db import SessionLocal
-from app.models import TemplateBlueprintJob, TemplateRegistry
+from app.models import TemplateBlueprintJob, TemplateBlueprintRun, TemplateRegistry
 from app.templates.blueprint_schema_v1 import validate_blueprint_v1
 from app.templates.quality_rubric import DEFAULT_THRESHOLDS, run_hard_checks
 
@@ -154,16 +154,35 @@ def run_template_blueprint_pipeline(
 
 
 def run_blueprint_job(job_id: UUID) -> None:
-    """Called from background task: load job, run pipeline, update job and template."""
+    """Called from background task. If payload has run_id, process run (new flow); else run legacy pipeline."""
     db = SessionLocal()
     try:
         job = db.query(TemplateBlueprintJob).filter(TemplateBlueprintJob.id == job_id).first()
         if not job or job.status != "queued":
             return
+        payload = job.payload_json or {}
+        run_id_str = payload.get("run_id")
+        if run_id_str:
+            from app.jobs.blueprint_run_worker import run_blueprint_run
+            job.status = "running"
+            job.started_at = datetime.utcnow()
+            db.commit()
+            run_blueprint_run(UUID(run_id_str), db=db)
+            run = db.query(TemplateBlueprintRun).filter(TemplateBlueprintRun.id == UUID(run_id_str)).first()
+            if run:
+                job.finished_at = run.finished_at or datetime.utcnow()
+                job.status = "success" if run.status == "ready" else "failed"
+                job.error_text = run.error_message
+                job.result_json = {"status": run.status, "run_id": run_id_str, "blueprint_json": run.blueprint_json}
+            else:
+                job.finished_at = datetime.utcnow()
+                job.status = "failed"
+                job.error_text = "Run not found"
+            db.commit()
+            return
         job.status = "running"
         job.started_at = datetime.utcnow()
         db.commit()
-        payload = job.payload_json or {}
         result = run_template_blueprint_pipeline(
             template_id=job.template_id,
             max_iterations=payload.get("max_iterations", 3),

@@ -12,7 +12,7 @@ import uuid
 from app.db import get_db
 from app.db import SessionLocal
 from app.deps import get_current_active_user
-from app.models import TemplateRegistry, User, AuditLog, TemplateBlueprintJob, TemplateValidationJob, TemplateEvolutionProposal, ClientSentiment
+from app.models import TemplateRegistry, User, AuditLog, TemplateBlueprintJob, TemplateBlueprintRun, TemplateValidationJob, TemplateEvolutionProposal, ClientSentiment
 from app.schemas import TemplateCreate, TemplateUpdate, TemplateResponse, SetRecommendedBody
 from app.config import settings
 from app.rbac import require_admin_manager
@@ -537,7 +537,7 @@ def publish_template(
     return template
 
 
-@router.post("/api/templates/{template_id}/generate-blueprint")
+@router.post("/api/templates/{template_id}/blueprint/generate")
 def generate_template_blueprint(
     template_id: str,
     background_tasks: BackgroundTasks,
@@ -545,7 +545,7 @@ def generate_template_blueprint(
     current_user: User = Depends(get_current_active_user),
     body: Optional[dict] = None,
 ):
-    """Enqueue blueprint generation (Generator + Critic + Refiner). Admin/Manager only."""
+    """Create a blueprint run (queued), enqueue worker, return run_id. Admin/Manager only."""
     _require_admin_manager(current_user)
     template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
@@ -555,11 +555,24 @@ def generate_template_blueprint(
     max_iterations = int(data.get("max_iterations", 3))
     if regenerate:
         template.status = "draft"
-        db.commit()
+    run = TemplateBlueprintRun(
+        template_id=uuid.UUID(template_id),
+        status="queued",
+        schema_version="v1",
+        model_used=settings.OPENAI_MODEL,
+        attempt_number=1,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    template.blueprint_status = "queued"
+    template.blueprint_last_run_id = run.id
+    template.blueprint_updated_at = datetime.utcnow()
+    db.commit()
     job = TemplateBlueprintJob(
         template_id=uuid.UUID(template_id),
         status="queued",
-        payload_json={"regenerate": regenerate, "max_iterations": max_iterations},
+        payload_json={"run_id": str(run.id), "regenerate": regenerate, "max_iterations": max_iterations},
     )
     db.add(job)
     db.commit()
@@ -567,7 +580,49 @@ def generate_template_blueprint(
     from app.jobs.template_blueprint import run_blueprint_job
     if background_tasks:
         background_tasks.add_task(run_blueprint_job, job.id)
-    return {"job_id": str(job.id), "template_id": template_id}
+    return {"run_id": str(run.id), "status": "queued"}
+
+
+@router.post("/api/templates/{template_id}/generate-blueprint")
+def generate_template_blueprint_legacy(
+    template_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    body: Optional[dict] = None,
+):
+    """Legacy: enqueue blueprint generation. Redirects to new run-based flow."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    data = body or {}
+    regenerate = data.get("regenerate", False)
+    run = TemplateBlueprintRun(
+        template_id=uuid.UUID(template_id),
+        status="queued",
+        schema_version="v1",
+        model_used=settings.OPENAI_MODEL,
+        attempt_number=1,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    template.blueprint_status = "queued"
+    template.blueprint_last_run_id = run.id
+    template.blueprint_updated_at = datetime.utcnow()
+    db.commit()
+    job = TemplateBlueprintJob(
+        template_id=uuid.UUID(template_id),
+        status="queued",
+        payload_json={"run_id": str(run.id), "regenerate": regenerate, "max_iterations": (data.get("max_iterations") or 3)},
+    )
+    db.add(job)
+    db.commit()
+    from app.jobs.template_blueprint import run_blueprint_job
+    if background_tasks:
+        background_tasks.add_task(run_blueprint_job, job.id)
+    return {"job_id": str(job.id), "run_id": str(run.id), "template_id": template_id}
 
 
 @router.get("/api/templates/{template_id}/blueprint")
@@ -593,7 +648,7 @@ def get_template_blueprint_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Return latest blueprint job for template (for polling). Admin/Manager only."""
+    """Return latest blueprint job for template (for polling). Prefer blueprint/status for run-based flow."""
     _require_admin_manager(current_user)
     job = (
         db.query(TemplateBlueprintJob)
@@ -601,15 +656,140 @@ def get_template_blueprint_job(
         .order_by(TemplateBlueprintJob.created_at.desc())
         .first()
     )
+    run = (
+        db.query(TemplateBlueprintRun)
+        .filter(TemplateBlueprintRun.template_id == template_id)
+        .order_by(TemplateBlueprintRun.created_at.desc())
+        .first()
+    )
+    if run:
+        return {
+            "job_id": str(job.id) if job else None,
+            "run_id": str(run.id),
+            "status": run.status,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "error_text": run.error_message,
+            "error_code": run.error_code,
+            "result_json": {"status": run.status, "blueprint_json": run.blueprint_json} if run.blueprint_json else job.result_json if job else None,
+        }
     if not job:
-        return {"job_id": None, "status": None}
+        return {"job_id": None, "run_id": None, "status": None}
     return {
         "job_id": str(job.id),
+        "run_id": None,
         "status": job.status,
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
         "error_text": job.error_text,
         "result_json": job.result_json,
+    }
+
+
+@router.get("/api/templates/{template_id}/blueprint/status")
+def get_template_blueprint_status(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Return template blueprint status and latest run (for polling). Admin/Manager only."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    run = (
+        db.query(TemplateBlueprintRun)
+        .filter(TemplateBlueprintRun.template_id == template_id)
+        .order_by(TemplateBlueprintRun.created_at.desc())
+        .first()
+    )
+    latest_run = None
+    if run:
+        latest_run = {
+            "run_id": str(run.id),
+            "status": run.status,
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+            "error_message": run.error_message,
+            "schema_version": run.schema_version,
+            "model_used": run.model_used,
+        }
+    bp_status = getattr(template, "blueprint_status", None) or ("ready" if template.blueprint_json else "idle")
+    return {
+        "template_id": template_id,
+        "blueprint_status": bp_status,
+        "latest_run": latest_run,
+        "blueprint_preview": _blueprint_preview_summary(template.blueprint_json) if template.blueprint_json else None,
+    }
+
+
+def _blueprint_preview_summary(bp: Any) -> Optional[dict]:
+    if not bp or not isinstance(bp, dict):
+        return None
+    pages = bp.get("pages") or []
+    return {"pages_count": len(pages), "schema_version": bp.get("schema_version")}
+
+
+@router.get("/api/templates/{template_id}/blueprint/runs")
+def list_template_blueprint_runs(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """List last 10 blueprint runs for template. Admin/Manager only."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    runs = (
+        db.query(TemplateBlueprintRun)
+        .filter(TemplateBlueprintRun.template_id == template_id)
+        .order_by(TemplateBlueprintRun.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return {
+        "template_id": template_id,
+        "runs": [
+            {
+                "run_id": str(r.id),
+                "status": r.status,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+                "error_message": r.error_message,
+                "model_used": r.model_used,
+            }
+            for r in runs
+        ],
+    }
+
+
+@router.get("/api/blueprint-runs/{run_id}")
+def get_blueprint_run_details(
+    run_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Full run details including error_details and raw_output (admin only). Admin/Manager only."""
+    _require_admin_manager(current_user)
+    run = db.query(TemplateBlueprintRun).filter(TemplateBlueprintRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return {
+        "run_id": str(run.id),
+        "template_id": str(run.template_id),
+        "status": run.status,
+        "schema_version": run.schema_version,
+        "model_used": run.model_used,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "error_code": run.error_code,
+        "error_message": run.error_message,
+        "error_details": run.error_details,
+        "raw_output": run.raw_output,
+        "blueprint_json": run.blueprint_json,
+        "attempt_number": run.attempt_number,
+        "correlation_id": run.correlation_id,
     }
 
 

@@ -44,7 +44,8 @@ class Settings(BaseSettings):
     # OpenAI (optional) - centralized model and params
     OPENAI_API_KEY: Optional[str] = None
     AI_MODE: str = "full"  # disabled | basic | full
-    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_MODEL_FALLBACK: Optional[str] = None  # used on retry if primary fails (OPENAI_ERROR / PARSE_ERROR)
     OPENAI_TEMPERATURE: float = 0.2
     OPENAI_MAX_TOKENS: Optional[int] = None
     OPENAI_TIMEOUT_SECONDS: int = 60

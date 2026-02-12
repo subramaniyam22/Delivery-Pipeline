@@ -99,7 +99,7 @@ cp .env.example .env
 Recommended local values:
 ```
 BACKEND_URL=http://localhost:8000
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-4o
 OPENAI_TEMPERATURE=0.2
 OPENAI_TIMEOUT_SECONDS=60
 CHAT_LOG_WEBHOOK_URL=
@@ -390,11 +390,10 @@ Stage nodes delegate to dedicated agent classes in `backend/app/agents/` (onboar
 - human approval gates can be enabled per stage (HITL)
 
 ### LLM Integration
-- Uses OpenAI (model from **OPENAI_MODEL**, default `gpt-4o-mini`) if `OPENAI_API_KEY` is provided
+- Uses OpenAI (model from **OPENAI_MODEL**, default `gpt-4o`) if `OPENAI_API_KEY` is provided
 - Falls back to **FakeLLM** (deterministic mock) if no API key
 - All workflow logic works without external LLM dependencies
-- **If blueprint generation fails**, first verify `OPENAI_MODEL` is set and not deprecated (e.g. use `gpt-4o-mini` or `gpt-4o`)
-- **For better quality** (blueprints, consultant, onboarding review), set `OPENAI_MODEL=gpt-4o` (flagship; higher cost) or `gpt-4-turbo` (fast text, good balance). Default `gpt-4o-mini` is faster and cheaper.
+- **If blueprint generation fails**, first verify `OPENAI_MODEL` is set (use `gpt-4o`).
 
 ## 🔌 Connector Stubs
 
@@ -553,7 +552,7 @@ The blueprint (`render.yaml`) sets DATABASE_URL, REDIS_URL, SECRET_KEY, CORS, FR
 | **FRONTEND_URL**, **CORS_ORIGINS** (Backend) | Your frontend URL: Dashboard → delivery-frontend → **URL** |
 | **BACKEND_URL** (Backend) | Same as backend URL (preview links, webhooks) |
 | **OPENAI_API_KEY** | [OpenAI API Keys](https://platform.openai.com/api-keys) — for AI workflow and consultant |
-| **OPENAI_MODEL** | `gpt-4o-mini` (default), `gpt-4o` (best quality, higher cost), or `gpt-4-turbo` (fast text). Use a current model to avoid deprecated errors. |
+| **OPENAI_MODEL** | Use `gpt-4o` only (default in code). Set in env to override. |
 | **OPENAI_TEMPERATURE** | 0.0–1.0 (default: `0.2`). Lower = more deterministic. |
 | **OPENAI_MAX_TOKENS** | Optional. Leave unset for library default. |
 | **OPENAI_TIMEOUT_SECONDS** | Request timeout (default: `60`). |
@@ -566,6 +565,12 @@ Full list and optional vars (SMTP, webhooks): see **[docs/RENDER_ENV.md](docs/RE
 ### Verifying OpenAI at runtime
 - **Active model**: On startup, the backend logs `AI_MODE` and `OPENAI_MODEL`. Check container logs (e.g. `docker compose logs backend`) to confirm which model is in use.
 - **Test AI consultant**: `POST /api/ai/consult` with a JSON body `{"message": "Hello", "project_id": "<uuid>"}` (and optional `context`). Use the API docs at `http://localhost:8000/docs` or curl. If `OPENAI_API_KEY` is missing and AI is enabled, the endpoint returns **503** with a clear message.
+
+### Debugging blueprint generation
+- **Status**: `GET /api/templates/{template_id}/blueprint/status` returns `blueprint_status` (idle | queued | generating | validating | ready | failed) and `latest_run` (run_id, status, error_message, model_used). Poll every 3s until ready/failed.
+- **Run details** (Admin/Manager): `GET /api/blueprint-runs/{run_id}` returns full run including `error_code`, `error_details`, `raw_output` (redacted). Use when a run fails to inspect validation errors or LLM output.
+- **Worker health**: `GET /system/health` returns `worker_healthy` (true if heartbeat &lt; 60s). If false, blueprint jobs will not execute; ensure the backend (or worker process) is running and Redis is reachable.
+- **Logs**: Worker logs include `correlation_id` for each run; search logs by that id to trace a specific blueprint generation.
 
 ## 🔒 Security Notes
 

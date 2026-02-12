@@ -201,6 +201,15 @@ async def startup_event():
             settings.AI_MODE,
         )
 
+    # Start worker heartbeat thread (so /system/health can report worker_healthy when backend runs jobs)
+    try:
+        import threading
+        t = threading.Thread(target=_worker_heartbeat_loop, daemon=True)
+        t.start()
+        logger.info("Worker heartbeat thread started")
+    except Exception as e:
+        logger.warning("Worker heartbeat thread not started: %s", e)
+
     # Create upload directory
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     logger.info(f"Upload directory created: {settings.UPLOAD_DIR}")
@@ -387,6 +396,56 @@ async def health_check(db: Session = Depends(get_db)):
         logger.error(f"Storage health check failed: {e}")
 
     return health_status
+
+
+WORKER_HEARTBEAT_KEY = "worker:heartbeat"
+WORKER_HEARTBEAT_MAX_AGE_SECONDS = 60
+WORKER_HEARTBEAT_INTERVAL_SECONDS = 15
+
+
+def _worker_heartbeat_loop():
+    """Background thread: write worker heartbeat to Redis every 15s so /system/health can detect worker liveness."""
+    import time
+    while True:
+        try:
+            from app.utils.cache import cache
+            if cache.client:
+                cache.client.set(WORKER_HEARTBEAT_KEY, str(time.time()), ex=90)
+        except Exception as e:
+            logger.debug("Worker heartbeat write failed: %s", e)
+        time.sleep(WORKER_HEARTBEAT_INTERVAL_SECONDS)
+
+
+@app.get("/system/health")
+async def system_health(db: Session = Depends(get_db)):
+    """System health: backend, db, redis, worker queue reachable, last worker heartbeat. For UI to show worker status."""
+    import time
+    out = {"backend": "ok", "db": "ok", "redis": "ok", "worker_queue_reachable": True, "worker_heartbeat_timestamp": None, "worker_healthy": None}
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:
+        out["db"] = "error"
+    try:
+        from app.utils.cache import cache
+        if cache.client:
+            cache.client.ping()
+            ts = cache.client.get(WORKER_HEARTBEAT_KEY)
+            out["worker_heartbeat_timestamp"] = float(ts) if ts else None
+            if ts:
+                age = time.time() - float(ts)
+                out["worker_healthy"] = age <= WORKER_HEARTBEAT_MAX_AGE_SECONDS
+            else:
+                out["worker_healthy"] = False
+        else:
+            out["redis"] = "not_configured"
+            out["worker_queue_reachable"] = False
+            out["worker_healthy"] = False
+    except Exception:
+        out["redis"] = "error"
+        out["worker_queue_reachable"] = False
+        out["worker_healthy"] = False
+    return out
+
 
 @app.get("/debug-db")
 def debug_database():

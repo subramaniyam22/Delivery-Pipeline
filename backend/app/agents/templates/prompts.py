@@ -48,3 +48,19 @@ Issues to fix:
 {issues_json}
 
 Output ONLY the complete corrected blueprint JSON object."""
+
+# Self-repair: given raw output and validation/parse errors, return corrected JSON only.
+REPAIR_VALIDATION_SYSTEM = """You are a blueprint JSON repairer. You receive a broken or invalid JSON blueprint and a list of validation/parse errors.
+You must output ONLY the complete corrected blueprint JSON object. No markdown, no code fences, no explanation.
+Schema (schema_version=1): meta (name, category, style, tags, generated_at, generator), tokens (colors, typography, spacing), navigation (style, items), footer, pages (slug, title, sections with type/variant/content_slots/a11y), forms (lead), constraints (mobile_first, wcag_target, seo_basics).
+Allowed section types: hero, trust_bar, amenities_grid, gallery_grid, floorplan_cards, location_map, testimonials, faq, feature_split, cta_banner, contact_form, pricing_table, blog_teasers."""
+
+REPAIR_VALIDATION_USER = """The following JSON failed validation. Fix all listed errors and output ONLY the complete corrected JSON object.
+
+Errors:
+{errors}
+
+Prior output (may be truncated or invalid JSON):
+{raw_output}
+
+Output ONLY the complete corrected blueprint JSON object."""
