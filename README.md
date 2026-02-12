@@ -394,6 +394,7 @@ Stage nodes delegate to dedicated agent classes in `backend/app/agents/` (onboar
 - Falls back to **FakeLLM** (deterministic mock) if no API key
 - All workflow logic works without external LLM dependencies
 - **If blueprint generation fails**, first verify `OPENAI_MODEL` is set and not deprecated (e.g. use `gpt-4o-mini` or `gpt-4o`)
+- **For better quality** (blueprints, consultant, onboarding review), set `OPENAI_MODEL=gpt-4o` (flagship; higher cost) or `gpt-4-turbo` (fast text, good balance). Default `gpt-4o-mini` is faster and cheaper.
 
 ## 🔌 Connector Stubs
 
@@ -552,7 +553,7 @@ The blueprint (`render.yaml`) sets DATABASE_URL, REDIS_URL, SECRET_KEY, CORS, FR
 | **FRONTEND_URL**, **CORS_ORIGINS** (Backend) | Your frontend URL: Dashboard → delivery-frontend → **URL** |
 | **BACKEND_URL** (Backend) | Same as backend URL (preview links, webhooks) |
 | **OPENAI_API_KEY** | [OpenAI API Keys](https://platform.openai.com/api-keys) — for AI workflow and consultant |
-| **OPENAI_MODEL** | Model name (default: `gpt-4o-mini`). Use a current model (e.g. `gpt-4o`, `gpt-4o-mini`) to avoid deprecated errors. |
+| **OPENAI_MODEL** | `gpt-4o-mini` (default), `gpt-4o` (best quality, higher cost), or `gpt-4-turbo` (fast text). Use a current model to avoid deprecated errors. |
 | **OPENAI_TEMPERATURE** | 0.0–1.0 (default: `0.2`). Lower = more deterministic. |
 | **OPENAI_MAX_TOKENS** | Optional. Leave unset for library default. |
 | **OPENAI_TIMEOUT_SECONDS** | Request timeout (default: `60`). |
