@@ -1,12 +1,30 @@
 """
 Centralized error handling and custom exceptions for the application.
 """
+import re
+import logging
+from typing import Optional, Dict, Any
+
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from typing import Optional, Dict, Any
-import logging
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _cors_allow_origin(request: Request) -> str:
+    """Return the origin to set in Access-Control-Allow-Origin (must match request or first allowed)."""
+    origin = request.headers.get("origin") or ""
+    allowed = list(settings.cors_origins_list)
+    if settings.FRONTEND_URL and settings.FRONTEND_URL not in allowed:
+        allowed.append(settings.FRONTEND_URL)
+    if origin and origin in allowed:
+        return origin
+    regex = getattr(settings, "CORS_ORIGIN_REGEX", None) or ""
+    if origin and regex and re.match(regex, origin):
+        return origin
+    return (allowed[0] if allowed else "") or (settings.FRONTEND_URL or "*")
 
 
 class AppException(Exception):
@@ -147,6 +165,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         }
     )
     
+    allow_origin = _cors_allow_origin(request)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -155,7 +174,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
             "details": {}
         },
         headers={
-            "Access-Control-Allow-Origin": "https://delivery-frontend-60cf.onrender.com",
+            "Access-Control-Allow-Origin": allow_origin,
             "Access-Control-Allow-Methods": "*",
             "Access-Control-Allow-Headers": "*"
         }
