@@ -175,6 +175,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         },
         headers={
             "Access-Control-Allow-Origin": allow_origin,
+            "Access-Control-Allow-Credentials": "true",
             "Access-Control-Allow-Methods": "*",
             "Access-Control-Allow-Headers": "*"
         }
