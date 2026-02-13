@@ -4,6 +4,7 @@ from sqlalchemy import or_, cast
 from sqlalchemy.dialects.postgresql import JSONB
 from typing import Any, List, Optional, Tuple
 from datetime import datetime
+import logging
 import os
 import html
 import copy
@@ -194,52 +195,59 @@ def create_template(
         raise HTTPException(status_code=400, detail="Invalid source_type")
     if source_type == "git" and not data.repo_url:
         raise HTTPException(status_code=400, detail="repo_url is required for git templates")
-    template = TemplateRegistry(
-        name=data.name,
-        repo_url=data.repo_url,
-        default_branch=data.default_branch or ("main" if source_type == "git" else None),
-        meta_json=data.meta_json or {},
-        description=data.description,
-        features_json=data.features_json or [],
-        preview_url=data.preview_url,
-        source_type=source_type,
-        intent=data.intent,
-        preview_status=data.preview_status or "not_generated",
-        preview_last_generated_at=data.preview_last_generated_at,
-        preview_error=data.preview_error,
-        preview_thumbnail_url=data.preview_thumbnail_url,
-        is_active=True if data.is_active is None else data.is_active,
-        is_published=True if data.is_published is None else data.is_published,
-        category=getattr(data, "category", None),
-        style=getattr(data, "style", None),
-        feature_tags_json=getattr(data, "feature_tags_json", None) or getattr(data, "features_json", None) or [],
-        status=getattr(data, "status", None) or "draft",
-        is_default=getattr(data, "is_default", False) or False,
-        is_recommended=getattr(data, "is_recommended", False) or False,
-        repo_path=getattr(data, "repo_path", None),
-        pages_json=getattr(data, "pages_json", None) or [],
-        required_inputs_json=getattr(data, "required_inputs_json", None) or [],
-        optional_inputs_json=getattr(data, "optional_inputs_json", None) or [],
-        default_config_json=getattr(data, "default_config_json", None) or {},
-        rules_json=getattr(data, "rules_json", None) or [],
-        validation_results_json=getattr(data, "validation_results_json", None) or {},
-        version=getattr(data, "version", None) or 1,
-        changelog=getattr(data, "changelog", None),
-        parent_template_id=getattr(data, "parent_template_id", None),
-    )
-    db.add(template)
-    db.commit()
-    db.refresh(template)
-    db.add(
-        AuditLog(
-            project_id=None,
-            actor_user_id=current_user.id,
-            action="TEMPLATE_CREATED",
-            payload_json={"template_id": str(template.id), "name": template.name},
+    try:
+        template = TemplateRegistry(
+            name=data.name or "Untitled Template",
+            repo_url=data.repo_url,
+            default_branch=data.default_branch or ("main" if source_type == "git" else None),
+            meta_json=data.meta_json if isinstance(getattr(data, "meta_json", None), dict) else {},
+            description=data.description,
+            features_json=data.features_json if isinstance(data.features_json, list) else [],
+            preview_url=data.preview_url,
+            source_type=source_type,
+            intent=data.intent,
+            preview_status=data.preview_status or "not_generated",
+            preview_last_generated_at=data.preview_last_generated_at,
+            preview_error=data.preview_error,
+            preview_thumbnail_url=data.preview_thumbnail_url,
+            is_active=True if data.is_active is None else data.is_active,
+            is_published=True if data.is_published is None else data.is_published,
+            category=getattr(data, "category", None),
+            style=getattr(data, "style", None),
+            feature_tags_json=getattr(data, "feature_tags_json", None) or getattr(data, "features_json", None) or [],
+            status=getattr(data, "status", None) or "draft",
+            is_default=getattr(data, "is_default", False) or False,
+            is_recommended=getattr(data, "is_recommended", False) or False,
+            repo_path=getattr(data, "repo_path", None),
+            pages_json=getattr(data, "pages_json", None) or [],
+            required_inputs_json=getattr(data, "required_inputs_json", None) or [],
+            optional_inputs_json=getattr(data, "optional_inputs_json", None) or [],
+            default_config_json=getattr(data, "default_config_json", None) or {},
+            rules_json=getattr(data, "rules_json", None) or [],
+            validation_results_json=getattr(data, "validation_results_json", None) or {},
+            version=getattr(data, "version", None) or 1,
+            changelog=getattr(data, "changelog", None),
+            parent_template_id=getattr(data, "parent_template_id", None),
         )
-    )
-    db.commit()
-    return template
+        db.add(template)
+        db.commit()
+        db.refresh(template)
+        db.add(
+            AuditLog(
+                project_id=None,
+                actor_user_id=current_user.id,
+                action="TEMPLATE_CREATED",
+                payload_json={"template_id": str(template.id), "name": template.name},
+            )
+        )
+        db.commit()
+        return template
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.getLogger(__name__).exception("Create template failed: %s", e)
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Template creation failed: {str(e)}")
 
 
 @router.get("/templates/{template_id}", response_model=TemplateResponse)

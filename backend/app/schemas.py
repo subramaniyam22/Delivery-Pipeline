@@ -421,9 +421,9 @@ class TemplateResponse(BaseModel):
     name: str
     repo_url: Optional[str] = None
     default_branch: Optional[str] = None
-    meta_json: Dict[str, Any]
+    meta_json: Optional[Dict[str, Any]] = None
     description: Optional[str] = None
-    features_json: List[str]
+    features_json: Optional[List[str]] = None
     preview_url: Optional[str] = None
     source_type: str
     intent: Optional[str] = None
