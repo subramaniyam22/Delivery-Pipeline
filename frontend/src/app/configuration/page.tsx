@@ -1001,11 +1001,12 @@ export default function ConfigurationPage() {
             try {
                 const res = await configurationAPI.getTemplateBlueprintJob(templateId);
                 const d = res.data as { status?: string };
-                if (d.status === 'success' || d.status === 'failed') {
+                const finished = d.status === 'ready' || d.status === 'success' || d.status === 'failed';
+                if (finished) {
                     done = true;
                     const updated = await configurationAPI.getTemplate(templateId);
                     updateTemplateInState(updated.data as TemplateRegistry);
-                    setSuccess(d.status === 'success' ? 'Blueprint generation finished' : 'Blueprint generation failed');
+                    setSuccess(d.status === 'failed' ? 'Blueprint generation failed' : 'Blueprint generation finished');
                 }
                 const statusRes = await configurationAPI.getTemplateBlueprintStatus(templateId);
                 setBlueprintStatusData(statusRes.data as { blueprint_status?: string; latest_run?: { run_id: string; status: string; error_message?: string } });

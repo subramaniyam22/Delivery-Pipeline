@@ -71,6 +71,19 @@ def _generate_raw(template: TemplateRegistry, demo_context: Dict[str, Any], mode
     return raw, model_used
 
 
+def _safe_openai_error_message(exc: Exception) -> str:
+    """Return a short, safe UI message for known OpenAI errors (no secrets)."""
+    e = getattr(exc, "__cause__", None) or exc
+    s = ((getattr(e, "message", None) or str(e) or "") + " " + (str(exc) or "")).lower()
+    if "429" in s or "rate" in s or "quota" in s or "insufficient_quota" in s:
+        return "OpenAI quota or rate limit exceeded. Check your plan and billing at platform.openai.com."
+    if "401" in s or "invalid_api_key" in s or "authentication" in s:
+        return "OpenAI API key invalid or missing. Check OPENAI_API_KEY."
+    if "timeout" in s:
+        return "OpenAI request timed out. Try again or increase OPENAI_TIMEOUT_SECONDS."
+    return "Blueprint generation failed. See details."
+
+
 def _repair_once(raw_output: str, errors: list) -> str | None:
     """One repair LLM call. Returns new raw string or None."""
     from app.agents.templates.prompts import REPAIR_VALIDATION_SYSTEM, REPAIR_VALIDATION_USER
@@ -167,7 +180,7 @@ def run_blueprint_run(run_id: UUID, db: Session | None = None) -> None:
                 last_error_code = "OPENAI_ERROR"
                 run.raw_output = redact_secrets(str(e))[:5000]
                 run.error_code = "OPENAI_ERROR"
-                run.error_message = "Blueprint generation failed. See details."
+                run.error_message = _safe_openai_error_message(e)
                 run.error_details = traceback.format_exc()
                 run.status = "failed"
                 run.finished_at = datetime.utcnow()

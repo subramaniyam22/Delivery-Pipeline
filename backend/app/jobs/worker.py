@@ -1,10 +1,12 @@
 import logging
 import signal
 import subprocess
+import threading
 import time
 import uuid
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
+from uuid import UUID
 
 from app.db import SessionLocal
 from app.jobs.queue import (
@@ -17,10 +19,21 @@ from app.jobs.queue import (
 from app.models import StageStatus, AdminConfig, AuditLog, JobRunStatus, JobRun, Project
 from app.services.workflow_runner import run_stage
 from app.services.pipeline_orchestrator import on_job_success, on_job_failure
+from app.services.job_queue import (
+    JOB_TYPE_BLUEPRINT_GENERATE,
+    claim_next_generic_job,
+    extend_lease,
+    mark_generic_job_failed,
+    mark_generic_job_success,
+    LEASE_SECONDS,
+)
+from app.services.blueprint_service import generate_blueprint as blueprint_generate
 
 logger = logging.getLogger(__name__)
 
 _should_stop = False
+WORKER_HEARTBEAT_KEY = "worker:heartbeat:delivery-worker"
+WORKER_HEARTBEAT_INTERVAL = 10
 
 
 def _get_worker_concurrency(db) -> int:
@@ -68,10 +81,38 @@ def _handle_shutdown(signum, frame) -> None:
     logger.info("Worker shutdown signal received")
 
 
+def _run_generic_job(job, db) -> bool:
+    """Run an already-claimed generic job. Returns True."""
+    job_id = job.id
+    job_type = job.type
+    payload = job.payload_json or {}
+    logger.info("Generic job started", extra={"job_id": str(job_id), "type": job_type})
+    try:
+        if job_type == JOB_TYPE_BLUEPRINT_GENERATE:
+            run_id = payload.get("run_id")
+            template_id = payload.get("template_id")
+            if not run_id or not template_id:
+                mark_generic_job_failed(job_id, "Missing run_id or template_id in payload", db=db)
+                return True
+            blueprint_generate(UUID(template_id), UUID(run_id), db=db)
+        else:
+            mark_generic_job_failed(job_id, f"Unknown job type: {job_type}", db=db)
+            return True
+        mark_generic_job_success(job_id, db=db)
+        logger.info("Generic job completed", extra={"job_id": str(job_id), "type": job_type})
+    except Exception as e:
+        logger.exception("Generic job failed: %s", e)
+        mark_generic_job_failed(job_id, str(e), db=db)
+    return True
+
+
 def _run_once(worker_id: str) -> bool:
     db = SessionLocal()
     try:
         _mark_stuck_jobs(db)
+        generic_job = claim_next_generic_job(worker_id, lease_seconds=LEASE_SECONDS, db=db)
+        if generic_job:
+            return _run_generic_job(generic_job, db)
         job = claim_next_job(worker_id, db=db)
         if not job:
             return False
@@ -248,6 +289,21 @@ def _log_worker_readiness() -> None:
         logger.info("playwright_chromium=not_available (%s)", e)
 
 
+def _heartbeat_loop() -> None:
+    """Write worker heartbeat to Redis every 10s for /health worker_ok."""
+    while not _should_stop:
+        try:
+            from app.utils.cache import cache
+            if cache.client:
+                cache.client.set(WORKER_HEARTBEAT_KEY, str(time.time()), ex=90)
+        except Exception as e:
+            logger.debug("Worker heartbeat write failed: %s", e)
+        for _ in range(WORKER_HEARTBEAT_INTERVAL):
+            if _should_stop:
+                break
+            time.sleep(1)
+
+
 def main(poll_interval_seconds: float = 2.0) -> None:
     worker_id = f"worker-{uuid.uuid4()}"
     logger.info("Worker started: %s", worker_id)
@@ -255,6 +311,10 @@ def main(poll_interval_seconds: float = 2.0) -> None:
 
     signal.signal(signal.SIGTERM, _handle_shutdown)
     signal.signal(signal.SIGINT, _handle_shutdown)
+
+    heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
+    heartbeat_thread.start()
+    logger.info("Worker heartbeat thread started (key=%s)", WORKER_HEARTBEAT_KEY)
 
     db = SessionLocal()
     try:

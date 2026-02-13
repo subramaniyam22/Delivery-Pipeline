@@ -395,6 +395,25 @@ async def health_check(db: Session = Depends(get_db)):
         health_status["status"] = "degraded"
         logger.error(f"Storage health check failed: {e}")
 
+    # Worker: heartbeat age < 60s (worker:heartbeat:delivery-worker or worker:heartbeat)
+    import time as _time
+    worker_ok = False
+    try:
+        from app.utils.cache import cache
+        if cache.client:
+            for key in ("worker:heartbeat:delivery-worker", "worker:heartbeat"):
+                ts = cache.client.get(key)
+                if ts:
+                    age = _time.time() - float(ts)
+                    if age <= 60:
+                        worker_ok = True
+                        break
+        health_status["checks"]["worker"] = "ok" if worker_ok else "error"
+        health_status["worker_ok"] = worker_ok
+    except Exception:
+        health_status["checks"]["worker"] = "error"
+        health_status["worker_ok"] = False
+
     return health_status
 
 
@@ -429,7 +448,11 @@ async def system_health(db: Session = Depends(get_db)):
         from app.utils.cache import cache
         if cache.client:
             cache.client.ping()
-            ts = cache.client.get(WORKER_HEARTBEAT_KEY)
+            ts = None
+            for key in ("worker:heartbeat:delivery-worker", WORKER_HEARTBEAT_KEY):
+                ts = cache.client.get(key)
+                if ts:
+                    break
             out["worker_heartbeat_timestamp"] = float(ts) if ts else None
             if ts:
                 age = time.time() - float(ts)

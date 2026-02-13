@@ -120,3 +120,24 @@ So: add **RESEND_API_KEY**, **OPENAI_API_KEY**, and **BACKEND_URL** to the worke
 2. **Frontend** → Environment: set **NEXT_PUBLIC_API_URL** = your backend URL (must match backend).
 3. **Worker** → Environment: same **SECRET_KEY** as backend; **FRONTEND_URL** = frontend URL; **BACKEND_URL** = backend URL; **OPENAI_API_KEY**; **RESEND_API_KEY**; same S3 vars as backend. Do **not** copy CORS_ORIGINS / CORS_ORIGIN_REGEX.
 4. Redeploy each service after changing env vars (or use **Manual Deploy**).
+
+---
+
+## Blueprint not generating (Generate Blueprint does nothing or stays "No blueprint yet")
+
+Blueprint generation runs in the **delivery-worker** service, not the web backend. If nothing happens after you click Generate Blueprint:
+
+1. **Worker must have OPENAI_API_KEY**  
+   Render Dashboard → **delivery-worker** → **Environment**. Add **OPENAI_API_KEY** (same value as on the backend). Without it, the worker cannot call the LLM and the run will fail or be skipped. Save and **Manual Deploy** the worker.
+
+2. **Check that the worker is running**  
+   Dashboard → **delivery-worker** → status should be **Running**. Open **Logs** and look for errors (e.g. missing OPENAI_API_KEY, Redis connection, or OpenAI 429).
+
+3. **Check worker health from the backend**  
+   Open `https://<your-backend-url>/health` (e.g. `https://delivery-backend-39z8.onrender.com/health`). In the JSON, look for `"worker_ok": true`. If it is `false`, the worker is not heartbeating (not running or not connected to Redis).
+
+4. **Confirm the generate request succeeds**  
+   In the browser DevTools → **Network**, click Generate Blueprint and find the **POST** to `.../api/templates/{id}/blueprint/generate`. It should return **200** and a body with `run_id`. If you get 4xx/5xx, the error detail explains why.
+
+5. **Check the run status**  
+   After generating, the UI polls `.../blueprint/status`. Use **View details** (or call `GET .../api/blueprint-runs/{run_id}`) to see if the run is `queued`, `generating`, `ready`, or `failed`, and if failed, the `error_message` (e.g. quota vs missing API key).

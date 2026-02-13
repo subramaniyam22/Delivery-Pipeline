@@ -43,6 +43,7 @@ services:
       SECRET_KEY_CURRENT:
       SECRET_KEY_PREVIOUS:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
       UPLOAD_DIR: /uploads
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       FRONTEND_URL: http://localhost:3000
@@ -91,6 +92,7 @@ services:
       REDIS_URL: redis://redis:6379
       SECRET_KEY: your-secret-key-change-in-production-use-openssl-rand-hex-32
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
       UPLOAD_DIR: /uploads
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       FRONTEND_URL: http://localhost:3000

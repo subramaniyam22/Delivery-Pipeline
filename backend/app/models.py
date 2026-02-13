@@ -302,6 +302,7 @@ class ProjectStageState(Base):
     last_error = Column(Text, nullable=True)
     blocked_reasons_json = Column(JSONB, default=list)
     required_actions_json = Column(JSONB, default=list)
+    evidence_json = Column(JSONB, default=dict)  # URLs/metrics/artifacts collected per stage
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -482,6 +483,26 @@ class TemplateEvolutionProposal(Base):
     rejection_reason = Column(Text, nullable=True)
 
     template = relationship("TemplateRegistry", backref="evolution_proposals")
+
+
+class Job(Base):
+    """Generic typed jobs table: DB-backed with leasing, idempotency, retries, dead-letter."""
+    __tablename__ = "jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    type = Column(String(128), nullable=False, index=True)  # e.g. "template.blueprint.generate"
+    payload_json = Column(JSONB, default=dict, nullable=False)
+    status = Column(String(30), default="queued", nullable=False, index=True)  # queued | running | retry | dead | success
+    attempts = Column(Integer, default=0, nullable=False)
+    max_attempts = Column(Integer, default=5, nullable=False)
+    run_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    locked_at = Column(DateTime, nullable=True)
+    locked_by = Column(String(128), nullable=True, index=True)
+    lock_expires_at = Column(DateTime, nullable=True)
+    idempotency_key = Column(String(256), nullable=True, unique=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class TemplateBlueprintRun(Base):

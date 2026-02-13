@@ -24,6 +24,16 @@ def _require_admin_manager(user: User) -> None:
     require_admin_manager(user)
 
 
+def _display_error_message(error_code: Optional[str], error_message: Optional[str], error_details: Optional[str]) -> str:
+    """Return a safe display message; normalize OPENAI 429/quota for old runs that stored the generic message."""
+    msg = (error_message or "").strip()
+    details = (error_details or "").lower()
+    if error_code == "OPENAI_ERROR" and details and ("429" in details or "quota" in details or "insufficient_quota" in details or "ratelimit" in details):
+        if not msg or msg == "Blueprint generation failed. See details.":
+            return "OpenAI quota or rate limit exceeded. Check your plan and billing at platform.openai.com."
+    return msg or "Blueprint generation failed. See details."
+
+
 def _build_preview_html(template: TemplateRegistry) -> str:
     name = html.escape(template.name or "Untitled Template")
     description = html.escape(template.description or "")
@@ -569,17 +579,13 @@ def generate_template_blueprint(
     template.blueprint_last_run_id = run.id
     template.blueprint_updated_at = datetime.utcnow()
     db.commit()
-    job = TemplateBlueprintJob(
-        template_id=uuid.UUID(template_id),
-        status="queued",
-        payload_json={"run_id": str(run.id), "regenerate": regenerate, "max_iterations": max_iterations},
+    from app.services.job_queue import enqueue_job, JOB_TYPE_BLUEPRINT_GENERATE
+    enqueue_job(
+        JOB_TYPE_BLUEPRINT_GENERATE,
+        payload={"run_id": str(run.id), "template_id": template_id, "regenerate": regenerate, "max_iterations": max_iterations},
+        idempotency_key=str(run.id),
+        db=db,
     )
-    db.add(job)
-    db.commit()
-    db.refresh(job)
-    from app.jobs.template_blueprint import run_blueprint_job
-    if background_tasks:
-        background_tasks.add_task(run_blueprint_job, job.id)
     return {"run_id": str(run.id), "status": "queued"}
 
 
@@ -612,17 +618,14 @@ def generate_template_blueprint_legacy(
     template.blueprint_last_run_id = run.id
     template.blueprint_updated_at = datetime.utcnow()
     db.commit()
-    job = TemplateBlueprintJob(
-        template_id=uuid.UUID(template_id),
-        status="queued",
-        payload_json={"run_id": str(run.id), "regenerate": regenerate, "max_iterations": (data.get("max_iterations") or 3)},
+    from app.services.job_queue import enqueue_job, JOB_TYPE_BLUEPRINT_GENERATE
+    job_id = enqueue_job(
+        JOB_TYPE_BLUEPRINT_GENERATE,
+        payload={"run_id": str(run.id), "template_id": template_id, "regenerate": regenerate, "max_iterations": (data.get("max_iterations") or 3)},
+        idempotency_key=str(run.id),
+        db=db,
     )
-    db.add(job)
-    db.commit()
-    from app.jobs.template_blueprint import run_blueprint_job
-    if background_tasks:
-        background_tasks.add_task(run_blueprint_job, job.id)
-    return {"job_id": str(job.id), "run_id": str(run.id), "template_id": template_id}
+    return {"job_id": str(job_id), "run_id": str(run.id), "template_id": template_id}
 
 
 @router.get("/api/templates/{template_id}/blueprint")
@@ -710,7 +713,7 @@ def get_template_blueprint_status(
             "status": run.status,
             "started_at": run.started_at.isoformat() if run.started_at else None,
             "finished_at": run.finished_at.isoformat() if run.finished_at else None,
-            "error_message": run.error_message,
+            "error_message": _display_error_message(run.error_code, run.error_message, run.error_details),
             "schema_version": run.schema_version,
             "model_used": run.model_used,
         }
@@ -756,7 +759,7 @@ def list_template_blueprint_runs(
                 "status": r.status,
                 "started_at": r.started_at.isoformat() if r.started_at else None,
                 "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-                "error_message": r.error_message,
+                "error_message": _display_error_message(r.error_code, r.error_message, r.error_details),
                 "model_used": r.model_used,
             }
             for r in runs
@@ -784,7 +787,7 @@ def get_blueprint_run_details(
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
         "error_code": run.error_code,
-        "error_message": run.error_message,
+        "error_message": _display_error_message(run.error_code, run.error_message, run.error_details),
         "error_details": run.error_details,
         "raw_output": run.raw_output,
         "blueprint_json": run.blueprint_json,
