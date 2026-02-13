@@ -81,6 +81,42 @@ Set the same S3 environment variables on **both delivery-backend and delivery-wo
 | **S3_ENDPOINT_URL** | Only for non-AWS S3-compatible storage. | **AWS:** Leave **empty**. **R2:** `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` (ACCOUNT_ID in Cloudflare Dashboard → R2 → right-hand side). **MinIO/Spaces:** Your provider’s S3 endpoint URL. |
 | **S3_PUBLIC_BASE_URL** or **STORAGE_PUBLIC_BASE_URL** | Optional. Base URL for public file links. | **AWS:** e.g. `https://your-bucket.s3.us-east-1.amazonaws.com`, or your CloudFront domain. **R2:** R2 public bucket URL or custom domain if configured. |
 
+#### 403 Access Denied for preview / thumbnail URLs
+
+If template or project previews show **Access Denied** or **403 Forbidden** when opening the preview or thumbnail (e.g. `https://your-bucket.s3.amazonaws.com/templates/.../index.html`), the bucket is private and the app is using a **public** URL.
+
+You have two options:
+
+1. **Use pre-signed URLs (recommended, bucket stays private)**  
+   **Do not set** `S3_PUBLIC_BASE_URL` or `STORAGE_PUBLIC_BASE_URL` on Render. The app will then generate pre-signed URLs for preview and thumbnail objects. The IAM user (S3_ACCESS_KEY / S3_SECRET_KEY) must have `s3:GetObject` on the bucket. No bucket policy changes needed.
+
+2. **Keep using public URLs**  
+   If you prefer public URLs (e.g. for a CDN), set `S3_PUBLIC_BASE_URL` and add a **bucket policy** so that the preview prefix is readable. Example (AWS S3 → Bucket → Permissions → Bucket policy), scope to your prefix only:
+
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Sid": "AllowPublicReadPreview",
+         "Effect": "Allow",
+         "Principal": "*",
+         "Action": "s3:GetObject",
+         "Resource": "arn:aws:s3:::YOUR-BUCKET-NAME/templates/*"
+       },
+       {
+         "Sid": "AllowPublicReadProjects",
+         "Effect": "Allow",
+         "Principal": "*",
+         "Action": "s3:GetObject",
+         "Resource": "arn:aws:s3:::YOUR-BUCKET-NAME/projects/*"
+       }
+     ]
+   }
+   ```
+
+   Replace `YOUR-BUCKET-NAME` with your bucket. After changing env or policy, redeploy and **regenerate** the template preview (or project preview) so new URLs are stored.
+
 **Alternate names (app also accepts):**  
 You can use **AWS_ACCESS_KEY_ID**, **AWS_SECRET_ACCESS_KEY**, **AWS_REGION**, and **AWS_S3_BUCKET** instead of **S3_ACCESS_KEY**, **S3_SECRET_KEY**, **S3_REGION**, and **S3_BUCKET** if you prefer.
 

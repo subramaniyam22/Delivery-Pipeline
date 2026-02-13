@@ -257,7 +257,8 @@ def _retry_upload(fn, *args, **kwargs):
 def upload_preview_bundle(prefix: str, files: Dict[str, Union[str, bytes]]) -> str:
     """
     Upload a set of files under prefix (e.g. templates/residential-modern/v1).
-    Returns base URL (no trailing slash) to the bundle root.
+    Returns the preview entry URL (URL to index.html). When using S3 without
+    public_base_url, returns a pre-signed URL so the bucket can stay private.
     """
     backend = get_preview_storage_backend()
     total = 0
@@ -266,7 +267,7 @@ def upload_preview_bundle(prefix: str, files: Dict[str, Union[str, bytes]]) -> s
         total += len(data)
         if total > PREVIEW_BUNDLE_MAX_BYTES:
             raise RuntimeError(f"Preview bundle exceeds {PREVIEW_BUNDLE_MAX_BYTES} bytes")
-    base_url = None
+    index_key = f"{prefix.rstrip('/')}/index.html" if prefix else "index.html"
     for rel_path, content in files.items():
         data = content.encode("utf-8") if isinstance(content, str) else content
         key = f"{prefix.rstrip('/')}/{rel_path}" if prefix else rel_path
@@ -275,15 +276,17 @@ def upload_preview_bundle(prefix: str, files: Dict[str, Union[str, bytes]]) -> s
             backend.save_bytes(key, data, content_type=None)
             return backend.get_url(key, expires_seconds=86400 * 365)
 
-        result = _retry_upload(_put)
-        if result and base_url is None:
-            # Base URL = result without the file part (e.g. .../templates/slug/v1)
-            base_url = result.rsplit("/", 1)[0] if "/" in result else result
-    if base_url is None:
-        base_url = getattr(backend, "public_base_url", None) or ""
-        if prefix:
-            base_url = f"{base_url.rstrip('/')}/{prefix.rstrip('/')}"
-    return base_url.rstrip("/")
+        _retry_upload(_put)
+    # Return the URL for index.html: pre-signed if no public base (private bucket), else public path
+    if getattr(backend, "public_base_url", None):
+        return f"{backend.public_base_url.rstrip('/')}/{index_key}"
+    entry_url = backend.get_url(index_key, expires_seconds=86400 * 365)
+    if entry_url:
+        return entry_url
+    base = getattr(backend, "public_base_url", None) or ""
+    if prefix:
+        base = f"{base.rstrip('/')}/{prefix.rstrip('/')}"
+    return f"{base.rstrip('/')}/index.html"
 
 
 def upload_thumbnail(prefix: str, image_bytes: bytes) -> str:

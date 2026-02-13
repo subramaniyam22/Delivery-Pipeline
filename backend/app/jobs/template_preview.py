@@ -81,7 +81,7 @@ def run_template_preview_pipeline(
         except Exception:
             pass
         try:
-            base_url = upload_preview_bundle(prefix, assets)
+            preview_url = upload_preview_bundle(prefix, assets)
         except Exception as e:
             logger.exception("Upload preview bundle failed: %s", e)
             template.preview_status = "failed"
@@ -89,7 +89,6 @@ def run_template_preview_pipeline(
             session.commit()
             _preview_semaphore.release()
             return {"status": "failed", "error": str(e)}
-        preview_url = f"{base_url}/index.html"
         thumbnail_bytes = None
         try:
             thumbnail_bytes = generate_thumbnail(

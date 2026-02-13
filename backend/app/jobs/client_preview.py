@@ -146,7 +146,7 @@ def run_client_preview_pipeline(
             return {"status": "failed", "error": project.client_preview_error}
         prefix = f"projects/{project_id}/preview/v{contract_version}"
         try:
-            base_url = upload_preview_bundle(prefix, assets)
+            preview_url = upload_preview_bundle(prefix, assets)
         except Exception as e:
             logger.exception("Client preview upload failed: %s", e)
             project.client_preview_status = "failed"
@@ -154,7 +154,6 @@ def run_client_preview_pipeline(
             session.commit()
             _client_preview_semaphore.release()
             return {"status": "failed", "error": str(e)}
-        preview_url = f"{base_url}/index.html"
         thumbnail_url = None
         try:
             thumb_bytes = generate_thumbnail(
