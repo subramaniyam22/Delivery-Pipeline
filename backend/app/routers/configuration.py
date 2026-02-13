@@ -195,30 +195,35 @@ def create_template(
         raise HTTPException(status_code=400, detail="Invalid source_type")
     if source_type == "git" and not data.repo_url:
         raise HTTPException(status_code=400, detail="repo_url is required for git templates")
+    def _trunc(s: Optional[str], max_len: int) -> Optional[str]:
+        if not s:
+            return s
+        return s[:max_len] if len(s) > max_len else s
+
     try:
         template = TemplateRegistry(
-            name=data.name or "Untitled Template",
-            repo_url=data.repo_url,
-            default_branch=data.default_branch or ("main" if source_type == "git" else None),
+            name=(data.name or "Untitled Template")[:255],
+            repo_url=_trunc(data.repo_url, 1000),
+            default_branch=_trunc(data.default_branch or ("main" if source_type == "git" else None), 255),
             meta_json=data.meta_json if isinstance(getattr(data, "meta_json", None), dict) else {},
             description=data.description,
             features_json=data.features_json if isinstance(data.features_json, list) else [],
-            preview_url=data.preview_url,
-            source_type=source_type,
+            preview_url=_trunc(data.preview_url, 1000),
+            source_type=source_type[:20],
             intent=data.intent,
-            preview_status=data.preview_status or "not_generated",
+            preview_status=_trunc(data.preview_status or "not_generated", 30),
             preview_last_generated_at=data.preview_last_generated_at,
             preview_error=data.preview_error,
-            preview_thumbnail_url=data.preview_thumbnail_url,
+            preview_thumbnail_url=_trunc(data.preview_thumbnail_url, 1000),
             is_active=True if data.is_active is None else data.is_active,
             is_published=True if data.is_published is None else data.is_published,
-            category=getattr(data, "category", None),
-            style=getattr(data, "style", None),
+            category=_trunc(getattr(data, "category", None), 50),
+            style=_trunc(getattr(data, "style", None), 50),
             feature_tags_json=getattr(data, "feature_tags_json", None) or getattr(data, "features_json", None) or [],
-            status=getattr(data, "status", None) or "draft",
+            status=_trunc(getattr(data, "status", None) or "draft", 30),
             is_default=getattr(data, "is_default", False) or False,
             is_recommended=getattr(data, "is_recommended", False) or False,
-            repo_path=getattr(data, "repo_path", None),
+            repo_path=_trunc(getattr(data, "repo_path", None), 1000),
             pages_json=getattr(data, "pages_json", None) or [],
             required_inputs_json=getattr(data, "required_inputs_json", None) or [],
             optional_inputs_json=getattr(data, "optional_inputs_json", None) or [],
