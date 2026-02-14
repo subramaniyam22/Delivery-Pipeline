@@ -208,6 +208,9 @@ PREVIEW_BUNDLE_MAX_BYTES = 10 * 1024 * 1024  # 10MB
 UPLOAD_RETRIES = 3
 UPLOAD_RETRY_BACKOFF = 1.0
 
+# AWS S3 pre-signed URL max expiry is 7 days (604800 seconds). Using 1 year causes AuthorizationQueryParametersError.
+S3_PRESIGN_MAX_EXPIRY_SECONDS = 604800
+
 
 def _previews_base_dir() -> str:
     """Directory for local preview files (served at /previews)."""
@@ -274,13 +277,13 @@ def upload_preview_bundle(prefix: str, files: Dict[str, Union[str, bytes]]) -> s
 
         def _put():
             backend.save_bytes(key, data, content_type=None)
-            return backend.get_url(key, expires_seconds=86400 * 365)
+            return backend.get_url(key, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
 
         _retry_upload(_put)
     # Return the URL for index.html: pre-signed if no public base (private bucket), else public path
     if getattr(backend, "public_base_url", None):
         return f"{backend.public_base_url.rstrip('/')}/{index_key}"
-    entry_url = backend.get_url(index_key, expires_seconds=86400 * 365)
+    entry_url = backend.get_url(index_key, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
     if entry_url:
         return entry_url
     base = getattr(backend, "public_base_url", None) or ""
@@ -296,7 +299,7 @@ def upload_thumbnail(prefix: str, image_bytes: bytes) -> str:
     def _put():
         backend = get_preview_storage_backend()
         backend.save_bytes(key, image_bytes, content_type="image/png")
-        return backend.get_url(key, expires_seconds=86400 * 365)
+        return backend.get_url(key, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
 
     url = _retry_upload(_put)
     if not url:
