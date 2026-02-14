@@ -24,8 +24,12 @@ def validate_blueprint_v1(blueprint: Dict[str, Any]) -> Tuple[bool, List[str]]:
     if not isinstance(blueprint, dict):
         return False, ["root: must be a dict"]
 
-    if blueprint.get("schema_version") != 1:
+    # Accept integer 1, string "1" or "v1", or missing (treat as v1)
+    sv = blueprint.get("schema_version")
+    if sv not in (1, "1", "v1", None):
         errors.append(_err("schema_version", "must be 1"))
+    elif sv is None or sv != 1:
+        blueprint["schema_version"] = 1  # normalize for storage
 
     meta = blueprint.get("meta")
     if not isinstance(meta, dict):
