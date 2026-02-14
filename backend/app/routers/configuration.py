@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, cast
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import IntegrityError
 from typing import Any, List, Optional, Tuple
 from datetime import datetime
 import logging
@@ -342,7 +343,15 @@ def delete_template(
             payload_json={"template_id": str(template_id), "name": template_name},
         )
     )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        logging.getLogger(__name__).warning("Template delete integrity error: %s", e)
+        raise HTTPException(
+            status_code=409,
+            detail="Template cannot be deleted because it is referenced by projects or other data. Remove those references first.",
+        ) from e
 
 
 @router.post("/api/templates/{template_id}/generate-preview")
