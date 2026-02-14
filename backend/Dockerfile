@@ -20,9 +20,9 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Lighthouse and Playwright browsers
+# Install Lighthouse and Playwright browsers (chromium + headless shell for axe/Lighthouse)
 RUN npm install -g lighthouse
-RUN python -m playwright install --with-deps chromium
+RUN python -m playwright install --with-deps chromium && python -m playwright install --with-deps --only-shell
 
 # Copy application code
 COPY . .

@@ -177,3 +177,13 @@ Blueprint generation runs in the **delivery-worker** service, not the web backen
 
 5. **Check the run status**  
    After generating, the UI polls `.../blueprint/status`. Use **View details** (or call `GET .../api/blueprint-runs/{run_id}`) to see if the run is `queued`, `generating`, `ready`, or `failed`, and if failed, the `error_message` (e.g. quota vs missing API key).
+
+---
+
+## Template validation (Lighthouse + Axe) failing
+
+Template **Run Validation** uses **Lighthouse** (CLI) and **Axe** (via Playwright Chromium). The backend must have these installed.
+
+- **On Render:** The backend is built with **Docker** (`backend/Dockerfile`), which installs **Node**, **Lighthouse** (`npm install -g lighthouse`), and **Playwright** with Chromium and the headless shell (`playwright install --with-deps chromium` and `--only-shell`). No extra env vars are required.
+- If you see **"Lighthouse CLI not found"** or **"Executable doesn't exist at .../chromium_headless_shell"**, the backend is likely not using the Docker build (e.g. an older deploy with `runtime: python`). Ensure `render.yaml` has the backend as `runtime: docker` with `dockerfilePath: backend/Dockerfile` and `dockerContext: backend`, then redeploy.
+- **Local:** Use `backend/Dockerfile` or run `npm install -g lighthouse` and `python -m playwright install --with-deps chromium` (and `--only-shell` if you use headless shell) in your backend environment.
