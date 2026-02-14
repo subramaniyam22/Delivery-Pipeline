@@ -46,8 +46,8 @@ export default function Navigation() {
     const [openGroup, setOpenGroup] = useState<NavGroup | null>(null);
 
     const isActive = (path: string) => {
-        if (path === '/dashboard' || path === '/executive-dashboard') {
-            return pathname === path;
+        if (path === '/dashboard') {
+            return pathname === '/dashboard' || pathname === '/executive-dashboard';
         }
         return pathname === path || pathname.startsWith(`${path}/`);
     };

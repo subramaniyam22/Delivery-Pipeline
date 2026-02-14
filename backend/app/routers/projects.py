@@ -744,8 +744,8 @@ def review_onboarding(
     if data.action == "APPROVE":
         onboarding.review_status = OnboardingReviewStatus.APPROVED
         onboarding.consultant_review_notes = data.notes
-        # Advance Stage
-        if project.current_stage == Stage.ONBOARDING:
+        # Advance Stage only if client has submitted onboarding (prevents moving before client shares info)
+        if project.current_stage == Stage.ONBOARDING and getattr(onboarding, "submitted_at", None):
             project.current_stage = Stage.ASSIGNMENT
         
     elif data.action in ["REJECT", "REQUEST_CHANGES"]:

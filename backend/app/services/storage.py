@@ -212,6 +212,27 @@ UPLOAD_RETRY_BACKOFF = 1.0
 S3_PRESIGN_MAX_EXPIRY_SECONDS = 604800
 
 
+def refresh_presigned_thumbnail_url(stored_url: Optional[str]) -> Optional[str]:
+    """
+    If stored_url is an S3 pre-signed URL (e.g. with X-Amz-Expires=31536000), return a new
+    pre-signed URL with S3_PRESIGN_MAX_EXPIRY_SECONDS so S3 does not return 400.
+    Otherwise return stored_url unchanged.
+    """
+    if not stored_url or "X-Amz-" not in stored_url:
+        return stored_url
+    from urllib.parse import urlparse
+    parsed = urlparse(stored_url)
+    key = (parsed.path or "").lstrip("/")
+    if not key:
+        return stored_url
+    try:
+        backend = get_preview_storage_backend()
+        new_url = backend.get_url(key, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
+        return new_url or stored_url
+    except Exception:
+        return stored_url
+
+
 def _previews_base_dir() -> str:
     """Directory for local preview files (served at /previews)."""
     return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "generated_previews")

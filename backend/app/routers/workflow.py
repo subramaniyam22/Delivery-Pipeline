@@ -206,16 +206,22 @@ def approve_stage(
     if stage in stage_order and project.current_stage == stage:
         idx = stage_order.index(stage)
         if idx < len(stage_order) - 1:
-            previous_stage = project.current_stage
             next_stage = stage_order[idx + 1]
-            project.current_stage = next_stage
-            record_stage_transition(
-                project,
-                previous_stage,
-                project.current_stage,
-                actor_user_id=str(current_user.id),
-                request_id=request_id,
-            )
+            if stage == Stage.ONBOARDING and next_stage == Stage.ASSIGNMENT:
+                from app.models import OnboardingData
+                ob = db.query(OnboardingData).filter(OnboardingData.project_id == project_id).first()
+                if not ob or not getattr(ob, "submitted_at", None):
+                    next_stage = None
+            if next_stage:
+                previous_stage = project.current_stage
+                project.current_stage = next_stage
+                record_stage_transition(
+                    project,
+                    previous_stage,
+                    project.current_stage,
+                    actor_user_id=str(current_user.id),
+                    request_id=request_id,
+                )
 
     db.add(
         AuditLog(

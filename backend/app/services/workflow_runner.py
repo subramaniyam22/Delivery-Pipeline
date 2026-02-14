@@ -486,6 +486,14 @@ def run_stage(
             if can_advance and not next_stage:
                 next_stage = stage_order[current_idx + 1]
 
+            # Do not advance from ONBOARDING to ASSIGNMENT until client has submitted onboarding
+            if stage == Stage.ONBOARDING and next_stage == Stage.ASSIGNMENT:
+                from app.models import OnboardingData
+                ob = db.query(OnboardingData).filter(OnboardingData.project_id == project_id).first()
+                if not ob or not getattr(ob, "submitted_at", None):
+                    can_advance = False
+                    next_stage = None
+
             if can_advance and next_stage:
                 previous_stage = project.current_stage
                 project.current_stage = next_stage

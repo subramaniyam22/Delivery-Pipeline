@@ -187,6 +187,7 @@ class Project(Base):
     pmc_name = Column(String(255), nullable=True)
     location = Column(String(255), nullable=True)
     location_names = Column(JSONB, default=list)
+    estimated_revenue_usd = Column(Float, nullable=True)  # Optional revenue for dashboard Focus
     client_email_ids = Column(Text, nullable=True)
     sales_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     

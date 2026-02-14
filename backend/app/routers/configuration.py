@@ -14,10 +14,11 @@ import uuid
 from app.db import get_db
 from app.db import SessionLocal
 from app.deps import get_current_active_user
-from app.models import TemplateRegistry, User, AuditLog, TemplateBlueprintJob, TemplateBlueprintRun, TemplateValidationJob, TemplateEvolutionProposal, ClientSentiment
+from app.models import TemplateRegistry, User, AuditLog, TemplateBlueprintJob, TemplateBlueprintRun, TemplateValidationJob, TemplateEvolutionProposal, ClientSentiment, Project, DeliveryOutcome
 from app.schemas import TemplateCreate, TemplateUpdate, TemplateResponse, SetRecommendedBody
 from app.config import settings
 from app.rbac import require_admin_manager
+from app.services.storage import refresh_presigned_thumbnail_url
 
 router = APIRouter(tags=["templates"])
 
@@ -166,7 +167,11 @@ def list_templates(
         query = query.filter(
             TemplateRegistry.feature_tags_json.op("@>")(cast([tag], JSONB))
         )
-    return query.order_by(TemplateRegistry.created_at.desc()).all()
+    templates = query.order_by(TemplateRegistry.created_at.desc()).all()
+    for t in templates:
+        if getattr(t, "preview_thumbnail_url", None):
+            t.preview_thumbnail_url = refresh_presigned_thumbnail_url(t.preview_thumbnail_url)
+    return templates
 
 
 @router.get("/api/templates/demo-dataset")
@@ -267,6 +272,8 @@ def get_template(
     template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    if getattr(template, "preview_thumbnail_url", None):
+        template.preview_thumbnail_url = refresh_presigned_thumbnail_url(template.preview_thumbnail_url)
     return template
 
 
@@ -322,6 +329,84 @@ def update_template(
     return template
 
 
+@router.get("/templates/{template_id}/references")
+@router.get("/api/templates/{template_id}/references")
+def get_template_references(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """List projects and records that reference this template (for resolving 409 on delete)."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    template_id_str = str(template_id)
+    projects_using = db.query(Project.id, Project.title, Project.status).filter(
+        Project.selected_template_id == template_id_str,
+    ).all()
+    delivery_outcomes = db.query(DeliveryOutcome.id, DeliveryOutcome.project_id).filter(
+        DeliveryOutcome.template_registry_id == template.id,
+    ).all()
+    sentiments = db.query(ClientSentiment.id, ClientSentiment.project_id).filter(
+        ClientSentiment.template_registry_id == template.id,
+    ).all()
+    blueprint_runs = db.query(TemplateBlueprintRun.id).filter(
+        TemplateBlueprintRun.template_id == template.id,
+    ).count()
+    blueprint_jobs = db.query(TemplateBlueprintJob.id).filter(
+        TemplateBlueprintJob.template_id == template.id,
+    ).count()
+    validation_jobs = db.query(TemplateValidationJob.id).filter(
+        TemplateValidationJob.template_id == template.id,
+    ).count()
+    evolution_proposals = db.query(TemplateEvolutionProposal.id).filter(
+        TemplateEvolutionProposal.template_id == template.id,
+    ).count()
+    return {
+        "template_id": template_id_str,
+        "template_name": template.name,
+        "projects": [{"id": str(p.id), "title": p.title, "status": p.status.value if hasattr(p.status, "value") else str(p.status)} for p in projects_using],
+        "delivery_outcomes": [{"id": str(d.id), "project_id": str(d.project_id)} for d in delivery_outcomes],
+        "client_sentiments": [{"id": str(s.id), "project_id": str(s.project_id)} for s in sentiments],
+        "counts": {
+            "template_blueprint_runs": blueprint_runs,
+            "template_blueprint_jobs": blueprint_jobs,
+            "template_validation_jobs": validation_jobs,
+            "template_evolution_proposals": evolution_proposals,
+        },
+        "summary": (
+            f"{len(projects_using)} project(s), {len(delivery_outcomes)} delivery outcome(s), {len(sentiments)} sentiment(s), "
+            f"{blueprint_runs} blueprint run(s), {validation_jobs} validation job(s), {evolution_proposals} evolution proposal(s)"
+        ),
+    }
+
+
+def _template_has_references(db: Session, template_id: str) -> Tuple[bool, dict]:
+    """Return (has_refs, references_dict) for the given template (by id string)."""
+    from uuid import UUID
+    tid = UUID(template_id)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == tid).first()
+    if not template:
+        return False, {}
+    projects_using = db.query(Project.id, Project.title, Project.status).filter(
+        Project.selected_template_id == template_id,
+    ).all()
+    delivery_outcomes = db.query(DeliveryOutcome.id).filter(
+        DeliveryOutcome.template_registry_id == tid,
+    ).count()
+    sentiments = db.query(ClientSentiment.id).filter(
+        ClientSentiment.template_registry_id == tid,
+    ).count()
+    refs = {
+        "projects": [{"id": str(p.id), "title": p.title, "status": getattr(p.status, "value", str(p.status))} for p in projects_using],
+        "delivery_outcomes_count": delivery_outcomes,
+        "client_sentiments_count": sentiments,
+    }
+    has = len(projects_using) > 0 or delivery_outcomes > 0 or sentiments > 0
+    return has, refs
+
+
 @router.delete("/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 @router.delete("/api/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_template(
@@ -333,14 +418,24 @@ def delete_template(
     template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    template_name = template.name
+    is_published = getattr(template, "is_published", False) or (getattr(template, "status", None) or "").lower() == "published"
+    if is_published:
+        has_refs, refs = _template_has_references(db, template_id)
+        if has_refs:
+            project_titles = [p["title"] for p in refs.get("projects", [])]
+            detail = {
+                "message": "Published template cannot be deleted because it is referenced. Remove or change template selection on linked projects first.",
+                "references": refs,
+                "project_titles": project_titles,
+            }
+            raise HTTPException(status_code=409, detail=detail)
     db.delete(template)
     db.add(
         AuditLog(
             project_id=None,
             actor_user_id=current_user.id,
             action="TEMPLATE_DELETED",
-            payload_json={"template_id": str(template_id), "name": template_name},
+            payload_json={"template_id": str(template_id), "name": template.name},
         )
     )
     try:
@@ -348,10 +443,12 @@ def delete_template(
     except IntegrityError as e:
         db.rollback()
         logging.getLogger(__name__).warning("Template delete integrity error: %s", e)
-        raise HTTPException(
-            status_code=409,
-            detail="Template cannot be deleted because it is referenced by projects or other data. Remove those references first.",
-        ) from e
+        has_refs, refs = _template_has_references(db, template_id)
+        detail = {
+            "message": "Template cannot be deleted because it is referenced by projects or other data. Remove those references first.",
+            "references": refs,
+        } if refs else "Template cannot be deleted due to database constraints."
+        raise HTTPException(status_code=409, detail=detail) from e
 
 
 @router.post("/api/templates/{template_id}/generate-preview")

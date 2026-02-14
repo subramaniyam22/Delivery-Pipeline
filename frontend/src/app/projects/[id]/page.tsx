@@ -2199,6 +2199,14 @@ export default function ProjectDetailPage() {
                         <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.project_type || '—'}</div>
                     </div>
                     <div className="summary-field">
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Estimated Revenue (USD)</label>
+                        <div style={{ fontSize: '14px', fontWeight: 500 }}>
+                            {project.estimated_revenue_usd != null && project.estimated_revenue_usd !== ''
+                                ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Number(project.estimated_revenue_usd))
+                                : '—'}
+                        </div>
+                    </div>
+                    <div className="summary-field">
                         <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Priority</label>
                         <div style={{ fontSize: '14px', fontWeight: 500 }}>{project.priority}</div>
                     </div>
@@ -2683,134 +2691,6 @@ export default function ProjectDetailPage() {
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Phase Summary - Admin/Manager */}
-                {user?.role && ['ADMIN', 'MANAGER'].includes(user.role) && phaseSummaries.length > 0 && (
-                    <div className="phase-summary-section">
-                        <div className="section-header">
-                            <h2>📌 Phase Task Summary</h2>
-                            {healthSummary && (
-                                <span className={`health-pill health-${healthSummary.status?.toLowerCase()}`}>
-                                    {healthSummary.status.replace('_', ' ')}
-                                </span>
-                            )}
-                        </div>
-                        {healthSummary && (
-                            <div className="health-details">
-                                <div>Days in stage: {healthSummary.days_in_stage}</div>
-                                <div>SLA days: {healthSummary.sla_days}</div>
-                                <div>Remaining: {healthSummary.remaining_days} days</div>
-                            </div>
-                        )}
-                        <div className="phase-table">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Phase</th>
-                                        <th>Started At</th>
-                                        <th>Completed</th>
-                                        <th>Pending</th>
-                                        <th>Total</th>
-                                        <th>Completion</th>
-                                        <th>SLA Risk</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {phaseSummaries.map((phase) => (
-                                        <tr key={phase.stage}>
-                                            <td className="cell-title">{phase.stage.replace('_', ' ')}</td>
-                                            <td>
-                                                {phase.started_at ? new Date(phase.started_at).toLocaleString() : '—'}
-                                            </td>
-                                            <td>{phase.completed_tasks}</td>
-                                            <td>{phase.pending_tasks}</td>
-                                            <td>{phase.total_tasks}</td>
-                                            <td>{phase.completion_percentage}%</td>
-                                            <td>
-                                                {phase.sla_risk ? (
-                                                    <span className={`health-pill health-${phase.sla_risk.toLowerCase()}`}>
-                                                        {phase.sla_risk.replace('_', ' ')}
-                                                    </span>
-                                                ) : '—'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-
-                {/* Stage Timeline */}
-                {user?.role && ['ADMIN', 'MANAGER'].includes(user.role) && Array.isArray(project?.stage_history) && project.stage_history.length > 0 && (
-                    <div className="phase-summary-section">
-                        <div className="section-header">
-                            <h2>🕒 Stage Timeline</h2>
-                        </div>
-                        <div className="phase-table">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>From</th>
-                                        <th>To</th>
-                                        <th>Changed At</th>
-                                        <th>By</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {[...project.stage_history].reverse().map((entry: any, idx: number) => (
-                                        <tr key={`${entry.at || 'na'}-${idx}`}>
-                                            <td>{entry.from_stage ? entry.from_stage.replace('_', ' ') : '—'}</td>
-                                            <td>{entry.to_stage ? entry.to_stage.replace('_', ' ') : '—'}</td>
-                                            <td>{entry.at ? new Date(entry.at).toLocaleString() : '—'}</td>
-                                            <td>{entry.actor_user_id || 'System'}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-
-                {/* Executive Summary for Admin */}
-                {isExecutiveView && (
-                    <div className="executive-summary">
-                        <h2>📈 Executive Summary</h2>
-                        <div className="summary-grid">
-                            <div className="summary-card">
-                                <span className="summary-icon">📊</span>
-                                <div className="summary-content">
-                                    <span className="summary-label">Progress</span>
-                                    <span className="summary-value">{completionStatus?.completion_percentage || 0}%</span>
-                                </div>
-                            </div>
-                            <div className="summary-card">
-                                <span className="summary-icon">📋</span>
-                                <div className="summary-content">
-                                    <span className="summary-label">Tasks</span>
-                                    <span className="summary-value">{completionStatus?.completed_tasks || 0}/{completionStatus?.total_required_tasks || 0}</span>
-                                </div>
-                            </div>
-                            <div className="summary-card">
-                                <span className="summary-icon">🎯</span>
-                                <div className="summary-content">
-                                    <span className="summary-label">Stage</span>
-                                    <span className="summary-value">{project.current_stage?.replace('_', ' ')}</span>
-                                </div>
-                            </div>
-                            <div className="summary-card">
-                                <span className="summary-icon">⚡</span>
-                                <div className="summary-content">
-                                    <span className="summary-label">Status</span>
-                                    <span className="summary-value">{project.status}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="executive-note">
-                            <p>💡 As an executive, you see the high-level overview. Detailed operational data is managed by Consultants and Managers.</p>
                         </div>
                     </div>
                 )}

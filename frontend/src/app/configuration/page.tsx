@@ -1094,7 +1094,23 @@ export default function ConfigurationPage() {
             setSuccess('Template deleted');
             loadData();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Failed to delete template');
+            const d = err.response?.data?.detail;
+            let msg = 'Failed to delete template';
+            if (typeof d === 'string') msg = d;
+            else if (Array.isArray(d)) msg = d.map((x: any) => x?.msg ?? x).join(' ');
+            else if (d && typeof d === 'object' && d.message) msg = d.message;
+            if (d && typeof d === 'object' && d.project_titles?.length) msg += ` Projects: ${d.project_titles.join(', ')}`;
+            setError(msg);
+            if (err.response?.status === 409 && d && typeof d === 'object' && d.references && !d.project_titles?.length) {
+                try {
+                    const { data } = await configurationAPI.getTemplateReferences(template.id);
+                    const projectList = (data.projects?.length)
+                        ? `\n\nProjects using this template: ${data.projects.map((p: { title: string }) => p.title).join(', ')}`
+                        : '';
+                    const full = (data.summary || '') + projectList;
+                    if (full.trim()) window.alert(`Cannot delete: ${full}`);
+                } catch (_) { /* ignore */ }
+            }
         }
     };
 

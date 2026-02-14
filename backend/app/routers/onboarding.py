@@ -1348,6 +1348,8 @@ def check_and_auto_advance(
     onboarding = db.query(OnboardingData).filter(OnboardingData.project_id == project_id).first()
     if not onboarding:
         return {"can_advance": False, "reason": "No onboarding data found"}
+    if not getattr(onboarding, "submitted_at", None):
+        return {"can_advance": False, "reason": "Client has not submitted onboarding yet"}
     
     required_fields = resolve_required_fields(db, project)
     completion = calculate_completion_percentage(onboarding, required_fields)

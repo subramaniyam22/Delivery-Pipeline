@@ -408,6 +408,15 @@ export const configurationAPI = {
         api.get('/api/templates', { params: params || {} }),
     createTemplate: (data: any) => api.post('/api/templates', data),
     getTemplate: (id: string) => api.get(`/api/templates/${id}`),
+    getTemplateReferences: (id: string) => api.get<{
+        template_id: string;
+        template_name: string;
+        projects: { id: string; title: string; status: string }[];
+        delivery_outcomes: { id: string; project_id: string }[];
+        client_sentiments: { id: string; project_id: string }[];
+        counts: { template_blueprint_runs: number; template_blueprint_jobs: number; template_validation_jobs: number; template_evolution_proposals: number };
+        summary: string;
+    }>(`/api/templates/${id}/references`),
     updateTemplate: (id: string, data: any) => api.put(`/api/templates/${id}`, data),
     deleteTemplate: (id: string) => api.delete(`/api/templates/${id}`),
     generateTemplatePreview: (id: string, body?: { force?: boolean }) =>

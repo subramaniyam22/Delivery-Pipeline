@@ -112,6 +112,7 @@ def create_project(db: Session, data: ProjectCreate, user) -> Project:
         location_names=location_names or None,
         client_email_ids=data.client_email_ids,
         project_type=data.project_type,
+        estimated_revenue_usd=getattr(data, "estimated_revenue_usd", None),
         manager_user_id=None # Manager assignment removed
     )
     _record_stage_transition(project, None, current_stage, str(user.id))

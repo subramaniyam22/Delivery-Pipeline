@@ -23,6 +23,10 @@ class OnboarderAgentService:
         if not onboarding:
             return
 
+        # Do not advance until client has submitted onboarding (submitted_at set when they submit the form)
+        if not getattr(onboarding, "submitted_at", None):
+            return
+
         # If manual review is enabled, we don't auto-advance
         if project.require_manual_review:
             return

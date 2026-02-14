@@ -193,16 +193,23 @@ def _render_section(sec: Dict[str, Any], tokens: Dict[str, Any], demo: Dict[str,
 
 
 def _nav_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
+    """Build nav with relative hrefs (index.html, slug.html) so preview works from S3 subpath."""
     nav = blueprint.get("navigation") or {}
-    style = nav.get("style") or "topbar"
     items = nav.get("items") or []
     primary = tokens.get("primary", "#2563eb")
     font_family = tokens.get("font_family", "Inter, sans-serif")
+
+    def _href_for_slug(slug: str) -> str:
+        s = (slug or "").strip().lstrip("/")
+        if not s or s == "home":
+            return "index.html"
+        return f"{s}.html"
+
     links = "".join(
-        f'<a href="/{ (item.get("href") or "").strip().lstrip("/") or "#" }" style="color: white; text-decoration: none; padding: 8px 16px;">{html_module.escape(item.get("label") or "")}</a>'
+        f'<a href="{_href_for_slug(item.get("href") or "")}" style="color: white; text-decoration: none; padding: 8px 16px;">{html_module.escape(item.get("label") or "")}</a>'
         for item in items if isinstance(item, dict)
     )
-    return f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main"><a href="/home" style="color: white; text-decoration: none; font-weight: 600;">{html_module.escape((blueprint.get("meta") or {}).get("name") or "Home")}</a>{links}</nav>'
+    return f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main"><a href="index.html" style="color: white; text-decoration: none; font-weight: 600;">{html_module.escape((blueprint.get("meta") or {}).get("name") or "Home")}</a>{links}</nav>'
 
 
 def _footer_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
@@ -224,22 +231,24 @@ def _footer_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
     return f'<footer style="padding: 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; margin-top: 48px;"><div style="max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 24px;">{"".join(parts)}</div></footer>'
 
 
-def render_preview_html(blueprint_json: Dict[str, Any], demo_dataset: Dict[str, Any]) -> str:
-    """Produce a single HTML string for the given page (home). For multi-page we use hash routing or separate files; here we render the first page as index."""
+def _render_one_page_html(
+    blueprint_json: Dict[str, Any],
+    demo_dataset: Dict[str, Any],
+    page: Dict[str, Any],
+) -> str:
+    """Render full HTML for one page (nav + sections + footer). Used for index and slug.html."""
     if not blueprint_json or not isinstance(blueprint_json, dict):
         return "<!DOCTYPE html><html><body><p>No blueprint</p></body></html>"
     tokens = _get_tokens(blueprint_json)
     env = Environment(loader=BaseLoader(), autoescape=True)
-    pages = blueprint_json.get("pages") or []
-    first_page = pages[0] if pages and isinstance(pages[0], dict) else {"slug": "home", "title": "Home", "sections": []}
     sections_html = []
-    for sec in first_page.get("sections") or []:
+    for sec in (page.get("sections") or []):
         if isinstance(sec, dict):
             sections_html.append(_render_section(sec, tokens, demo_dataset, env))
     nav = _nav_html(blueprint_json, tokens)
     footer = _footer_html(blueprint_json, tokens)
     meta_name = (blueprint_json.get("meta") or {}).get("name") or "Preview"
-    title = first_page.get("title") or "Home"
+    title = page.get("title") or "Home"
     font_family = tokens.get("font_family", "Inter, sans-serif")
     body_size = tokens.get("body_size", 16)
     return f"""<!DOCTYPE html>
@@ -262,17 +271,24 @@ def render_preview_html(blueprint_json: Dict[str, Any], demo_dataset: Dict[str, 
 </html>"""
 
 
+def render_preview_html(blueprint_json: Dict[str, Any], demo_dataset: Dict[str, Any]) -> str:
+    """Produce a single HTML string for the first page (home). Kept for backward compatibility."""
+    pages = (blueprint_json or {}).get("pages") or []
+    first_page = pages[0] if pages and isinstance(pages[0], dict) else {"slug": "home", "title": "Home", "sections": []}
+    return _render_one_page_html(blueprint_json, demo_dataset, first_page)
+
+
 def render_preview_assets(
     blueprint_json: Dict[str, Any],
     demo_dataset: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
     Return dict of path -> content (str or bytes).
-    index.html, assets/style.css, assets/app.js; images as placeholder URLs in HTML.
+    index.html (first page), one {slug}.html per other page (so nav links work from S3 subpath),
+    assets/style.css, assets/app.js.
     """
     if not blueprint_json or not isinstance(blueprint_json, dict):
         return {"index.html": "<!DOCTYPE html><html><body><p>No blueprint</p></body></html>"}
-    html = render_preview_html(blueprint_json, demo_dataset)
     tokens = _get_tokens(blueprint_json)
     primary = tokens.get("primary", "#2563eb")
     font_family = tokens.get("font_family", "Inter, sans-serif")
@@ -285,8 +301,18 @@ body {{ margin: 0; box-sizing: border-box; }}
 * {{ box-sizing: border-box; }}
 """
     js = "// Preview static bundle - no runtime required."
-    return {
-        "index.html": html,
+    pages = blueprint_json.get("pages") or []
+    if not pages or not isinstance(pages[0], dict):
+        pages = [{"slug": "home", "title": "Home", "sections": []}]
+    out = {
+        "index.html": _render_one_page_html(blueprint_json, demo_dataset, pages[0]),
         "assets/style.css": css.strip(),
         "assets/app.js": js,
     }
+    for i in range(1, len(pages)):
+        page = pages[i]
+        if not isinstance(page, dict):
+            continue
+        slug = (page.get("slug") or "").strip().lstrip("/") or f"page{i}"
+        out[f"{slug}.html"] = _render_one_page_html(blueprint_json, demo_dataset, page)
+    return out

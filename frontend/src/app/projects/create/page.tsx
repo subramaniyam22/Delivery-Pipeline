@@ -27,6 +27,7 @@ function CreateProjectContent() {
 
     // New Field
     const [projectType, setProjectType] = useState('Full Website');
+    const [estimatedRevenueUsd, setEstimatedRevenueUsd] = useState<string | number>('');
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -62,6 +63,7 @@ function CreateProjectContent() {
                     setLocation(locationNames || project.location || '');
                     setClientEmailIds(project.client_email_ids || '');
                     setProjectType(project.project_type || 'Full Website');
+                    setEstimatedRevenueUsd(project.estimated_revenue_usd ?? '');
                     setLoading(false);
                 })
                 .catch(err => {
@@ -87,6 +89,7 @@ function CreateProjectContent() {
             location_names: locationNames.length ? locationNames : undefined,
             client_email_ids: clientEmailIds || undefined,
             project_type: projectType,
+            estimated_revenue_usd: estimatedRevenueUsd === '' ? undefined : Number(estimatedRevenueUsd),
             status: status
         };
 
@@ -250,6 +253,19 @@ function CreateProjectContent() {
                                                 <option key={type} value={type}>{type}</option>
                                             ))}
                                         </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label htmlFor="estimatedRevenueUsd">Estimated Revenue (USD)</label>
+                                        <input
+                                            id="estimatedRevenueUsd"
+                                            type="number"
+                                            min={0}
+                                            step={1}
+                                            value={estimatedRevenueUsd}
+                                            onChange={(e) => setEstimatedRevenueUsd(e.target.value === '' ? '' : e.target.value)}
+                                            disabled={loading}
+                                            placeholder="e.g. 5000"
+                                        />
                                     </div>
                                 </div>
                             </>

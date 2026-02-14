@@ -82,6 +82,7 @@ class ProjectCreate(BaseModel):
     location_names: Optional[List[str]] = None
     client_email_ids: Optional[str] = Field(None, max_length=1000)
     project_type: Optional[str] = Field(None, max_length=50)
+    estimated_revenue_usd: Optional[float] = Field(None, ge=0, description="Estimated revenue in USD for dashboard")
     status: Optional[ProjectStatus] = ProjectStatus.DRAFT
     
     @classmethod
@@ -112,6 +113,7 @@ class ProjectUpdate(BaseModel):
     location: Optional[str] = None
     location_names: Optional[List[str]] = None
     client_email_ids: Optional[str] = None
+    estimated_revenue_usd: Optional[float] = None
     manager_user_id: Optional[UUID] = None
 
 
@@ -143,6 +145,7 @@ class ProjectResponse(BaseModel):
     status: ProjectStatus
     project_type: Optional[str] = None
     current_stage: Stage
+    estimated_revenue_usd: Optional[float] = None
     region: Optional[Region] = None
     created_by_user_id: UUID
     created_at: datetime
