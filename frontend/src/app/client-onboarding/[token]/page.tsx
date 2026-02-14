@@ -63,7 +63,8 @@ interface OnboardingFormData {
     missing_fields: string[];
     submitted_at?: string | null;
     missing_fields_eta_json?: Record<string, string>;
-    client_preview?: { preview_url?: string; status?: string } | null;
+    client_preview?: { preview_url?: string; thumbnail_url?: string; status?: string } | null;
+    client_wants_full_validation?: boolean | null;
     data: {
         logo_url: string | null;
         logo_file_path: string | null;
@@ -335,6 +336,9 @@ export default function ClientOnboardingPage() {
     const [chatMessages, setChatMessages] = useState<any[]>([
         { text: "👋 Hi there! I'm here to help you complete your onboarding. Do you have any questions about the form or requirements?", isBot: true, sender: 'bot' }
     ]);
+    const [templateGridPage, setTemplateGridPage] = useState(1);
+    const [templateModalPage, setTemplateModalPage] = useState(1);
+    const [clientWantsFullValidation, setClientWantsFullValidation] = useState<boolean | null>(null);
 
     const setupWebSocket = () => {
         if (!formData?.project_id) return null;
@@ -435,6 +439,14 @@ export default function ClientOnboardingPage() {
         };
     }, [formData?.project_id]);
 
+    // Ref so polling effect does not depend on formData (avoids re-running on every keystroke)
+    const shouldPollPreviewRef = useRef(false);
+    useEffect(() => {
+        const submitted = !!formData?.submitted_at;
+        const status = formData?.client_preview?.status;
+        shouldPollPreviewRef.current = submitted && (status === 'generating' || status === 'not_generated');
+    }, [formData?.submitted_at, formData?.client_preview?.status]);
+
 
     const [chatInput, setChatInput] = useState('');
 
@@ -527,12 +539,26 @@ export default function ClientOnboardingPage() {
             const res = await clientAPI.getOnboardingForm(token);
             setFormData(res.data);
             setMissingFieldsEta(res.data.missing_fields_eta_json || res.data.data?.missing_fields_eta_json || {});
+            if (typeof res.data.client_wants_full_validation === 'boolean') setClientWantsFullValidation(res.data.client_wants_full_validation);
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to load form. The link may be invalid or expired.');
         } finally {
             setLoading(false);
         }
     };
+
+    const loadFormDataRef = useRef(loadFormData);
+    loadFormDataRef.current = loadFormData;
+
+    // Poll for client preview only when submitted and status is generating; interval does not depend on formData so typing does not restart it
+    const POLL_INTERVAL_MS = 10000;
+    useEffect(() => {
+        if (!token) return;
+        const t = setInterval(() => {
+            if (shouldPollPreviewRef.current) loadFormDataRef.current();
+        }, POLL_INTERVAL_MS);
+        return () => clearInterval(t);
+    }, [token]);
 
     const saveFormData = async (updates: Partial<OnboardingFormData['data']>) => {
         if (!formData) return;
@@ -1033,14 +1059,48 @@ export default function ClientOnboardingPage() {
                 </div>
             )}
 
-            {(formData.submitted_at || success) && formData.client_preview && (
-                <div className="alert alert-info" style={{ marginTop: 8 }}>
-                    {formData.client_preview.status === 'ready' && formData.client_preview.preview_url ? (
-                        <a href={formData.client_preview.preview_url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
-                            View your draft site
-                        </a>
-                    ) : (
-                        <span>Your draft site is being prepared. We will notify you when it is ready.</span>
+            {/* Success screen after submit: preview button, AI callout, Yes/No for full validation, disclaimer */}
+            {(formData.submitted_at || success) && (
+                <div className="success-screen-block" style={{ margin: '16px 24px 24px', padding: '24px', background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)', borderRadius: '16px', border: '1px solid #bbf7d0' }}>
+                    <h3 style={{ margin: '0 0 8px', fontSize: '18px', color: '#166534' }}>Form submitted successfully</h3>
+                    <p style={{ margin: 0, fontSize: '14px', color: '#15803d' }}>Our Consultant team has been notified and will reach out to you.</p>
+                    {formData.client_preview && (
+                        <>
+                            {formData.client_preview.status === 'ready' && formData.client_preview.preview_url ? (
+                                <>
+                                    <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.7)', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+                                        <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#166534', fontWeight: 600 }}>Built by our Specialist Builder (using AI)</p>
+                                        <a
+                                            href={formData.client_preview.preview_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '10px', padding: '12px 20px', background: '#166534', color: 'white', borderRadius: '10px', fontWeight: 600, textDecoration: 'none', boxShadow: '0 2px 8px rgba(22,101,52,0.3)'
+                                            }}
+                                        >
+                                            {formData.client_preview.thumbnail_url ? (
+                                                <img src={formData.client_preview.thumbnail_url} alt="" style={{ width: 48, height: 36, objectFit: 'cover', borderRadius: 6 }} />
+                                            ) : (
+                                                <span style={{ width: 48, height: 36, background: 'rgba(255,255,255,0.2)', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>🌐</span>
+                                            )}
+                                            Preview your website
+                                        </a>
+                                    </div>
+                                    <p style={{ margin: '16px 0 0', fontSize: '12px', color: '#64748b' }}>
+                                        This preview is a static view. Full validation, testing, SEO, and accessibility checks will be run; we will send you the fully functional website once it is ready.
+                                    </p>
+                                        <div style={{ marginTop: '16px' }}>
+                                        <p style={{ margin: '0 0 8px', fontSize: '14px', color: '#334155', fontWeight: 600 }}>Proceed with full validation, testing, SEO, accessibility, and build & QA?</p>
+                                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                            <button type="button" onClick={() => { setClientWantsFullValidation(true); clientAPI.setFullValidationChoice(token, true).catch(() => {}); }} style={{ padding: '10px 20px', borderRadius: '8px', border: '2px solid #166534', background: clientWantsFullValidation === true ? '#166534' : 'white', color: clientWantsFullValidation === true ? 'white' : '#166534', fontWeight: 600, cursor: 'pointer' }}>Yes</button>
+                                            <button type="button" onClick={() => { setClientWantsFullValidation(false); clientAPI.setFullValidationChoice(token, false).catch(() => {}); }} style={{ padding: '10px 20px', borderRadius: '8px', border: '2px solid #64748b', background: clientWantsFullValidation === false ? '#64748b' : 'white', color: clientWantsFullValidation === false ? 'white' : '#64748b', fontWeight: 600, cursor: 'pointer' }}>No</button>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <p style={{ margin: '16px 0 0', fontSize: '14px', color: '#15803d' }}>Your website preview is being prepared. This page will update when it is ready.</p>
+                            )}
+                        </>
                     )}
                 </div>
             )}
@@ -1394,15 +1454,15 @@ export default function ClientOnboardingPage() {
                             </div>
                         </div>
 
-                        {/* Template Section */}
+                        {/* Template Section — published templates only; preview and select, no configuration */}
                         <div className="form-section-inner">
                             <h4 style={{ margin: '0 0 16px', fontSize: '15px' }}>Website Template</h4>
                             <div className="form-group">
                                 <label>Template Direction</label>
-                                <div className="template-btn-group" style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+                                <div className="template-btn-group" style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                                     <button
                                         className={`btn-toggle ${formData.data.requirements?.template_mode !== 'NEW' ? 'active' : ''}`}
-                                        onClick={() => updateRequirements({ template_mode: 'CLONE' })}
+                                        onClick={() => { updateRequirements({ template_mode: 'CLONE' }); setTemplateGridPage(1); }}
                                         style={{
                                             flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid',
                                             borderColor: formData.data.requirements?.template_mode !== 'NEW' ? '#2563eb' : '#cbd5e1',
@@ -1427,6 +1487,7 @@ export default function ClientOnboardingPage() {
                                         New Custom Design
                                     </button>
                                 </div>
+                                <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>Preview published templates and select one. No configuration required.</p>
                             </div>
 
                             {formData.data.requirements?.template_mode !== 'NEW' ? (
@@ -1434,7 +1495,7 @@ export default function ClientOnboardingPage() {
                                 <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                                     <button
                                         type="button"
-                                        onClick={() => setBrowseTemplatesOpen(true)}
+                                        onClick={() => { setBrowseTemplatesOpen(true); setTemplateModalPage(1); }}
                                         style={{ padding: '10px 20px', borderRadius: '8px', border: '1px solid #2563eb', background: '#eff6ff', color: '#2563eb', fontWeight: 600, cursor: 'pointer' }}
                                     >
                                         Browse Templates
@@ -1451,17 +1512,24 @@ export default function ClientOnboardingPage() {
                                         No validated templates are configured yet. Add and publish templates in the app Config &gt; Templates section to see them here.
                                     </div>
                                 ) : (
+                                <>
                                 <div className="templates-grid">
-                                    {formData.templates!.map((template) => (
+                                    {(() => {
+                                        const templates = formData.templates!;
+                                        const pageSize = 10;
+                                        const totalPages = Math.max(1, Math.ceil(templates.length / pageSize));
+                                        const start = (templateGridPage - 1) * pageSize;
+                                        const pageTemplates = templates.slice(start, start + pageSize);
+                                        return pageTemplates.map((template) => (
                                         <div
                                             key={template.id}
                                             className={`template-card ${formData.data.selected_template_id === template.id ? 'selected' : ''}`}
                                             onClick={() => selectTemplate(template.id)}
                                         >
                                             <div className="template-preview">
-                                                {template.preview_url ? (
+                                                {(template.preview_thumbnail_url || template.preview_url) ? (
                                                     <img
-                                                        src={template.preview_url}
+                                                        src={template.preview_thumbnail_url || template.preview_url!}
                                                         alt={template.name}
                                                         className="template-thumb"
                                                         onError={(e) => {
@@ -1470,10 +1538,10 @@ export default function ClientOnboardingPage() {
                                                             if (parent) {
                                                                 const div = document.createElement('div');
                                                                 div.className = 'template-thumb-placeholder';
-                                                                div.style.background = `linear-gradient(135deg, ${template.colors.primary} 0%, ${template.colors.secondary} 100%)`;
+                                                                div.style.background = `linear-gradient(135deg, ${template.colors?.primary || '#2563eb'} 0%, ${template.colors?.secondary || '#1e40af'} 100%)`;
                                                                 div.style.width = '100%';
                                                                 div.style.height = '100%';
-                                                                div.style.borderRadius = '0'; // Inherit from parent
+                                                                div.style.borderRadius = '0';
                                                                 div.style.display = 'flex';
                                                                 div.style.alignItems = 'center';
                                                                 div.style.justifyContent = 'center';
@@ -1486,7 +1554,7 @@ export default function ClientOnboardingPage() {
                                                     />
                                                 ) : (
                                                     <div className="template-thumb-placeholder" style={{
-                                                        background: `linear-gradient(135deg, ${template.colors.primary} 0%, ${template.colors.secondary} 100%)`,
+                                                        background: `linear-gradient(135deg, ${template.colors?.primary || '#2563eb'} 0%, ${template.colors?.secondary || '#1e40af'} 100%)`,
                                                         display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '24px'
                                                     }}>
                                                         {template.name.substring(0, 2).toUpperCase()}
@@ -1526,8 +1594,23 @@ export default function ClientOnboardingPage() {
                                                 )}
                                             </div>
                                         </div>
-                                    ))}
+                                        ));
+                                    })()}
                                 </div>
+                                {(() => {
+                                    const templates = formData.templates!;
+                                    const pageSize = 10;
+                                    const totalPages = Math.max(1, Math.ceil(templates.length / pageSize));
+                                    if (totalPages <= 1) return null;
+                                    return (
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
+                                            <button type="button" disabled={templateGridPage <= 1} onClick={() => setTemplateGridPage(p => Math.max(1, p - 1))} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', cursor: templateGridPage <= 1 ? 'not-allowed' : 'pointer', opacity: templateGridPage <= 1 ? 0.6 : 1 }}>Previous</button>
+                                            <span style={{ fontSize: '14px', color: '#64748b' }}>Page {templateGridPage} of {totalPages}</span>
+                                            <button type="button" disabled={templateGridPage >= totalPages} onClick={() => setTemplateGridPage(p => Math.min(totalPages, p + 1))} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', cursor: templateGridPage >= totalPages ? 'not-allowed' : 'pointer', opacity: templateGridPage >= totalPages ? 0.6 : 1 }}>Next</button>
+                                        </div>
+                                    );
+                                })()}
+                                </>
                                 )
                                 }
                                 </>
@@ -2079,15 +2162,32 @@ export default function ClientOnboardingPage() {
                                                 </div>
                                             </div>
                                         )}
-                                        <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#64748b' }}>All templates</h4>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
-                                            {filtered.map(t => (
-                                                <div key={t.id} onClick={() => setTemplateDetailDrawer(t)} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', cursor: 'pointer' }}>
-                                                    {(t.preview_thumbnail_url || t.preview_url) ? <img src={t.preview_thumbnail_url || t.preview_url} alt="" style={{ width: '100%', height: '100px', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; }} /> : <div style={{ width: '100%', height: '100px', background: `linear-gradient(135deg, ${t.colors?.primary || '#2563eb'}, ${t.colors?.secondary || '#1e40af'})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>{t.name?.slice(0, 2).toUpperCase()}</div>}
-                                                    <div style={{ padding: '10px' }}><strong>{t.name}</strong><div style={{ fontSize: '12px', color: '#64748b' }}>{t.category || t.style || '—'}</div></div>
+                                        <h4 style={{ margin: '0 0 12px', fontSize: '14px', color: '#64748b' }}>All templates (preview only)</h4>
+                                        {(() => {
+                                            const pageSize = 10;
+                                            const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+                                            const start = (templateModalPage - 1) * pageSize;
+                                            const pageTemplates = filtered.slice(start, start + pageSize);
+                                            return (
+                                                <>
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px' }}>
+                                                    {pageTemplates.map(t => (
+                                                        <div key={t.id} onClick={() => setTemplateDetailDrawer(t)} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', cursor: 'pointer' }}>
+                                                            {(t.preview_thumbnail_url || t.preview_url) ? <img src={t.preview_thumbnail_url || t.preview_url} alt="" style={{ width: '100%', height: '100px', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; }} /> : <div style={{ width: '100%', height: '100px', background: `linear-gradient(135deg, ${t.colors?.primary || '#2563eb'}, ${t.colors?.secondary || '#1e40af'})`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>{t.name?.slice(0, 2).toUpperCase()}</div>}
+                                                            <div style={{ padding: '10px' }}><strong>{t.name}</strong><div style={{ fontSize: '12px', color: '#64748b' }}>{t.category || t.style || '—'}</div></div>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                        </div>
+                                                {totalPages > 1 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
+                                                        <button type="button" disabled={templateModalPage <= 1} onClick={() => setTemplateModalPage(p => Math.max(1, p - 1))} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', cursor: templateModalPage <= 1 ? 'not-allowed' : 'pointer', opacity: templateModalPage <= 1 ? 0.6 : 1 }}>Previous</button>
+                                                        <span style={{ fontSize: '14px', color: '#64748b' }}>Page {templateModalPage} of {totalPages}</span>
+                                                        <button type="button" disabled={templateModalPage >= totalPages} onClick={() => setTemplateModalPage(p => Math.min(totalPages, p + 1))} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', cursor: templateModalPage >= totalPages ? 'not-allowed' : 'pointer', opacity: templateModalPage >= totalPages ? 0.6 : 1 }}>Next</button>
+                                                    </div>
+                                                )}
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                     {templateDetailDrawer && (
                                         <div style={{ width: '320px', borderLeft: '1px solid #e2e8f0', padding: '20px', overflow: 'auto', background: '#f8fafc' }}>

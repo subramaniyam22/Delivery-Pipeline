@@ -41,6 +41,10 @@ def generate_blueprint(template: TemplateRegistry, demo_context: Dict[str, Any])
     name = template.name or "Untitled"
     category = template.category or "general"
     style = template.style or "modern"
+    meta = (template.meta_json or {}) if hasattr(template, "meta_json") else {}
+    industry = (meta.get("industry") or "").strip() or "real_estate"
+    if industry not in ("real_estate", "property_management"):
+        industry = "real_estate"
     tags = list(template.feature_tags_json or []) if hasattr(template, "feature_tags_json") else []
     required = list(template.required_inputs_json or []) if hasattr(template, "required_inputs_json") else []
     demo_str = json.dumps(demo_context or {}, default=str)
@@ -48,6 +52,7 @@ def generate_blueprint(template: TemplateRegistry, demo_context: Dict[str, Any])
         name=name,
         category=category,
         style=style,
+        industry=industry,
         tags=json.dumps(tags),
         required_inputs=json.dumps(required),
         demo_context=demo_str,

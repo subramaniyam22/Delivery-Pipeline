@@ -56,6 +56,7 @@ interface TemplateRegistry {
     blueprint_status?: string | null;
     blueprint_last_run_id?: string | null;
     blueprint_updated_at?: string | null;
+    meta_json?: Record<string, unknown> | null;
 }
 
 function EvolutionTab({ templateId }: { templateId: string }) {
@@ -236,6 +237,11 @@ export default function ConfigurationPage() {
     const [activeConfigTab, setActiveConfigTab] = useState<ConfigTab>('template_registry');
     const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
     const [templateDetailSubTab, setTemplateDetailSubTab] = useState<TemplateDetailSubTab>('overview');
+    const [selectedStructurePageIndex, setSelectedStructurePageIndex] = useState<number | null>(0);
+    const [copyValidationLoading, setCopyValidationLoading] = useState(false);
+    const [seoValidationLoading, setSeoValidationLoading] = useState(false);
+    const [imageUploadSectionKey, setImageUploadSectionKey] = useState('exterior');
+    const [imageUploading, setImageUploading] = useState(false);
 
     useEffect(() => {
         configurationAPI.getSystemHealth().then((r: any) => {
@@ -251,10 +257,24 @@ export default function ConfigurationPage() {
             .catch(() => setBlueprintStatusData(null));
     }, [selectedTemplateId, templateDetailSubTab]);
 
+    useEffect(() => {
+        setSelectedStructurePageIndex(0);
+    }, [selectedTemplateId]);
+
     const [showCreateWizard, setShowCreateWizard] = useState(false);
     const [templateListFilters, setTemplateListFilters] = useState<{ q?: string; status?: string; category?: string; style?: string; tag?: string }>({});
     const [wizardStep, setWizardStep] = useState(1);
-    const [wizardForm, setWizardForm] = useState<{ source: 'ai' | 'git'; name: string; category: string; style: string; feature_tags: string; intent: string; repo_url: string; repo_branch: string; repo_path: string; preset: string }>({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '' });
+    const [wizardForm, setWizardForm] = useState<{
+        source: 'ai' | 'git'; name: string; category: string; style: string; feature_tags: string; intent: string;
+        repo_url: string; repo_branch: string; repo_path: string; preset: string;
+        industry: string; image_prompts: Record<string, string>; validate_responsiveness: boolean;
+    }>({
+        source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '',
+        repo_url: '', repo_branch: 'main', repo_path: '', preset: '',
+        industry: 'real_estate',
+        image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' },
+        validate_responsiveness: true,
+    });
 
     type SectionKey = 'templates_default' | 'sla_config' | 'thresholds' | 'preview_strategy' | 'hitl_gates';
     type SectionState = {
@@ -829,7 +849,7 @@ export default function ConfigurationPage() {
 
     const selectedTemplate = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) ?? null : null;
     const canPublishTemplate = (t: TemplateRegistry) =>
-        (t.status === 'validated') && (t.preview_status === 'ready') && ((t.validation_status || '') === 'passed');
+        (t.preview_status === 'ready') && ((t.validation_status || '') === 'passed') && ((t.status === 'validated') || (t.status === 'draft'));
     const filteredTemplates = React.useMemo(() => {
         let list = templates;
         const { q, status, category, style, tag } = templateListFilters;
@@ -872,7 +892,8 @@ export default function ConfigurationPage() {
     const handlePublishTemplate = async (t: TemplateRegistry) => {
         if (!canEditTemplates || !canPublishTemplate(t)) return;
         try {
-            await configurationAPI.publishTemplate(t.id);
+            const body = (t.status || '') !== 'validated' ? { admin_override: true } : undefined;
+            await configurationAPI.publishTemplate(t.id, body);
             setSuccess('Template published');
             loadData();
         } catch (err: any) {
@@ -1065,6 +1086,57 @@ export default function ConfigurationPage() {
             pollValidationJob(template.id);
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to start validation');
+        }
+    };
+
+    const handleValidateCopy = async (template: TemplateRegistry) => {
+        if (!canEditTemplates) return;
+        setCopyValidationLoading(true);
+        setError('');
+        try {
+            await configurationAPI.validateTemplateCopy(template.id);
+            const res = await configurationAPI.getTemplate(template.id);
+            updateTemplateInState(res.data as TemplateRegistry);
+            setSuccess('Copy validation complete');
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Copy validation failed');
+        } finally {
+            setCopyValidationLoading(false);
+        }
+    };
+
+    const handleValidateSeo = async (template: TemplateRegistry) => {
+        if (!canEditTemplates) return;
+        setSeoValidationLoading(true);
+        setError('');
+        try {
+            await configurationAPI.validateTemplateSeo(template.id);
+            const res = await configurationAPI.getTemplate(template.id);
+            updateTemplateInState(res.data as TemplateRegistry);
+            setSuccess('SEO validation complete');
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'SEO validation failed');
+        } finally {
+            setSeoValidationLoading(false);
+        }
+    };
+
+    const handleUploadTemplateImage = async (template: TemplateRegistry, file: File, sectionKey: string) => {
+        if (!canEditTemplates || !file?.type?.startsWith('image/')) return;
+        setImageUploading(true);
+        setError('');
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('section_key', sectionKey);
+            await configurationAPI.uploadTemplateImage(template.id, formData);
+            const res = await configurationAPI.getTemplate(template.id);
+            updateTemplateInState(res.data as TemplateRegistry);
+            setSuccess('Image uploaded');
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Image upload failed');
+        } finally {
+            setImageUploading(false);
         }
     };
 
@@ -1383,7 +1455,7 @@ export default function ConfigurationPage() {
                                         <button type="button" onClick={() => handleSetDefaultTemplateFromCard(selectedTemplate)} disabled={!canEditTemplates || !selectedTemplate.is_published} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && selectedTemplate.is_published ? 'pointer' : 'not-allowed' }}>Set Default</button>
                                         <button type="button" onClick={() => handleGeneratePreview(selectedTemplate)} disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling} title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : ''} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>Generate Preview</button>
                                         <button type="button" onClick={() => handleValidateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Validate</button>
-                                        <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires validated blueprint, ready preview, and passed validation' : ''} style={{ padding: '6px 12px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>Publish</button>
+                                        <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires ready preview and passed validation (run Generate Preview, then Run Validation)' : ''} style={{ padding: '6px 12px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>Publish</button>
                                         <button type="button" onClick={() => handleOpenPreview(selectedTemplate)} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Preview</button>
                                         <button type="button" onClick={() => handleDeleteTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Delete</button>
                                     </div>
@@ -1405,7 +1477,77 @@ export default function ConfigurationPage() {
                                     )}
                                     {templateDetailSubTab === 'structure' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
-                                            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{JSON.stringify(selectedTemplate.pages_json || [], null, 2)}</pre>
+                                            {(() => {
+                                                const bp = selectedTemplate.blueprint_json as Record<string, unknown> | undefined;
+                                                const pages = (bp?.pages as Array<{ slug?: string; title?: string; seo?: { meta_title?: string; meta_description?: string; h1?: string }; sections?: unknown[] }>) ?? selectedTemplate.pages_json ?? [];
+                                                const pageList = Array.isArray(pages) ? pages : [];
+                                                const selectedPage = selectedStructurePageIndex != null && pageList[selectedStructurePageIndex] ? pageList[selectedStructurePageIndex] : pageList[0] ?? null;
+                                                return (
+                                                    <>
+                                                        <h5 style={{ margin: '0 0 12px' }}>Pages (click to view)</h5>
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                                                            {pageList.map((p, idx) => (
+                                                                <button
+                                                                    key={idx}
+                                                                    type="button"
+                                                                    onClick={() => setSelectedStructurePageIndex(idx)}
+                                                                    style={{
+                                                                        padding: '8px 14px',
+                                                                        borderRadius: '8px',
+                                                                        border: '1px solid',
+                                                                        borderColor: selectedStructurePageIndex === idx ? '#2563eb' : '#e2e8f0',
+                                                                        background: selectedStructurePageIndex === idx ? '#eff6ff' : 'white',
+                                                                        color: selectedStructurePageIndex === idx ? '#1d4ed8' : '#475569',
+                                                                        fontWeight: 500,
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '13px',
+                                                                    }}
+                                                                >
+                                                                    {(p as { title?: string }).title || (p as { slug?: string }).slug || `Page ${idx + 1}`}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                        {selectedPage && (
+                                                            <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', marginBottom: '16px', background: 'white' }}>
+                                                                <h6 style={{ margin: '0 0 12px', fontSize: '14px' }}>SEO (page content)</h6>
+                                                                <dl style={{ margin: 0, display: 'grid', gap: '8px', fontSize: '12px' }}>
+                                                                    <div><dt style={{ color: '#64748b', marginBottom: '2px' }}>Meta title</dt><dd style={{ margin: 0 }}>{(selectedPage as { seo?: { meta_title?: string } }).seo?.meta_title || '—'}</dd></div>
+                                                                    <div><dt style={{ color: '#64748b', marginBottom: '2px' }}>Meta description</dt><dd style={{ margin: 0 }}>{(selectedPage as { seo?: { meta_description?: string } }).seo?.meta_description || '—'}</dd></div>
+                                                                    <div><dt style={{ color: '#64748b', marginBottom: '2px' }}>H1</dt><dd style={{ margin: 0 }}>{(selectedPage as { seo?: { h1?: string } }).seo?.h1 || '—'}</dd></div>
+                                                                </dl>
+                                                                <h6 style={{ margin: '12px 0 8px', fontSize: '14px' }}>Sections</h6>
+                                                                <ul style={{ margin: 0, paddingLeft: '20px' }}>{((selectedPage as { sections?: unknown[] }).sections || []).map((s: any, i: number) => <li key={i}>{s?.type ?? s ?? `Section ${i + 1}`}</li>)}</ul>
+                                                            </div>
+                                                        )}
+                                                        <h5 style={{ margin: '0 0 8px' }}>Template images</h5>
+                                                        <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '12px' }}>Upload images per category to make the template look more realistic.</p>
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                                                            <select value={imageUploadSectionKey} onChange={e => setImageUploadSectionKey(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                                                                {['exterior', 'interior', 'lifestyle', 'people', 'neighborhood'].map(k => <option key={k} value={k}>{k.charAt(0).toUpperCase() + k.slice(1)}</option>)}
+                                                            </select>
+                                                            <input type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadTemplateImage(selectedTemplate, f, imageUploadSectionKey); e.target.value = ''; }} disabled={!canEditTemplates || imageUploading} style={{ fontSize: '12px' }} />
+                                                            {imageUploading && <span style={{ color: '#64748b', fontSize: '12px' }}>Uploading…</span>}
+                                                        </div>
+                                                        {((selectedTemplate.meta_json as Record<string, unknown>)?.images as Record<string, string[]>) && Object.keys((selectedTemplate.meta_json as Record<string, unknown>).images as Record<string, string[]>).length > 0 && (
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                                                {Object.entries((selectedTemplate.meta_json as Record<string, Record<string, string[]>>).images).map(([key, urls]) => (
+                                                                    <div key={key} style={{ marginBottom: '8px' }}>
+                                                                        <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>{key}</div>
+                                                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                                            {(Array.isArray(urls) ? urls : [urls]).slice(0, 6).map((url, i) => (
+                                                                                <a key={i} href={url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+                                                                                    <img src={url} alt="" style={{ width: '80px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+                                                                                </a>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        {!pageList.length && <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '11px' }}>{JSON.stringify(selectedTemplate.pages_json || [], null, 2)}</pre>}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     )}
                                     {templateDetailSubTab === 'blueprint' && (
@@ -1532,7 +1674,40 @@ export default function ConfigurationPage() {
                                                 <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', background: (selectedTemplate.validation_status || '') === 'passed' ? '#dcfce7' : (selectedTemplate.validation_status || '') === 'failed' ? '#fee2e2' : (selectedTemplate.validation_status || '') === 'running' ? '#fef3c7' : '#f1f5f9', color: (selectedTemplate.validation_status || '') === 'passed' ? '#166534' : (selectedTemplate.validation_status || '') === 'failed' ? '#991b1b' : '#475569' }}>{(selectedTemplate.validation_status || 'not_run').replace('_', ' ')}</span>
                                                 {selectedTemplate.validation_last_run_at && <span style={{ color: '#64748b', fontSize: '12px' }}>Last run: {new Date(selectedTemplate.validation_last_run_at).toLocaleString()}</span>}
                                             </div>
+                                            <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '12px' }}>Run Validation includes responsiveness (Lighthouse mobile viewport). Generate preview first.</p>
                                             {selectedTemplate.preview_status !== 'ready' && <p style={{ margin: 0, color: '#64748b' }}>Generate preview first, then run validation.</p>}
+                                            {selectedTemplate.blueprint_json && (
+                                                <>
+                                                    <h5 style={{ margin: '16px 0 8px' }}>Copy &amp; SEO</h5>
+                                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                                                        <button type="button" onClick={() => handleValidateCopy(selectedTemplate)} disabled={!canEditTemplates || copyValidationLoading} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && !copyValidationLoading ? 'pointer' : 'not-allowed' }}>{copyValidationLoading ? 'Running…' : 'Validate copy'}</button>
+                                                        <button type="button" onClick={() => handleValidateSeo(selectedTemplate)} disabled={!canEditTemplates || seoValidationLoading} style={{ padding: '6px 12px', border: '1px solid #059669', color: '#059669', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && !seoValidationLoading ? 'pointer' : 'not-allowed' }}>{seoValidationLoading ? 'Running…' : 'Validate SEO'}</button>
+                                                    </div>
+                                                    {(() => {
+                                                        const meta = selectedTemplate.meta_json as Record<string, { passed?: boolean; score?: number; summary?: string }> | undefined;
+                                                        const copyVal = meta?.copy_validation;
+                                                        const seoVal = meta?.seo_validation;
+                                                        return (
+                                                            <>
+                                                                {copyVal && (
+                                                                    <div style={{ marginBottom: '12px', padding: '12px', background: '#f1f5f9', borderRadius: '8px' }}>
+                                                                        <strong>Copy validation</strong>
+                                                                        <div style={{ fontSize: '12px', marginTop: '4px' }}>{copyVal.passed ? 'Passed' : 'Issues found'} · Score: {copyVal.score ?? '—'}</div>
+                                                                        {copyVal.summary && <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px' }}>{copyVal.summary}</div>}
+                                                                    </div>
+                                                                )}
+                                                                {seoVal && (
+                                                                    <div style={{ marginBottom: '12px', padding: '12px', background: '#f1f5f9', borderRadius: '8px' }}>
+                                                                        <strong>SEO validation</strong>
+                                                                        <div style={{ fontSize: '12px', marginTop: '4px' }}>{seoVal.passed ? 'Passed' : 'Issues found'} · Score: {seoVal.score ?? '—'}</div>
+                                                                        {seoVal.summary && <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px' }}>{seoVal.summary}</div>}
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </>
+                                            )}
                                             {(() => {
                                                 const vr = selectedTemplate.validation_results_json as Record<string, unknown> | undefined;
                                                 if (!vr || Object.keys(vr).length === 0) return <p style={{ margin: 0, color: '#64748b' }}>No validation results yet.</p>;
@@ -1771,7 +1946,21 @@ export default function ConfigurationPage() {
                                 <label style={{ fontSize: '13px' }}>Name <input type="text" value={wizardForm.name} onChange={e => setWizardForm(f => ({ ...f, name: e.target.value }))} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required /></label>
                                 <label style={{ fontSize: '13px' }}>Category <input type="text" value={wizardForm.category} onChange={e => setWizardForm(f => ({ ...f, category: e.target.value }))} placeholder="e.g. Residential" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
                                 <label style={{ fontSize: '13px' }}>Style <input type="text" value={wizardForm.style} onChange={e => setWizardForm(f => ({ ...f, style: e.target.value }))} placeholder="e.g. Modern" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
+                                <label style={{ fontSize: '13px' }}>Industry
+                                    <select value={wizardForm.industry} onChange={e => setWizardForm(f => ({ ...f, industry: e.target.value }))} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                                        <option value="real_estate">Real Estate</option>
+                                        <option value="property_management">Property Management</option>
+                                    </select>
+                                </label>
                                 <label style={{ fontSize: '13px' }}>Feature tags (comma-separated) <input type="text" value={wizardForm.feature_tags} onChange={e => setWizardForm(f => ({ ...f, feature_tags: e.target.value }))} placeholder="gallery, contact, map" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
+                                <div style={{ marginTop: '8px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px', color: '#475569' }}>Image prompts (optional)</div>
+                                    {(['exterior', 'interior', 'lifestyle', 'people', 'neighborhood'] as const).map(k => (
+                                        <label key={k} style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>
+                                            {k.charAt(0).toUpperCase() + k.slice(1)} <input type="text" value={wizardForm.image_prompts[k] || ''} onChange={e => setWizardForm(f => ({ ...f, image_prompts: { ...f.image_prompts, [k]: e.target.value } }))} placeholder={`e.g. ${k} imagery`} style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', marginTop: '2px' }} />
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
                         )}
                         {wizardStep === 3 && (
@@ -1790,11 +1979,15 @@ export default function ConfigurationPage() {
                         {wizardStep === 4 && (
                             <div>
                                 <p style={{ marginBottom: '12px', fontSize: '13px' }}>Preset pack (optional)</p>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
                                     {['Residential Modern', 'Corporate Trust', 'Luxury Lifestyle'].map(p => (
                                         <button key={p} type="button" onClick={() => setWizardForm(f => ({ ...f, preset: p }))} style={{ padding: '10px', border: '1px solid', borderColor: wizardForm.preset === p ? '#2563eb' : '#e2e8f0', background: wizardForm.preset === p ? '#eff6ff' : 'white', borderRadius: '8px', cursor: 'pointer', textAlign: 'left' }}>{p}</button>
                                     ))}
                                 </div>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={wizardForm.validate_responsiveness} onChange={e => setWizardForm(f => ({ ...f, validate_responsiveness: e.target.checked }))} />
+                                    Validate responsiveness after creating (run viewport/mobile check when template is ready)
+                                </label>
                             </div>
                         )}
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
@@ -1827,6 +2020,9 @@ export default function ConfigurationPage() {
                                             presetPayload.rules_json = [];
                                         }
                                         const payload: any = { name: wizardForm.name, description: '', intent: wizardForm.intent || null, source_type: wizardForm.source, feature_tags_json: tags.length ? tags : undefined, category: wizardForm.category || null, style: wizardForm.style || null, ...presetPayload };
+                                        const imagePromptsFiltered: Record<string, string> = {};
+                                        Object.entries(wizardForm.image_prompts || {}).forEach(([k, v]) => { if (v && String(v).trim()) imagePromptsFiltered[k] = String(v).trim(); });
+                                        payload.meta_json = { industry: wizardForm.industry || 'real_estate', image_prompts: Object.keys(imagePromptsFiltered).length ? imagePromptsFiltered : undefined };
                                         if (wizardForm.source === 'git') {
                                             payload.repo_url = wizardForm.repo_url;
                                             payload.default_branch = wizardForm.repo_branch;
@@ -1834,10 +2030,10 @@ export default function ConfigurationPage() {
                                         }
                                         try {
                                             await configurationAPI.createTemplate(payload);
-                                            setSuccess('Template created');
+                                            setSuccess('Template created. Generate blueprint for homepage (hero + 3–5 features + CTA) and 5+ internal pages with SEO content.');
                                             setShowCreateWizard(false);
                                             setWizardStep(1);
-                                            setWizardForm({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '' });
+                                            setWizardForm({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true });
                                             loadData();
                                         } catch (err: any) {
                                             setError(err.response?.data?.detail || 'Failed to create template');

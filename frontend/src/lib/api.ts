@@ -285,6 +285,8 @@ export const clientAPI = {
         api.put(`/projects/client-onboarding/${token}`, data),
     submitOnboardingForm: (token: string, data: any) =>
         api.post(`/projects/client-onboarding/${token}/submit`, data),
+    setFullValidationChoice: (token: string, proceed: boolean) =>
+        api.post(`/projects/client-onboarding/${token}/full-validation-choice`, { proceed }),
     uploadLogo: (token: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);
@@ -435,6 +437,10 @@ export const configurationAPI = {
     validateTemplate: (id: string, body?: { force?: boolean }) =>
         api.post(`/api/templates/${id}/validate`, body || {}),
     getTemplateValidationJob: (id: string) => api.get(`/api/templates/${id}/validation-job`),
+    validateTemplateCopy: (id: string) => api.post(`/api/templates/${id}/validate-copy`),
+    validateTemplateSeo: (id: string) => api.post(`/api/templates/${id}/validate-seo`),
+    uploadTemplateImage: (id: string, formData: FormData) =>
+        api.post(`/api/templates/${id}/images`, formData),
     publishTemplate: (id: string, body?: { admin_override?: boolean }) =>
         api.post(`/api/templates/${id}/publish`, body || {}),
     archiveTemplate: (id: string) => api.post(`/api/templates/${id}/archive`),

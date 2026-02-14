@@ -3,6 +3,7 @@
 
 services:
   # Backend API Service (Docker: Node + Lighthouse + Playwright for template validation)
+  # For docker runtime, start command must be in the Dockerfile (Render does not allow startCommand here).
   - type: web
     name: delivery-backend
     runtime: docker
@@ -10,7 +11,6 @@ services:
     plan: free
     dockerfilePath: backend/Dockerfile
     dockerContext: backend
-    startCommand: gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 60 --keep-alive 5
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL

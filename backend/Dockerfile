@@ -35,5 +35,6 @@ RUN mkdir -p /uploads && chmod +x /app/scripts/entrypoint.sh
 # Expose port
 EXPOSE 8000
 
+# Use shell form so $PORT from Render (or default 8000) is applied at runtime
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
-CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "60", "--keep-alive", "5"]
+CMD gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind "0.0.0.0:${PORT:-8000}" --timeout 60 --keep-alive 5

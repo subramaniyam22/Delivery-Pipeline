@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, cast
 from sqlalchemy.dialects.postgresql import JSONB
@@ -18,7 +18,7 @@ from app.models import TemplateRegistry, User, AuditLog, TemplateBlueprintJob, T
 from app.schemas import TemplateCreate, TemplateUpdate, TemplateResponse, SetRecommendedBody
 from app.config import settings
 from app.rbac import require_admin_manager
-from app.services.storage import refresh_presigned_thumbnail_url
+from app.services.storage import refresh_presigned_thumbnail_url, get_preview_storage_backend
 
 router = APIRouter(tags=["templates"])
 
@@ -363,12 +363,18 @@ def get_template_references(
     evolution_proposals = db.query(TemplateEvolutionProposal.id).filter(
         TemplateEvolutionProposal.template_id == template.id,
     ).count()
+    def _proj_row(p) -> dict:
+        pid, title, status = (p[0], p[1], p[2]) if hasattr(p, "__getitem__") else (getattr(p, "id", None), getattr(p, "title", None), getattr(p, "status", None))
+        return {"id": str(pid), "title": title or "", "status": getattr(status, "value", str(status)) if status is not None else ""}
+    def _outcome_row(d) -> dict:
+        oid, proj_id = (d[0], d[1]) if hasattr(d, "__getitem__") else (getattr(d, "id", None), getattr(d, "project_id", None))
+        return {"id": str(oid), "project_id": str(proj_id)}
     return {
         "template_id": template_id_str,
         "template_name": template.name,
-        "projects": [{"id": str(p.id), "title": p.title, "status": p.status.value if hasattr(p.status, "value") else str(p.status)} for p in projects_using],
-        "delivery_outcomes": [{"id": str(d.id), "project_id": str(d.project_id)} for d in delivery_outcomes],
-        "client_sentiments": [{"id": str(s.id), "project_id": str(s.project_id)} for s in sentiments],
+        "projects": [_proj_row(p) for p in projects_using],
+        "delivery_outcomes": [_outcome_row(d) for d in delivery_outcomes],
+        "client_sentiments": [_outcome_row(s) for s in sentiments],
         "counts": {
             "template_blueprint_runs": blueprint_runs,
             "template_blueprint_jobs": blueprint_jobs,
@@ -398,8 +404,12 @@ def _template_has_references(db: Session, template_id: str) -> Tuple[bool, dict]
     sentiments = db.query(ClientSentiment.id).filter(
         ClientSentiment.template_registry_id == tid,
     ).count()
+    # Row/tuple: (id, title, status) - use index access for compatibility
+    def _row_to_project(p) -> dict:
+        pid, title, status = (p[0], p[1], p[2]) if hasattr(p, "__getitem__") else (getattr(p, "id", None), getattr(p, "title", None), getattr(p, "status", None))
+        return {"id": str(pid), "title": title or "", "status": getattr(status, "value", str(status)) if status is not None else ""}
     refs = {
-        "projects": [{"id": str(p.id), "title": p.title, "status": getattr(p.status, "value", str(p.status))} for p in projects_using],
+        "projects": [_row_to_project(p) for p in projects_using],
         "delivery_outcomes_count": delivery_outcomes,
         "client_sentiments_count": sentiments,
     }
@@ -415,14 +425,20 @@ def delete_template(
     current_user: User = Depends(get_current_active_user)
 ):
     _require_admin_manager(current_user)
-    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    try:
+        from uuid import UUID
+        tid = UUID(template_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail="Template not found")
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == tid).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    template_name = getattr(template, "name", None) or ""
     is_published = getattr(template, "is_published", False) or (getattr(template, "status", None) or "").lower() == "published"
     if is_published:
         has_refs, refs = _template_has_references(db, template_id)
         if has_refs:
-            project_titles = [p["title"] for p in refs.get("projects", [])]
+            project_titles = [p.get("title", "") for p in refs.get("projects", [])]
             detail = {
                 "message": "Published template cannot be deleted because it is referenced. Remove or change template selection on linked projects first.",
                 "references": refs,
@@ -435,7 +451,7 @@ def delete_template(
             project_id=None,
             actor_user_id=current_user.id,
             action="TEMPLATE_DELETED",
-            payload_json={"template_id": str(template_id), "name": template.name},
+            payload_json={"template_id": str(template_id), "name": template_name},
         )
     )
     try:
@@ -443,12 +459,20 @@ def delete_template(
     except IntegrityError as e:
         db.rollback()
         logging.getLogger(__name__).warning("Template delete integrity error: %s", e)
-        has_refs, refs = _template_has_references(db, template_id)
+        try:
+            has_refs, refs = _template_has_references(db, template_id)
+        except Exception as ref_err:
+            logging.getLogger(__name__).warning("Template delete: failed to get references after integrity error: %s", ref_err)
+            refs = {}
         detail = {
             "message": "Template cannot be deleted because it is referenced by projects or other data. Remove those references first.",
             "references": refs,
         } if refs else "Template cannot be deleted due to database constraints."
         raise HTTPException(status_code=409, detail=detail) from e
+    except Exception as e:
+        db.rollback()
+        logging.getLogger(__name__).exception("Template delete unexpected error: %s", e)
+        raise
 
 
 @router.post("/api/templates/{template_id}/generate-preview")
@@ -624,6 +648,110 @@ def get_template_validation_job(
         "error_text": job.error_text,
         "result_json": job.result_json,
     }
+
+
+@router.post("/api/templates/{template_id}/validate-copy", response_model=dict)
+def validate_template_copy(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Run copy agent: validate accuracy and relevancy of template copy. Result stored in meta_json.copy_validation."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    blueprint = getattr(template, "blueprint_json", None) or {}
+    if not blueprint:
+        raise HTTPException(status_code=400, detail="Generate blueprint first")
+    meta = dict(template.meta_json or {})
+    industry = (meta.get("industry") or "real_estate").strip() or "real_estate"
+    from app.agents.templates.copy_agent import validate_copy
+    result = validate_copy(blueprint, industry=industry)
+    meta["copy_validation"] = result
+    template.meta_json = meta
+    db.commit()
+    db.refresh(template)
+    return result
+
+
+@router.post("/api/templates/{template_id}/validate-seo", response_model=dict)
+def validate_template_seo(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Run SEO agent: validate meta titles, descriptions, h1. Result stored in meta_json.seo_validation."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    blueprint = getattr(template, "blueprint_json", None) or {}
+    if not blueprint:
+        raise HTTPException(status_code=400, detail="Generate blueprint first")
+    meta = dict(template.meta_json or {})
+    industry = (meta.get("industry") or "real_estate").strip() or "real_estate"
+    from app.agents.templates.seo_agent import validate_seo
+    result = validate_seo(blueprint, industry=industry)
+    meta["seo_validation"] = result
+    template.meta_json = meta
+    db.commit()
+    db.refresh(template)
+    return result
+
+
+IMAGE_PROMPT_CATEGORIES = {"exterior", "interior", "lifestyle", "people", "neighborhood"}
+
+
+@router.post("/api/templates/{template_id}/images", response_model=dict)
+async def upload_template_image(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    file: UploadFile = File(...),
+    section_key: str = Form("general"),
+):
+    """Upload an image for a template section. section_key can be: exterior, interior, lifestyle, people, neighborhood, or any label. URL stored in meta_json.images."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    key_label = (section_key or "general").strip().lower().replace(" ", "_") or "general"
+    content_type = file.content_type or "image/png"
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    ext = "png"
+    if "jpeg" in content_type or "jpg" in content_type:
+        ext = "jpg"
+    elif "webp" in content_type:
+        ext = "webp"
+    elif "gif" in content_type:
+        ext = "gif"
+    storage_key = f"templates/{template_id}/images/{key_label}/{uuid.uuid4().hex}.{ext}"
+    try:
+        backend = get_preview_storage_backend()
+        body = await file.read()
+        if len(body) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Image must be under 10MB")
+        backend.save_bytes(storage_key, body, content_type=content_type)
+        url = backend.get_url(storage_key, expires_seconds=7 * 24 * 3600)
+        if not url:
+            url = getattr(backend, "public_base_url", "") and f"{backend.public_base_url.rstrip('/')}/{storage_key}" or ""
+    except Exception as e:
+        logging.getLogger(__name__).exception("Template image upload failed: %s", e)
+        raise HTTPException(status_code=500, detail="Upload failed") from e
+    meta = dict(template.meta_json or {})
+    images = dict(meta.get("images") or {})
+    if key_label not in images:
+        images[key_label] = []
+    if not isinstance(images[key_label], list):
+        images[key_label] = [images[key_label]] if images[key_label] else []
+    images[key_label].append(url)
+    meta["images"] = images
+    template.meta_json = meta
+    db.commit()
+    db.refresh(template)
+    return {"url": url, "section_key": key_label, "stored_in": "meta_json.images"}
 
 
 @router.post("/api/templates/{template_id}/publish", response_model=TemplateResponse)

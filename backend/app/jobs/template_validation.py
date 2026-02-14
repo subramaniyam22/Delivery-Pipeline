@@ -97,6 +97,8 @@ def run_template_validation_pipeline(
         template.validation_status = "passed" if passed else "failed"
         template.validation_last_run_at = datetime.utcnow()
         template.validation_hash = new_hash
+        if passed:
+            template.status = "validated"
         if not passed and summary.get("failed_reasons"):
             template.preview_error = "; ".join(summary["failed_reasons"][:5])
         else:

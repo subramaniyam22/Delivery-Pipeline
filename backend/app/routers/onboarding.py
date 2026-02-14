@@ -687,8 +687,10 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
     if project and hasattr(project, "client_preview_status"):
         client_preview = {
             "preview_url": getattr(project, "client_preview_url", None),
+            "thumbnail_url": getattr(project, "client_preview_thumbnail_url", None),
             "status": getattr(project, "client_preview_status", "not_generated"),
         }
+    client_wants_full_validation = _get_custom_field(onboarding, "client_wants_full_validation") if onboarding else None
     return {
         "project_title": project.title if project else "Unknown Project",
         "project_id": str(onboarding.project_id),
@@ -697,6 +699,7 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
         "submitted_at": onboarding.submitted_at,
         "missing_fields_eta_json": onboarding.missing_fields_eta_json,
         "client_preview": client_preview,
+        "client_wants_full_validation": client_wants_full_validation,
         "data": {
             "logo_url": onboarding.logo_url,
             "logo_file_path": onboarding.logo_file_path,
@@ -820,9 +823,27 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
     }
 
 
+def _run_client_preview_after_submit(project_id: UUID) -> None:
+    """Background task: generate client website preview when AI approved and template selected."""
+    from app.db import SessionLocal
+    from app.jobs.client_preview import run_client_preview_pipeline
+    session = SessionLocal()
+    try:
+        run_client_preview_pipeline(project_id, force=False, db=session)
+    except Exception as e:
+        logger.exception("Client preview generation failed after submit: %s", e)
+    finally:
+        session.close()
+
+
 @client_router.post("/{token}/submit")
-async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
-    """Submit onboarding form and notify the assigned consultant with AI Review"""
+async def submit_client_onboarding_form(
+    token: str,
+    payload: Dict[str, Any],
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Submit onboarding form and notify the assigned consultant with AI Review. When AI approves, generates client website preview."""
     onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
 
     if not onboarding:
@@ -891,7 +912,10 @@ async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db:
     except Exception as e:
         logger.warning("Pipeline auto_advance after onboarding submit failed: %s", e)
 
-    notification_sent = False
+    # When AI approved and client has selected a template, generate clickable website preview in background
+    if ai_approved and (onboarding.selected_template_id or onboarding.theme_preference):
+        background_tasks.add_task(_run_client_preview_after_submit, project.id)
+
     notification_sent = False
     recipients = []
     
@@ -949,6 +973,48 @@ async def submit_client_onboarding_form(token: str, payload: Dict[str, Any], db:
                  logger.error(f"Failed to send WS notif to {recipient.id}: {e}")
 
     return {"success": True, "notification_sent": notification_sent, "review_status": onboarding.review_status}
+
+
+def _get_custom_field(onboarding: OnboardingData, name: str):
+    """Get value from custom_fields_json list (items: {field_name, field_value, field_type})."""
+    custom = onboarding.custom_fields_json or []
+    if not isinstance(custom, list):
+        return None
+    for item in custom:
+        if isinstance(item, dict) and item.get("field_name") == name:
+            return item.get("field_value")
+    return None
+
+
+def _set_custom_field(db: Session, onboarding: OnboardingData, name: str, value: Any) -> None:
+    """Set a named value in custom_fields_json list; merge or append."""
+    custom = list(onboarding.custom_fields_json or [])
+    if not isinstance(custom, list):
+        custom = []
+    found = False
+    for i, item in enumerate(custom):
+        if isinstance(item, dict) and item.get("field_name") == name:
+            custom[i] = {**item, "field_value": value}
+            found = True
+            break
+    if not found:
+        custom.append({"field_name": name, "field_value": value, "field_type": "boolean"})
+    onboarding.custom_fields_json = custom
+    flag_modified(onboarding, "custom_fields_json")
+
+
+@client_router.post("/{token}/full-validation-choice")
+async def set_client_full_validation_choice(token: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """Record client's Yes/No for proceeding with full validation, testing, SEO, accessibility, build & QA."""
+    onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Invalid or expired link")
+    proceed = payload.get("proceed")
+    if proceed not in (True, False):
+        raise HTTPException(status_code=400, detail="payload.proceed must be true or false")
+    _set_custom_field(db, onboarding, "client_wants_full_validation", proceed)
+    db.commit()
+    return {"success": True, "proceed": proceed}
 
 
 @client_router.post("/{token}/upload-logo")
