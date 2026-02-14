@@ -1928,7 +1928,7 @@ export default function ConfigurationPage() {
                 {showCreateWizard && (
                 <Dialog
                     open={showCreateWizard}
-                    onOpenChange={(open) => { if (!open) { setShowCreateWizard(false); setWizardStep(1); setWizardForm({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '' }); } }}
+                    onOpenChange={(open) => { if (!open) { setShowCreateWizard(false); setWizardStep(1); setWizardForm({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true }); } }}
                     title="Create Template"
                 >
                     <div style={{ padding: '16px', minWidth: '400px' }}>
