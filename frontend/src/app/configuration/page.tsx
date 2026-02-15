@@ -1004,21 +1004,28 @@ export default function ConfigurationPage() {
     const pollTemplatePreview = async (templateId: string) => {
         setPreviewPolling(true);
         const start = Date.now();
+        const pollMs = 120000; // 2 min - backend can take 60–90s on Render
         let done = false;
-        while (!done && Date.now() - start < 60000) {
-            await new Promise(res => setTimeout(res, 2000));
+        while (!done && Date.now() - start < pollMs) {
+            await new Promise(res => setTimeout(res, 3000));
             try {
                 const response = await configurationAPI.getTemplate(templateId);
                 const updated = response.data as TemplateRegistry;
                 updateTemplateInState(updated);
+                if (previewTemplate?.id === templateId) setPreviewTemplate(updated);
                 const status = updated.preview_status;
-                if (status === 'ready' || status === 'failed') {
+                if (status === 'ready') {
                     done = true;
+                    setSuccess('Preview generated successfully');
+                } else if (status === 'failed') {
+                    done = true;
+                    setError((updated as any).preview_error || 'Preview generation failed');
                 }
             } catch {
                 done = true;
             }
         }
+        if (!done) setError('Preview is taking longer than expected. Use Reset preview then try again.');
         setPreviewPolling(false);
     };
 
@@ -1039,21 +1046,17 @@ export default function ConfigurationPage() {
         setTemplateDetailSubTab('preview');
         updateTemplateInState({ ...template, preview_status: 'generating', preview_error: null });
         try {
-            // Use sync so preview completes or fails clearly (90s timeout; skips semaphore wait)
-            const res = await configurationAPI.generateTemplatePreview(template.id, {
-                force: template.preview_status === 'ready',
-                sync: true,
-            });
-            const data = res.data as { preview_status?: string; error?: string };
-            const updated = await configurationAPI.getTemplate(template.id);
-            updateTemplateInState(updated.data as TemplateRegistry);
-            if (previewTemplate?.id === template.id) setPreviewTemplate(updated.data as TemplateRegistry);
-            if ((data.preview_status || (updated.data as any)?.preview_status) === 'ready') {
-                setSuccess('Preview generated successfully');
-            } else {
-                const errMsg = data.error || (updated.data as any)?.preview_error || 'Preview generation failed';
-                setError(errMsg);
+            // If stuck from a previous run, reset first so backend starts fresh
+            if (template.preview_status === 'generating') {
+                await configurationAPI.resetTemplatePreview(template.id);
             }
+            // Async: return in <1s so Render doesn't kill the request; we poll for result
+            await configurationAPI.generateTemplatePreview(template.id, {
+                force: template.preview_status === 'ready',
+                sync: false,
+            });
+            setSuccess('Preview generation started');
+            pollTemplatePreview(template.id);
         } catch (err: any) {
             const detail = err.response?.data?.detail;
             const msg = typeof detail === 'string' ? detail : (err.response?.data?.error) || 'Failed to start preview generation';
