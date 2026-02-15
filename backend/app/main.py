@@ -59,8 +59,9 @@ configure_logging(logging.INFO)
 logger = logging.getLogger(__name__)
 IS_PROD = os.getenv("ENVIRONMENT") == "production"
 
-# Ensure Playwright uses Docker-installed browsers (template validation)
-if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH") and os.path.isdir("/app/.cache/ms-playwright"):
+# Ensure Playwright uses Docker-installed browsers (template validation).
+# Set whenever the Docker path exists so workers and background tasks see it.
+if os.path.isdir("/app/.cache/ms-playwright"):
     os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/.cache/ms-playwright"
 
 

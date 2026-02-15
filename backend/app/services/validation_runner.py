@@ -14,6 +14,11 @@ import shutil
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+# Force Playwright to use Docker-installed browsers before any playwright import.
+# Render can run with HOME=/opt/render; without this, Playwright looks under /opt/render/.cache.
+if os.path.isdir("/app/.cache/ms-playwright"):
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/.cache/ms-playwright"
+
 logger = logging.getLogger(__name__)
 
 
@@ -171,15 +176,9 @@ def run_axe(preview_url: str, timeouts: Optional[Dict[str, int]] = None) -> Dict
         result["error"] = "Axe requires HTTP(S) URL"
         return result
     timeout_sec = (timeouts or {}).get("axe_sec", 60)
-    # Force Playwright to use Docker-installed browsers (avoids chromium_headless_shell under /opt/render on Render)
-    if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
-        chrome_path_hint = _find_chrome_path()
-        if chrome_path_hint and "/ms-playwright" in chrome_path_hint:
-            base = chrome_path_hint.split("/chromium-")[0]
-            if base:
-                os.environ["PLAYWRIGHT_BROWSERS_PATH"] = base
-        elif os.path.isdir("/app/.cache/ms-playwright"):
-            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/.cache/ms-playwright"
+    # Ensure Playwright uses our browser dir (again right before use, in case env was lost in worker)
+    if os.path.isdir("/app/.cache/ms-playwright"):
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/.cache/ms-playwright"
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
