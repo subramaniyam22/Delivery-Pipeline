@@ -399,8 +399,6 @@ export default function ProjectsPage() {
 
     if (!user) return null;
 
-    console.log('ProjectsPage Render - User Role:', user.role);
-
     return (
         <RequireCapability cap="view_projects">
         <div className="page-wrapper">

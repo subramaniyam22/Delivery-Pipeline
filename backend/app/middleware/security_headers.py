@@ -16,9 +16,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             frame_ancestors = " ".join(["'self'"] + sorted(set(allowed)))
             if "X-Frame-Options" in response.headers:
                 del response.headers["X-Frame-Options"]
+            # Allow axe-core from CDN for template validation (Playwright injects it)
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; img-src 'self' data: https:; "
-                "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; "
                 f"frame-ancestors {frame_ancestors}"
             )
         else:

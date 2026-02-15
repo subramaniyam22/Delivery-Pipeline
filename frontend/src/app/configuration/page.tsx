@@ -59,6 +59,15 @@ interface TemplateRegistry {
     meta_json?: Record<string, unknown> | null;
 }
 
+/** Normalize API error detail (string, array of {msg}, or object) to a single string so it's safe to render in JSX. */
+function formatApiErrorDetail(detail: unknown): string {
+    if (detail == null) return '';
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) return detail.map((x: { msg?: string; message?: string }) => x?.msg ?? x?.message ?? JSON.stringify(x)).join('. ');
+    if (typeof detail === 'object') return (detail as { msg?: string; message?: string }).msg ?? (detail as { message?: string }).message ?? JSON.stringify(detail);
+    return String(detail);
+}
+
 function EvolutionTab({ templateId }: { templateId: string }) {
     const [proposals, setProposals] = useState<Array<{ id: string; proposal_json: any; status: string; created_at: string | null; rejection_reason?: string }>>([]);
     const [loading, setLoading] = useState(true);
@@ -884,9 +893,11 @@ export default function ConfigurationPage() {
             const res = await configurationAPI.validateTemplate(t.id);
             const updated = await configurationAPI.getTemplate(t.id);
             updateTemplateInState(updated.data as TemplateRegistry);
-            setSuccess((res.data as { passed?: boolean }).passed ? 'Validation passed' : 'Validation completed (see results)');
+            const passed = (res.data as { passed?: boolean }).passed;
+            setSuccess(passed ? 'Validation passed' : 'Validation completed (see results)');
+            setTemplateDetailSubTab('validation');
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Validation failed');
+            setError(formatApiErrorDetail(err.response?.data?.detail) || 'Validation failed');
         }
     };
     const handlePublishTemplate = async (t: TemplateRegistry) => {
@@ -897,7 +908,7 @@ export default function ConfigurationPage() {
             setSuccess('Template published');
             loadData();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Publish failed');
+            setError(formatApiErrorDetail(err.response?.data?.detail) || 'Publish failed');
         }
     };
     const handleArchiveTemplate = async (t: TemplateRegistry) => {
@@ -1134,7 +1145,30 @@ export default function ConfigurationPage() {
             updateTemplateInState(res.data as TemplateRegistry);
             setSuccess('Image uploaded');
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Image upload failed');
+            setError(formatApiErrorDetail(err.response?.data?.detail) || 'Image upload failed');
+        } finally {
+            setImageUploading(false);
+        }
+    };
+
+    const handleUploadTemplateImages = async (template: TemplateRegistry, files: File[], sectionKey: string) => {
+        if (!canEditTemplates || !files?.length) return;
+        const valid = files.filter(f => f?.type?.startsWith('image/'));
+        if (!valid.length) return;
+        setImageUploading(true);
+        setError('');
+        try {
+            for (const file of valid) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('section_key', sectionKey);
+                await configurationAPI.uploadTemplateImage(template.id, formData);
+            }
+            const res = await configurationAPI.getTemplate(template.id);
+            updateTemplateInState(res.data as TemplateRegistry);
+            setSuccess(valid.length > 1 ? `${valid.length} images uploaded` : 'Image uploaded');
+        } catch (err: any) {
+            setError(formatApiErrorDetail(err.response?.data?.detail) || 'Image upload failed');
         } finally {
             setImageUploading(false);
         }
@@ -1305,7 +1339,7 @@ export default function ConfigurationPage() {
                     Client feedback in Sentiments can be used to refine templates, SLAs, and quality thresholds.
                 </div>
 
-                {error && <div className="alert alert-error">{error}</div>}
+                {error && <div className="alert alert-error">{typeof error === 'string' ? error : formatApiErrorDetail(error)}</div>}
                 {success && <div className="alert alert-success">{success}</div>}
 
                 <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -1456,6 +1490,9 @@ export default function ConfigurationPage() {
                                         <button type="button" onClick={() => handleGeneratePreview(selectedTemplate)} disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling} title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : ''} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>Generate Preview</button>
                                         <button type="button" onClick={() => handleValidateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Validate</button>
                                         <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires ready preview and passed validation (run Generate Preview, then Run Validation)' : ''} style={{ padding: '6px 12px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>Publish</button>
+                                        {!canPublishTemplate(selectedTemplate) && canEditTemplates && (
+                                            <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '4px' }}>{selectedTemplate.preview_status !== 'ready' ? '(Generate Preview first)' : (selectedTemplate.validation_status || 'not_run') !== 'passed' ? '(Run Validation and fix any failures)' : ''}</span>
+                                        )}
                                         <button type="button" onClick={() => handleOpenPreview(selectedTemplate)} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Preview</button>
                                         <button type="button" onClick={() => handleDeleteTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Delete</button>
                                     </div>
@@ -1520,12 +1557,12 @@ export default function ConfigurationPage() {
                                                             </div>
                                                         )}
                                                         <h5 style={{ margin: '0 0 8px' }}>Template images</h5>
-                                                        <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '12px' }}>Upload images per category to make the template look more realistic.</p>
+                                                        <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '12px' }}>Upload images per category (hero, gallery, and section images use these by category). You can add many images per category; they are used in the preview by section type (e.g. exterior for hero, gallery).</p>
                                                         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                                                             <select value={imageUploadSectionKey} onChange={e => setImageUploadSectionKey(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                                                                 {['exterior', 'interior', 'lifestyle', 'people', 'neighborhood'].map(k => <option key={k} value={k}>{k.charAt(0).toUpperCase() + k.slice(1)}</option>)}
                                                             </select>
-                                                            <input type="file" accept="image/*" onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadTemplateImage(selectedTemplate, f, imageUploadSectionKey); e.target.value = ''; }} disabled={!canEditTemplates || imageUploading} style={{ fontSize: '12px' }} />
+                                                            <input type="file" accept="image/*" multiple onChange={e => { const files = e.target.files; if (files?.length) handleUploadTemplateImages(selectedTemplate, Array.from(files), imageUploadSectionKey); e.target.value = ''; }} disabled={!canEditTemplates || imageUploading} style={{ fontSize: '12px' }} />
                                                             {imageUploading && <span style={{ color: '#64748b', fontSize: '12px' }}>Uploading…</span>}
                                                         </div>
                                                         {((selectedTemplate.meta_json as Record<string, unknown>)?.images as Record<string, string[]>) && Object.keys((selectedTemplate.meta_json as Record<string, unknown>).images as Record<string, string[]>).length > 0 && (
@@ -1534,11 +1571,12 @@ export default function ConfigurationPage() {
                                                                     <div key={key} style={{ marginBottom: '8px' }}>
                                                                         <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>{key}</div>
                                                                         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                                                            {(Array.isArray(urls) ? urls : [urls]).slice(0, 6).map((url, i) => (
+                                                                            {(Array.isArray(urls) ? urls : [urls]).slice(0, 20).map((url, i) => (
                                                                                 <a key={i} href={url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
                                                                                     <img src={url} alt="" style={{ width: '80px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
                                                                                 </a>
                                                                             ))}
+                                                                            {(Array.isArray(urls) ? urls : [urls]).length > 20 && <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>+{(Array.isArray(urls) ? urls : [urls]).length - 20} more</span>}
                                                                         </div>
                                                                     </div>
                                                                 ))}

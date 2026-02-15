@@ -41,6 +41,11 @@ def _generate_raw(template: TemplateRegistry, demo_context: Dict[str, Any], mode
     name = template.name or "Untitled"
     category = template.category or "general"
     style = template.style or "modern"
+    meta = getattr(template, "meta_json", None) or {}
+    raw_industry = meta.get("industry")
+    industry = (str(raw_industry).strip() if raw_industry and isinstance(raw_industry, str) else "real_estate") or "real_estate"
+    if industry not in ("real_estate", "property_management"):
+        industry = "real_estate"
     tags = list(template.feature_tags_json or []) if hasattr(template, "feature_tags_json") else []
     required = list(template.required_inputs_json or []) if hasattr(template, "required_inputs_json") else []
     demo_str = json.dumps(demo_context or {}, default=str)
@@ -48,6 +53,7 @@ def _generate_raw(template: TemplateRegistry, demo_context: Dict[str, Any], mode
         name=name,
         category=category,
         style=style,
+        industry=industry,
         tags=json.dumps(tags),
         required_inputs=json.dumps(required),
         demo_context=demo_str,

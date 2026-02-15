@@ -57,7 +57,7 @@ def run_lighthouse(preview_url: str, timeouts: Optional[Dict[str, int]] = None) 
     workdir = tempfile.mkdtemp(prefix="lighthouse_")
     report_path = os.path.join(workdir, "lighthouse-report.json")
     try:
-        subprocess.run(
+        proc = subprocess.run(
             [
                 "lighthouse",
                 preview_url,
@@ -66,18 +66,23 @@ def run_lighthouse(preview_url: str, timeouts: Optional[Dict[str, int]] = None) 
                 "--quiet",
                 "--chrome-flags=--headless --no-sandbox --disable-dev-shm-usage",
             ],
-            check=True,
+            capture_output=True,
+            text=True,
             timeout=timeout_sec,
             cwd=workdir,
         )
+        if proc.returncode != 0:
+            stderr = (proc.stderr or "").strip() or (proc.stdout or "").strip()
+            hint = ""
+            if "ECONNREFUSED" in stderr or "connection" in stderr.lower() or "Unable to connect" in stderr:
+                hint = " (Preview URL must be reachable from this process; in Docker set BACKEND_URL to the backend service URL, e.g. http://backend:8000)"
+            result["error"] = f"Lighthouse failed: exit {proc.returncode}. {stderr[:500]}{hint}"
+            return result
     except subprocess.TimeoutExpired:
         result["error"] = f"Lighthouse timed out after {timeout_sec}s"
         return result
     except FileNotFoundError:
         result["error"] = "Lighthouse CLI not found. Install: npm install -g lighthouse"
-        return result
-    except subprocess.CalledProcessError as e:
-        result["error"] = f"Lighthouse failed: {e}"
         return result
     except Exception as e:
         result["error"] = str(e)

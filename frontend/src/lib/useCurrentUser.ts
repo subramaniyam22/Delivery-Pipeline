@@ -48,7 +48,6 @@ export const useCurrentUser = (): CurrentUserResult => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const didForceLogout = useRef(false);
-  const didLog = useRef(false);
 
   useEffect(() => {
     const token = getToken();
@@ -116,14 +115,6 @@ export const useCurrentUser = (): CurrentUserResult => {
 
   useEffect(() => {
     setCapabilities(getCapabilities(role));
-  }, [role]);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV !== 'production' && role && !didLog.current) {
-      const samples = getCapabilities(role).slice(0, 3);
-      console.info('[RBAC] role:', role, 'sample capabilities:', samples);
-      didLog.current = true;
-    }
   }, [role]);
 
   return { user, role, capabilities, isLoading, error };

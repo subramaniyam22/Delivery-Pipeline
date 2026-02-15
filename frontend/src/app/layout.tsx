@@ -60,14 +60,14 @@ export default function RootLayout({
     children: React.ReactNode;
 }) {
     return (
-        <html lang="en" dir="ltr">
+        <html lang="en" dir="ltr" data-scroll-behavior="smooth">
             <head>
                 {/* Security headers are set in next.config.js */}
                 <meta httpEquiv="X-XSS-Protection" content="1; mode=block" />
                 <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
                 <meta name="referrer" content="strict-origin-when-cross-origin" />
             </head>
-            <body>
+            <body suppressHydrationWarning>
                 {/* WCAG: Skip navigation link for keyboard users */}
                 <a href="#main-content" className="skip-link">
                     Skip to main content

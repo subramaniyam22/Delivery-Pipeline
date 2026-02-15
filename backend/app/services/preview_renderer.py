@@ -3,13 +3,14 @@ Render static HTML preview from blueprint_json + demo_dataset.
 Uses Jinja2 snippets per section type; tokens for colors/typography; demo data in content_slots.
 """
 from typing import Any, Dict, List, Optional
+
 import html as html_module
 from jinja2 import Environment, BaseLoader
 
 # Section type -> (html snippet template, optional variant handling)
 SECTION_SNIPPETS = {
     "hero": """
-<section class="section-hero" {{ aria_attr }} style="background: {{ primary }}; color: {{ text_light }}; padding: {{ section_padding }}px 24px; min-height: 280px; display: flex; align-items: center;">
+<section class="section-hero" {{ aria_attr }} style="{% if hero_image_url %}background: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url('{{ hero_image_url }}') center/cover;{% else %}background: {{ primary }};{% endif %} color: {{ text_light }}; padding: {{ section_padding }}px 24px; min-height: 280px; display: flex; align-items: center;">
   <div class="container" style="max-width: 900px; margin: 0 auto;">
     <h1 style="font-family: {{ font_family }}; font-size: {{ h1_size }}px; margin: 0 0 12px;">{{ hero_title }}</h1>
     <p style="font-size: {{ body_size }}px; opacity: 0.95; margin: 0;">{{ hero_subtitle }}</p>
@@ -79,7 +80,7 @@ SECTION_SNIPPETS = {
 <section class="section-feature-split" {{ aria_attr }} style="padding: {{ section_padding }}px 24px;">
   <div class="container" style="max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center;">
     <div><h2 style="font-family: {{ font_family }}; font-size: {{ h2_size }}px; margin: 0 0 12px;">{{ feature_heading }}</h2><p style="font-size: {{ body_size }}px; color: {{ text }};">{{ feature_body }}</p></div>
-    <div style="height: 200px; background: {{ primary }}; opacity: 0.2; border-radius: {{ card_radius }}px;"></div>
+    <div style="height: 200px; border-radius: {{ card_radius }}px; overflow: hidden;">{% if feature_image_url %}<img src="{{ feature_image_url }}" alt="" style="width: 100%; height: 100%; object-fit: cover;" />{% else %}<div style="height: 100%; background: {{ primary }}; opacity: 0.2;"></div>{% endif %}</div>
   </div>
 </section>""",
     "cta_banner": """
@@ -135,9 +136,24 @@ def _get_tokens(blueprint: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _get_demo_slots(section_type: str, content_slots: Dict[str, Any], demo: Dict[str, Any]) -> Dict[str, Any]:
+def _get_template_images_by_category(template_images: Optional[Dict[str, List[str]]], category: Optional[str]) -> List[str]:
+    """Return list of URLs for a given category (exterior, interior, etc.) from template uploads."""
+    if not template_images or not category:
+        return []
+    urls = template_images.get(category) or template_images.get(category.lower())
+    return list(urls) if isinstance(urls, list) else [urls] if urls else []
+
+
+def _get_demo_slots(
+    section_type: str,
+    content_slots: Dict[str, Any],
+    demo: Dict[str, Any],
+    template_images: Optional[Dict[str, List[str]]] = None,
+    image_prompt_category: Optional[str] = None,
+) -> Dict[str, Any]:
     demo = demo or {}
     slots = content_slots or {}
+    template_images = template_images or {}
     out = {}
     if section_type == "hero":
         brand = demo.get("brand") or {}
@@ -145,6 +161,8 @@ def _get_demo_slots(section_type: str, content_slots: Dict[str, Any], demo: Dict
         out["hero_subtitle"] = slots.get("subtitle") or (demo.get("company") or {}).get("description") or "Your tagline here"
         out["cta_text"] = slots.get("cta_text") or "Get started"
         out["cta_href"] = slots.get("cta_href") or "#"
+        hero_imgs = _get_template_images_by_category(template_images, image_prompt_category or "exterior")
+        out["hero_image_url"] = hero_imgs[0] if hero_imgs else None
     elif section_type == "trust_bar":
         out["trust_items"] = slots.get("items") or demo.get("amenities") or ["Trusted", "Secure", "Fast"]
     elif section_type == "amenities_grid":
@@ -152,7 +170,8 @@ def _get_demo_slots(section_type: str, content_slots: Dict[str, Any], demo: Dict
         out["amenities_list"] = slots.get("items") or demo.get("amenities") or ["Pool", "Fitness", "Parking"]
     elif section_type == "gallery_grid":
         out["gallery_title"] = slots.get("title") or "Gallery"
-        out["gallery_images"] = slots.get("images") or demo.get("gallery_images") or ["https://placehold.co/800x500?text=Image"]
+        gallery_from_template = _get_template_images_by_category(template_images, image_prompt_category or "exterior")
+        out["gallery_images"] = slots.get("images") or gallery_from_template or demo.get("gallery_images") or ["https://placehold.co/800x500?text=Image"]
     elif section_type == "floorplan_cards":
         out["floorplans_title"] = slots.get("title") or "Floor plans"
         out["floor_plans"] = slots.get("plans") or demo.get("floor_plans") or [{"name": "2B/2B", "beds": 2, "baths": 2, "rent_from": 1850, "image_url": "https://placehold.co/400x300?text=2B2B"}]
@@ -165,6 +184,8 @@ def _get_demo_slots(section_type: str, content_slots: Dict[str, Any], demo: Dict
     elif section_type == "feature_split":
         out["feature_heading"] = slots.get("heading") or "Feature"
         out["feature_body"] = slots.get("body") or "Description."
+        split_imgs = _get_template_images_by_category(template_images, image_prompt_category or "interior")
+        out["feature_image_url"] = split_imgs[0] if split_imgs else None
     elif section_type == "cta_banner":
         out["cta_heading"] = slots.get("heading") or "Get in touch"
         out["cta_subtext"] = slots.get("subtext") or "We'd love to hear from you."
@@ -175,13 +196,20 @@ def _get_demo_slots(section_type: str, content_slots: Dict[str, Any], demo: Dict
     return out
 
 
-def _render_section(sec: Dict[str, Any], tokens: Dict[str, Any], demo: Dict[str, Any], env: Environment) -> str:
+def _render_section(
+    sec: Dict[str, Any],
+    tokens: Dict[str, Any],
+    demo: Dict[str, Any],
+    env: Environment,
+    template_images: Optional[Dict[str, List[str]]] = None,
+) -> str:
     stype = (sec.get("type") or "hero").strip()
     content_slots = sec.get("content_slots") or {}
+    image_prompt_category = (sec.get("image_prompt_category") or "").strip() or None
     a11y = sec.get("a11y") or {}
     aria_label = a11y.get("ariaLabel") if isinstance(a11y, dict) else None
     aria_attr = f'aria-label="{html_module.escape(aria_label)}"' if aria_label else ""
-    slots = _get_demo_slots(stype, content_slots, demo)
+    slots = _get_demo_slots(stype, content_slots, demo, template_images, image_prompt_category)
     ctx = {**tokens, **slots, "aria_attr": aria_attr}
     if stype in SECTION_SNIPPETS:
         try:
@@ -235,16 +263,18 @@ def _render_one_page_html(
     blueprint_json: Dict[str, Any],
     demo_dataset: Dict[str, Any],
     page: Dict[str, Any],
+    template_images: Optional[Dict[str, List[str]]] = None,
 ) -> str:
     """Render full HTML for one page (nav + sections + footer). Used for index and slug.html."""
     if not blueprint_json or not isinstance(blueprint_json, dict):
         return "<!DOCTYPE html><html><body><p>No blueprint</p></body></html>"
     tokens = _get_tokens(blueprint_json)
     env = Environment(loader=BaseLoader(), autoescape=True)
+    template_images = template_images or {}
     sections_html = []
     for sec in (page.get("sections") or []):
         if isinstance(sec, dict):
-            sections_html.append(_render_section(sec, tokens, demo_dataset, env))
+            sections_html.append(_render_section(sec, tokens, demo_dataset, env, template_images))
     nav = _nav_html(blueprint_json, tokens)
     footer = _footer_html(blueprint_json, tokens)
     meta_name = (blueprint_json.get("meta") or {}).get("name") or "Preview"
@@ -281,17 +311,20 @@ def render_preview_html(blueprint_json: Dict[str, Any], demo_dataset: Dict[str, 
 def render_preview_assets(
     blueprint_json: Dict[str, Any],
     demo_dataset: Dict[str, Any],
+    template_images: Optional[Dict[str, List[str]]] = None,
 ) -> Dict[str, Any]:
     """
     Return dict of path -> content (str or bytes).
     index.html (first page), one {slug}.html per other page (so nav links work from S3 subpath),
     assets/style.css, assets/app.js.
+    template_images: optional dict category -> list of image URLs (from Template Registry uploads) used for hero, gallery, feature_split by image_prompt_category.
     """
     if not blueprint_json or not isinstance(blueprint_json, dict):
         return {"index.html": "<!DOCTYPE html><html><body><p>No blueprint</p></body></html>"}
     tokens = _get_tokens(blueprint_json)
     primary = tokens.get("primary", "#2563eb")
     font_family = tokens.get("font_family", "Inter, sans-serif")
+    template_images = template_images or {}
     css = f"""
 :root {{
   --color-primary: {primary};
@@ -305,7 +338,7 @@ body {{ margin: 0; box-sizing: border-box; }}
     if not pages or not isinstance(pages[0], dict):
         pages = [{"slug": "home", "title": "Home", "sections": []}]
     out = {
-        "index.html": _render_one_page_html(blueprint_json, demo_dataset, pages[0]),
+        "index.html": _render_one_page_html(blueprint_json, demo_dataset, pages[0], template_images),
         "assets/style.css": css.strip(),
         "assets/app.js": js,
     }
@@ -314,5 +347,5 @@ body {{ margin: 0; box-sizing: border-box; }}
         if not isinstance(page, dict):
             continue
         slug = (page.get("slug") or "").strip().lstrip("/") or f"page{i}"
-        out[f"{slug}.html"] = _render_one_page_html(blueprint_json, demo_dataset, page)
+        out[f"{slug}.html"] = _render_one_page_html(blueprint_json, demo_dataset, page, template_images)
     return out

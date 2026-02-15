@@ -1963,9 +1963,6 @@ export default function ProjectDetailPage() {
 
     if (!project || !user) return null;
 
-    console.log('Current User Role:', user.role);
-    console.log('Is Admin?', user.role === 'ADMIN');
-
     const stageOrder = ['SALES', 'ONBOARDING', 'ASSIGNMENT', 'BUILD', 'TEST', 'DEFECT_VALIDATION', 'COMPLETE'];
     const stageOutputsByStage = stageOrder.reduce((acc: any, stage) => {
         acc[stage] = stageOutputs.find((o) => o.stage === stage);

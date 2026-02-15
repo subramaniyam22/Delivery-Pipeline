@@ -34,6 +34,10 @@ const api = axios.create({
 
 // Add request interceptor to send token in Authorization header
 api.interceptors.request.use((config) => {
+    // Let browser set Content-Type with boundary when sending FormData (otherwise 422 on multipart endpoints)
+    if (config.data instanceof FormData) {
+        delete config.headers['Content-Type'];
+    }
     // Check if we are in a browser environment
     if (typeof window !== 'undefined') {
         // First try to get token from localStorage (most reliable for JS)
@@ -440,7 +444,15 @@ export const configurationAPI = {
     validateTemplateCopy: (id: string) => api.post(`/api/templates/${id}/validate-copy`),
     validateTemplateSeo: (id: string) => api.post(`/api/templates/${id}/validate-seo`),
     uploadTemplateImage: (id: string, formData: FormData) =>
-        api.post(`/api/templates/${id}/images`, formData),
+        api.post(`/api/templates/${id}/images`, formData, {
+            // Force browser to set multipart/form-data with boundary (default application/json causes 422)
+            transformRequest: [(data, headers) => {
+                if (data instanceof FormData) {
+                    delete headers['Content-Type'];
+                }
+                return data;
+            }],
+        }),
     publishTemplate: (id: string, body?: { admin_override?: boolean }) =>
         api.post(`/api/templates/${id}/publish`, body || {}),
     archiveTemplate: (id: string) => api.post(`/api/templates/${id}/archive`),

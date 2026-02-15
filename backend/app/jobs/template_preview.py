@@ -64,7 +64,11 @@ def run_template_preview_pipeline(
             return {"status": "failed", "error": template.preview_error}
         demo_key = (template.default_config_json or {}).get("demo_dataset_key") if getattr(template, "default_config_json", None) else None
         demo_dataset = (get_demo_dataset_by_key(demo_key) if demo_key else None) or generate_demo_preview_dataset()
-        assets = render_preview_assets(blueprint, demo_dataset)
+        template_images = None
+        meta = getattr(template, "meta_json", None) or {}
+        if isinstance(meta.get("images"), dict):
+            template_images = {k: v if isinstance(v, list) else [v] for k, v in meta["images"].items() if v}
+        assets = render_preview_assets(blueprint, demo_dataset, template_images)
         total_size = sum(
             len(c.encode("utf-8") if isinstance(c, str) else c)
             for c in assets.values()
