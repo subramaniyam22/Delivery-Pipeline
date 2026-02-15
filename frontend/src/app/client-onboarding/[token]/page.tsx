@@ -567,8 +567,7 @@ export default function ClientOnboardingPage() {
 
         try {
             const res = await clientAPI.updateOnboardingForm(token, updates);
-            setSuccess('Changes saved successfully!');
-            setTimeout(() => setSuccess(''), 3000);
+            // Do not show success toast on auto-save; only show after "Confirm & Submit Project"
 
             // Update local state
             setFormData(prev => prev ? {
@@ -645,6 +644,8 @@ export default function ClientOnboardingPage() {
 
     const togglePhase = (phaseId: string) => {
         setActivePhase(prev => prev === phaseId ? null : phaseId);
+        // Refresh progress from server only when user clicks a section header
+        loadFormData();
     };
 
     const scrollToPhase = (phaseId: string) => {
@@ -1060,7 +1061,7 @@ export default function ClientOnboardingPage() {
             )}
 
             {/* Success screen after submit: preview button, AI callout, Yes/No for full validation, disclaimer */}
-            {(formData.submitted_at || success) && (
+            {formData.submitted_at && (
                 <div className="success-screen-block" style={{ margin: '16px 24px 24px', padding: '24px', background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)', borderRadius: '16px', border: '1px solid #bbf7d0' }}>
                     <h3 style={{ margin: '0 0 8px', fontSize: '18px', color: '#166534' }}>Form submitted successfully</h3>
                     <p style={{ margin: 0, fontSize: '14px', color: '#15803d' }}>Our Consultant team has been notified and will reach out to you.</p>
