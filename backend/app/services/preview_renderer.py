@@ -409,3 +409,80 @@ body {{ margin: 0; box-sizing: border-box; }}
         slug = (page.get("slug") or "").strip().lstrip("/") or f"page{i}"
         out[f"{slug}.html"] = _render_one_page_html(blueprint_json, demo_dataset, page, template_images)
     return out
+
+
+def render_preview_assets_single_page(
+    blueprint_json: Dict[str, Any],
+    demo_dataset: Dict[str, Any],
+    template_images: Optional[Dict[str, List[str]]] = None,
+) -> Dict[str, Any]:
+    """
+    Return a single index.html containing all pages' content with in-page anchors (#section-0, #section-1, ...).
+    Use this for client preview so one S3 signed URL works and navigation does not trigger AccessDenied.
+    """
+    if not blueprint_json or not isinstance(blueprint_json, dict):
+        return {"index.html": "<!DOCTYPE html><html><body><p>No blueprint</p></body></html>"}
+    tokens = _get_tokens(blueprint_json)
+    primary = tokens.get("primary", "#2563eb")
+    font_family = tokens.get("font_family", "Inter, sans-serif")
+    template_images = template_images or {}
+    env = Environment(loader=BaseLoader(), autoescape=True)
+    pages = blueprint_json.get("pages") or []
+    if not pages or not isinstance(pages[0], dict):
+        pages = [{"slug": "home", "title": "Home", "sections": []}]
+    nav = blueprint_json.get("navigation") or {}
+    items = nav.get("items") or []
+    meta_name = (blueprint_json.get("meta") or {}).get("name") or "Preview"
+    text_on_primary = tokens.get("text_on_primary", "#ffffff")
+    section_index = 0
+    page_section_starts = []
+    sections_html = []
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        page_section_starts.append(section_index)
+        for sec in page.get("sections") or []:
+            if isinstance(sec, dict):
+                html = _render_section(
+                    sec, tokens, demo_dataset, env, template_images, section_index=section_index
+                )
+                sections_html.append(
+                    f'<div id="section-{section_index}" class="page-section" role="region" aria-label="{html_module.escape((page.get("title") or "Section") + " " + str(section_index + 1))}">'
+                    + html
+                    + "</div>"
+                )
+                section_index += 1
+    nav_links = "".join(
+        f'<a href="#section-{page_section_starts[i]}" style="color: {text_on_primary}; text-decoration: none; padding: 8px 16px;">{html_module.escape((items[i].get("label") or (pages[i].get("title") if i < len(pages) and isinstance(pages[i], dict) else f"Page {i + 1}")) if i < len(items) and isinstance(items[i], dict) else (pages[i].get("title") if i < len(pages) and isinstance(pages[i], dict) else f"Page {i + 1}")}</a>'
+        for i in range(len(page_section_starts))
+    )
+    nav_html = f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main navigation"><a href="#" style="color: {text_on_primary}; text-decoration: none; font-weight: 600;">{html_module.escape(meta_name)}</a>{nav_links}</nav>'
+    footer = _footer_html(blueprint_json, tokens)
+    css = f"""
+:root {{ --color-primary: {primary}; --font-body: {font_family}; }}
+body {{ margin: 0; box-sizing: border-box; }}
+* {{ box-sizing: border-box; }}
+"""
+    js = "// Preview static bundle - no runtime required."
+    body_size = tokens.get("body_size", 16)
+    single_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{html_module.escape(meta_name)} - Preview</title>
+  <style>{css}</style>
+</head>
+<body>
+{nav_html}
+<main id="main-content" role="main" aria-label="Main content">
+{"".join(sections_html)}
+</main>
+{footer}
+</body>
+</html>"""
+    return {
+        "index.html": single_html,
+        "assets/style.css": css.strip(),
+        "assets/app.js": js,
+    }

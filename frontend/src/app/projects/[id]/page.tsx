@@ -114,6 +114,7 @@ interface JobRun {
     created_at: string;
     started_at?: string | null;
     finished_at?: string | null;
+    error_json?: Record<string, unknown> | null;
 }
 
 // Test Phase Interfaces
@@ -2356,11 +2357,16 @@ export default function ProjectDetailPage() {
                                 <span>Requested</span>
                             </div>
                             {jobs.slice(0, 8).map(job => (
-                                <div key={job.id} className="job-row">
+                                <div key={job.id} className="job-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', alignItems: 'center', gap: '8px' }}>
                                     <span>{job.stage}</span>
                                     <span className={`job-status ${job.status.toLowerCase()}`}>{job.status}</span>
                                     <span>{job.attempts}/{job.max_attempts}</span>
                                     <span>{new Date(job.created_at).toLocaleString()}</span>
+                                    {job.status === 'FAILED' && job.error_json && (
+                                        <div className="job-row-error" style={{ gridColumn: '1 / -1', fontSize: '12px', color: '#b91c1c', marginTop: '4px', paddingLeft: '8px' }}>
+                                            Reason: {typeof job.error_json.error === 'string' ? job.error_json.error : JSON.stringify(job.error_json)}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -2412,6 +2418,11 @@ export default function ProjectDetailPage() {
                         <div>
                             <strong>Last self-review score:</strong>{' '}
                             {latestBuildOutput?.score ?? 'N/A'}
+                            {!latestBuildOutput?.score && (
+                                <span className="text-muted" style={{ fontSize: '12px', color: '#64748b', marginLeft: '6px' }}>
+                                    (score appears after a successful build run)
+                                </span>
+                            )}
                         </div>
                         {latestBuildOutput?.report_json && (
                             <button
@@ -2464,6 +2475,11 @@ export default function ProjectDetailPage() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
                                 <strong>Last QA score:</strong> {latestTestOutput?.score ?? 'N/A'}
+                                {!latestTestOutput?.score && (
+                                    <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '6px' }}>
+                                        (score appears after a successful QA run)
+                                    </span>
+                                )}
                             </div>
                             {latestTestOutput?.report_json && (
                                 <Button

@@ -59,9 +59,10 @@ def build_contract_from_sources(db: Session, project_id: UUID) -> Optional[Dict[
         if ob:
             contacts = list(ob.contacts_json or [])
             primary = next((x for x in contacts if x.get("is_primary")), contacts[0] if contacts else {})
+            req_json = ob.requirements_json if isinstance(ob.requirements_json, dict) else {}
             c["onboarding"] = {
                 "status": "submitted" if ob.submitted_at else "draft",
-                "summary": (ob.requirements_json or {}).get("summary", "") if isinstance(ob.requirements_json, dict) else "",
+                "summary": req_json.get("summary", "") or req_json.get("project_summary", ""),
                 "primary_contact": primary if isinstance(primary, dict) else {},
                 "brand": {
                     "logo_url": ob.logo_url,
@@ -81,6 +82,7 @@ def build_contract_from_sources(db: Session, project_id: UUID) -> Optional[Dict[
                     "copy_text": ob.copy_text,
                     "privacy_policy_url": ob.privacy_policy_url,
                 },
+                "requirements": req_json,
             }
         c["onboarding"]["updated_at"] = ob.updated_at.isoformat() if ob and ob.updated_at else None
 

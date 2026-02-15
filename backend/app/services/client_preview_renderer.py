@@ -7,18 +7,20 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict
 
-from app.services.preview_renderer import render_preview_assets
+from app.services.preview_renderer import render_preview_assets_single_page
 from app.services.demo_preview_data import _default_dataset
 
 
 def _contract_to_client_dataset(contract: Dict[str, Any]) -> Dict[str, Any]:
     """
     Build a dataset dict matching the demo_dataset shape from contract onboarding.
-    Missing fields get placeholders so rendering never crashes.
+    Uses client-provided project_summary, project_notes, pages, and primary contact so
+    the template preview shows real client information. Missing fields get placeholders.
     """
     if not contract or not isinstance(contract, dict):
         return _default_dataset()
     ob = contract.get("onboarding") or {}
+    req = ob.get("requirements") or {}
     brand = ob.get("brand") or {}
     design = ob.get("design_preferences") or {}
     fundamentals = ob.get("website_fundamentals") or {}
@@ -38,10 +40,13 @@ def _contract_to_client_dataset(contract: Dict[str, Any]) -> Dict[str, Any]:
         ]
     else:
         gallery_images = ["https://placehold.co/800x500?text=Client+content+pending"]
-    copy_text = fundamentals.get("copy_text") or "Client content pending."
+    copy_text = fundamentals.get("copy_text") or req.get("copy_scope_notes") or "Client content pending."
     privacy_url = fundamentals.get("privacy_policy_url") or ""
     primary_contact = ob.get("primary_contact") or {}
     brand_name = primary_contact.get("company_name") or primary_contact.get("name") or "Client"
+    project_summary = (req.get("project_summary") or ob.get("summary") or "").strip()
+    project_notes = (req.get("project_notes") or "").strip()
+    description = project_summary or project_notes or copy_text[:200] if copy_text else "Professional services."
     return {
         "brand": {
             "name": brand_name,
@@ -50,7 +55,7 @@ def _contract_to_client_dataset(contract: Dict[str, Any]) -> Dict[str, Any]:
             "fonts": {"heading": "Inter", "body": "Inter"},
         },
         "company": {
-            "description": copy_text[:200] if copy_text else "Professional services.",
+            "description": description,
             "phone": primary_contact.get("phone") or "",
             "email": primary_contact.get("email") or "",
         },
@@ -58,14 +63,14 @@ def _contract_to_client_dataset(contract: Dict[str, Any]) -> Dict[str, Any]:
             "name": brand_name,
             "address": primary_contact.get("address") or "Address pending",
             "geo": {"lat": 40.7128, "lng": -74.0060},
-            "highlights": ["Client content pending"],
+            "highlights": [project_summary[:80]] if project_summary else ["Client content pending"],
         },
-        "amenities": ["Client content pending"] if not copy_text else [copy_text[:50]],
+        "amenities": [project_notes[:80]] if project_notes else (["Client content pending"] if not copy_text else [copy_text[:50]]),
         "gallery_images": gallery_images,
         "floor_plans": [
             {"name": "2B/2B", "beds": 2, "baths": 2, "sqft": 1100, "rent_from": 0, "image_url": gallery_images[0] if gallery_images else "https://placehold.co/400x300?text=Floor+plan"},
         ],
-        "testimonials": [{"name": "Client", "quote": copy_text[:100] if copy_text else "Client content pending."}],
+        "testimonials": [{"name": brand_name, "quote": (project_summary or copy_text)[:100] if (project_summary or copy_text) else "Client content pending."}],
         "faqs": [{"q": "Privacy", "a": f"Privacy policy: {privacy_url}" if privacy_url else "Client content pending."}],
         "policies": {"privacy_url": privacy_url, "terms_url": ""},
         "social_links": {},
@@ -80,20 +85,29 @@ def _blueprint_with_client_tokens(blueprint: Dict[str, Any], contract: Dict[str,
     design = ob.get("design_preferences") or {}
     theme_colors = design.get("theme_colors") or {}
     if not isinstance(theme_colors, dict):
-        return out
-    tokens = out.get("tokens") or {}
-    colors = tokens.get("colors") or {}
-    if theme_colors.get("primary"):
-        colors["primary"] = theme_colors["primary"]
-    if theme_colors.get("secondary"):
-        colors["secondary"] = theme_colors["secondary"]
-    if theme_colors.get("accent"):
-        colors["accent"] = theme_colors["accent"]
-    if theme_colors.get("background"):
-        colors["background"] = theme_colors["background"]
-    if theme_colors.get("text"):
-        colors["text"] = theme_colors["text"]
-    out["tokens"] = {**(tokens or {}), "colors": colors}
+        pass
+    else:
+        tokens = out.get("tokens") or {}
+        colors = dict(tokens.get("colors") or {})
+        if theme_colors.get("primary"):
+            colors["primary"] = theme_colors["primary"]
+        if theme_colors.get("secondary"):
+            colors["secondary"] = theme_colors["secondary"]
+        if theme_colors.get("accent"):
+            colors["accent"] = theme_colors["accent"]
+        if theme_colors.get("background"):
+            colors["background"] = theme_colors["background"]
+        if theme_colors.get("text"):
+            colors["text"] = theme_colors["text"]
+        out["tokens"] = {**(tokens or {}), "colors": colors}
+    req = ob.get("requirements") or {}
+    pages_str = (req.get("pages") or "").strip()
+    if pages_str:
+        nav_items = []
+        for i, part in enumerate([p.strip() for p in pages_str.replace(",", "\n").split("\n") if p.strip()]):
+            nav_items.append({"label": part, "href": part.lower().replace(" ", "-") if i > 0 else "home"})
+        if nav_items:
+            out["navigation"] = {"items": nav_items}
     return out
 
 
@@ -110,7 +124,8 @@ def render_client_preview_assets(
             return {"index.html": "<!DOCTYPE html><html><body><p>No blueprint</p></body></html>"}
         client_dataset = _contract_to_client_dataset(contract_json)
         blueprint_with_tokens = _blueprint_with_client_tokens(blueprint_json, contract_json or {})
-        assets = render_preview_assets(blueprint_with_tokens, client_dataset)
+        # Single-page preview so one S3 signed URL works; in-page links avoid AccessDenied on other .html keys
+        assets = render_preview_assets_single_page(blueprint_with_tokens, client_dataset)
         return assets
     except Exception:
         return {"index.html": "<!DOCTYPE html><html><body><p>Preview generation failed. Please try again.</p></body></html>"}
