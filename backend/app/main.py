@@ -9,8 +9,9 @@ from app.services.config_service import seed_default_configs
 from app.db import SessionLocal
 from app.models import User, Role
 from app.auth import get_password_hash
-from app.deps import get_db
+from app.deps import get_db, get_current_active_user
 from sqlalchemy.orm import Session
+from fastapi import status
 
 # Import error handling and rate limiting
 from app.exceptions import (
@@ -305,6 +306,20 @@ def get_version():
     return {
         "version": os.getenv("RENDER_GIT_COMMIT") or "unknown",
         "build_timestamp": os.getenv("BUILD_TIMESTAMP") or "unknown",
+    }
+
+
+@app.get("/api/debug/chrome-path")
+def debug_chrome_path(current_user: User = Depends(get_current_active_user)):
+    """Return Chrome path for Lighthouse (for setting CHROME_PATH on Render). Admin/Manager only."""
+    if current_user.role not in (Role.ADMIN, Role.MANAGER):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin or Manager only")
+    from app.services.validation_runner import _find_chrome_path
+    path = _find_chrome_path()
+    return {
+        "CHROME_PATH": path,
+        "PLAYWRIGHT_BROWSERS_PATH": os.environ.get("PLAYWRIGHT_BROWSERS_PATH"),
+        "hint": "Set CHROME_PATH in Render Environment to the value above if validation still fails.",
     }
 
 

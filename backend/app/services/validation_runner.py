@@ -50,6 +50,16 @@ def _find_chrome_path() -> Optional[str]:
             for m in glob.glob(pattern):
                 if os.path.isfile(m) and os.access(m, os.X_OK):
                     return m
+    # Fallback: chromium_headless_shell (Playwright 1.49+); Lighthouse may accept it on Linux
+    for pattern in [
+        "/app/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
+        (os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").rstrip("/") + "/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell"),
+    ]:
+        if not pattern or "*" not in pattern:
+            continue
+        for m in glob.glob(pattern):
+            if os.path.isfile(m) and os.access(m, os.X_OK):
+                return m
     return None
 
 
@@ -118,8 +128,9 @@ def run_lighthouse(preview_url: str, timeouts: Optional[Dict[str, int]] = None) 
         env["CHROME_PATH"] = chrome_path
     else:
         result["error"] = (
-            "Chrome/Chromium not found for Lighthouse. Set CHROME_PATH to a Chrome executable, "
-            "or ensure Playwright chromium is installed in Docker: python -m playwright install --with-deps chromium"
+            "Chrome/Chromium not found for Lighthouse. Set CHROME_PATH in Render Environment to the path from: "
+            "GET /api/debug/chrome-path (when logged in as Admin), or run in Render Shell: python scripts/print_chrome_path.py. "
+            "If no path is found, ensure the backend uses Docker (not native Python) and the image installs Playwright chromium."
         )
         return result
     try:
