@@ -10,6 +10,7 @@ import logging
 import os
 import subprocess
 import tempfile
+import shutil
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -21,16 +22,32 @@ def _find_chrome_path() -> Optional[str]:
     path = os.environ.get("CHROME_PATH")
     if path and os.path.isfile(path):
         return path
+    # Fixed path used in Docker (PLAYWRIGHT_BROWSERS_PATH); then Render/home paths
     candidates = [
+        "/app/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
+        os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").rstrip("/") + "/chromium-*/chrome-linux/chrome",
         os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux/chrome"),
         "/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
-        "/app/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
+        "/opt/render/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
     ]
     for pattern in candidates:
+        if not pattern or "*" not in pattern:
+            continue
         matches = glob.glob(pattern)
         for m in matches:
             if os.path.isfile(m) and os.access(m, os.X_OK):
                 return m
+    return None
+
+
+def _find_lighthouse_cmd() -> Optional[str]:
+    """Return path to lighthouse CLI, or None if not found."""
+    cmd = shutil.which("lighthouse")
+    if cmd:
+        return cmd
+    for path in ("/usr/local/bin/lighthouse", "/usr/bin/lighthouse"):
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
     return None
 
 
@@ -73,6 +90,10 @@ def run_lighthouse(preview_url: str, timeouts: Optional[Dict[str, int]] = None) 
         return result
     timeouts = timeouts or {}
     timeout_sec = timeouts.get("lighthouse_sec", 120)
+    lighthouse_cmd = _find_lighthouse_cmd()
+    if not lighthouse_cmd:
+        result["error"] = "Lighthouse CLI not found. Install in Docker/build: npm install -g lighthouse"
+        return result
     workdir = tempfile.mkdtemp(prefix="lighthouse_")
     report_path = os.path.join(workdir, "lighthouse-report.json")
     env = dict(os.environ)
@@ -82,7 +103,7 @@ def run_lighthouse(preview_url: str, timeouts: Optional[Dict[str, int]] = None) 
     try:
         proc = subprocess.run(
             [
-                "lighthouse",
+                lighthouse_cmd,
                 preview_url,
                 "--output=json",
                 f"--output-path={report_path}",
@@ -107,8 +128,8 @@ def run_lighthouse(preview_url: str, timeouts: Optional[Dict[str, int]] = None) 
     except subprocess.TimeoutExpired:
         result["error"] = f"Lighthouse timed out after {timeout_sec}s"
         return result
-    except FileNotFoundError:
-        result["error"] = "Lighthouse CLI not found. Install: npm install -g lighthouse"
+    except FileNotFoundError as e:
+        result["error"] = f"Lighthouse executable not found: {e}. Install in build: npm install -g lighthouse"
         return result
     except Exception as e:
         result["error"] = str(e)
@@ -155,9 +176,13 @@ def run_axe(preview_url: str, timeouts: Optional[Dict[str, int]] = None) -> Dict
     except ImportError:
         result["error"] = "Playwright not installed"
         return result
+    chrome_path = _find_chrome_path()
+    launch_options: Dict[str, Any] = {"headless": True}
+    if chrome_path:
+        launch_options["executable_path"] = chrome_path
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(**launch_options)
             try:
                 page = browser.new_page()
                 page.goto(preview_url, wait_until="domcontentloaded", timeout=min(timeout_sec * 1000, 30000))

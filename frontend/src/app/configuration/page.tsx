@@ -984,6 +984,7 @@ export default function ConfigurationPage() {
             setError('Generate blueprint first.');
             return;
         }
+        setTemplateDetailSubTab('preview');
         try {
             await configurationAPI.generateTemplatePreview(template.id, { force: template.preview_status === 'ready' });
             updateTemplateInState({ ...template, preview_status: 'generating', preview_error: null });
@@ -1487,22 +1488,52 @@ export default function ConfigurationPage() {
                                             <button key={sub} type="button" onClick={() => setTemplateDetailSubTab(sub)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: templateDetailSubTab === sub ? '#2563eb' : 'white', color: templateDetailSubTab === sub ? 'white' : '#475569', fontSize: '12px', cursor: 'pointer' }}>{sub === 'blueprint' ? 'Blueprint' : sub === 'performance' ? 'Performance' : sub === 'evolution' ? 'Evolution' : sub.charAt(0).toUpperCase() + sub.slice(1)}</button>
                                         ))}
                                     </div>
-                                    <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '11px', color: '#94a3b8', marginRight: '4px' }}>Create:</span>
-                                        <button type="button" onClick={() => handleGeneratePreview(selectedTemplate)} disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling} title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : ''} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>Generate Preview</button>
-                                        <button type="button" onClick={() => handleValidateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Validate</button>
-                                        <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires ready preview and passed validation' : ''} style={{ padding: '6px 12px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>Publish</button>
-                                        {!canPublishTemplate(selectedTemplate) && canEditTemplates && (
-                                            <span style={{ fontSize: '11px', color: '#64748b' }}>{selectedTemplate.preview_status !== 'ready' ? '(Generate Preview first)' : (selectedTemplate.validation_status || 'not_run') !== 'passed' ? '(Run Validation first)' : ''}</span>
-                                        )}
-                                        <button type="button" onClick={() => handleOpenPreview(selectedTemplate)} title="Open preview in new window" style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Open Preview</button>
-                                        <span style={{ width: '1px', height: '20px', background: '#e2e8f0', margin: '0 4px' }} />
-                                        <span style={{ fontSize: '11px', color: '#94a3b8', marginRight: '4px' }}>Settings:</span>
-                                        <button type="button" onClick={() => handleSetDefaultTemplateFromCard(selectedTemplate)} disabled={!canEditTemplates || !selectedTemplate.is_published} title="Use this template as the default for new projects" style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && selectedTemplate.is_published ? 'pointer' : 'not-allowed' }}>Set Default</button>
-                                        <button type="button" onClick={() => handleSetRecommendedTemplate(selectedTemplate, !selectedTemplate.is_recommended)} disabled={!canEditTemplates} title="Mark as recommended so it appears highlighted when choosing a template" style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>{selectedTemplate.is_recommended ? 'Unrecommend' : 'Recommend'}</button>
-                                        <button type="button" onClick={() => handleDuplicateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-                                        <button type="button" onClick={() => handleArchiveTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Archive</button>
-                                        <button type="button" onClick={() => handleDeleteTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Delete</button>
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', fontWeight: 600 }}>Workflow</div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                                            <button type="button" onClick={() => { setTemplateDetailSubTab('preview'); handleGeneratePreview(selectedTemplate); }} disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling} title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : 'Build preview and switch to Preview tab'} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 3l14 9-14 9V3z"/></svg>
+                                            Generate Preview
+                                            </button>
+                                            <button type="button" onClick={() => handleValidateTemplate(selectedTemplate)} disabled={!canEditTemplates} title="Run validation" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', color: '#475569', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
+                                            Validate
+                                            </button>
+                                            <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires ready preview and passed validation' : 'Publish template'} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                                            Publish
+                                            </button>
+                                            <button type="button" onClick={() => handleOpenPreview(selectedTemplate)} title="Open preview in new window" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', color: '#475569', cursor: 'pointer' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M21 3l-7 7-4-4"/></svg>
+                                            Open Preview
+                                            </button>
+                                            {!canPublishTemplate(selectedTemplate) && canEditTemplates && (
+                                                <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '4px' }}>{selectedTemplate.preview_status !== 'ready' ? 'Generate preview first' : (selectedTemplate.validation_status || 'not_run') !== 'passed' ? 'Run validation first' : ''}</span>
+                                            )}
+                                        </div>
+                                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px', marginBottom: '6px', fontWeight: 600 }}>Settings</div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                                            <button type="button" onClick={() => handleSetDefaultTemplateFromCard(selectedTemplate)} disabled={!canEditTemplates || !selectedTemplate.is_published} title="Use as default for new projects" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 9px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '11px', color: '#475569', cursor: canEditTemplates && selectedTemplate.is_published ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15 9 22 9 17 14 18 22 12 18 6 22 7 14 2 9 9 9"/></svg>
+                                            Default
+                                            </button>
+                                            <button type="button" onClick={() => handleSetRecommendedTemplate(selectedTemplate, !selectedTemplate.is_recommended)} disabled={!canEditTemplates} title="Mark as recommended" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 9px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '11px', color: '#475569', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
+                                            {selectedTemplate.is_recommended ? 'Unrecommend' : 'Recommend'}
+                                            </button>
+                                            <button type="button" onClick={() => handleDuplicateTemplate(selectedTemplate)} disabled={!canEditTemplates} title="Duplicate template" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 9px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '11px', color: '#475569', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                                            Duplicate
+                                            </button>
+                                            <button type="button" onClick={() => handleArchiveTemplate(selectedTemplate)} disabled={!canEditTemplates} title="Archive template" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 9px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '11px', color: '#475569', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 8v13H3V8M1 3h22v5H1zM10 12h4"/></svg>
+                                            Archive
+                                            </button>
+                                            <button type="button" onClick={() => handleDeleteTemplate(selectedTemplate)} disabled={!canEditTemplates} title="Delete template" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 9px', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '6px', fontSize: '11px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/><path d="M10 11v6M14 11v6"/></svg>
+                                            Delete
+                                            </button>
+                                        </div>
                                     </div>
                                     {templateDetailSubTab === 'overview' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
@@ -1565,7 +1596,40 @@ export default function ConfigurationPage() {
                                                             </div>
                                                         )}
                                                         <h5 style={{ margin: '0 0 8px' }}>Template images</h5>
-                                                        <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '12px' }}>Upload images per category. You can add many per category; the preview uses them by the blueprint&apos;s section <code style={{ fontSize: '11px', background: '#f1f5f9', padding: '1px 4px' }}>image_prompt_category</code> (exterior → hero/gallery, interior → feature sections, etc.). To control which section uses which images, set the section type and image category in the blueprint (Structure/Blueprint tabs).</p>
+                                                        <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '12px' }}>Upload images per category. You can add many per category; the preview uses them by the blueprint&apos;s section <code style={{ fontSize: '11px', background: '#f1f5f9', padding: '1px 4px' }}>image_prompt_category</code>. Choose a category below, then choose files (multiple allowed). To change which section uses which category, edit the blueprint (Blueprint tab) and set <code style={{ fontSize: '11px', background: '#f1f5f9', padding: '1px 4px' }}>image_prompt_category</code> on each section.</p>
+                                                        {(() => {
+                                                            const bp = selectedTemplate.blueprint_json as { pages?: Array<{ slug?: string; title?: string; sections?: Array<{ type?: string; variant?: string; image_prompt_category?: string }> }> } | undefined;
+                                                            const sectionCategoryRows: Array<{ page: string; sectionType: string; variant?: string; category: string }> = [];
+                                                            if (bp?.pages) {
+                                                                for (const page of bp.pages) {
+                                                                    const pageLabel = (page.title || page.slug || '') || 'Page';
+                                                                    for (const sec of page.sections || []) {
+                                                                        const cat = (sec.image_prompt_category || '').trim();
+                                                                        if (cat) sectionCategoryRows.push({ page: pageLabel, sectionType: sec.type || 'section', variant: sec.variant, category: cat });
+                                                                    }
+                                                                }
+                                                            }
+                                                            return sectionCategoryRows.length > 0 ? (
+                                                                <div style={{ marginBottom: '12px', padding: '10px 12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '12px' }}>
+                                                                    <div style={{ fontWeight: 600, marginBottom: '6px', color: '#475569' }}>How sections use these images</div>
+                                                                    <p style={{ margin: '0 0 8px', color: '#64748b', fontSize: '11px' }}>Each section in the blueprint can specify an <code>image_prompt_category</code>. Images you upload for that category are used there (hero/gallery use first + list; feature_split uses first).</p>
+                                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                                                                        <thead><tr style={{ borderBottom: '1px solid #e2e8f0' }}><th style={{ textAlign: 'left', padding: '4px 8px 4px 0' }}>Page</th><th style={{ textAlign: 'left', padding: '4px 8px' }}>Section</th><th style={{ textAlign: 'left', padding: '4px 8px' }}>Image category</th></tr></thead>
+                                                                        <tbody>
+                                                                            {sectionCategoryRows.map((row, i) => (
+                                                                                <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                                                    <td style={{ padding: '4px 8px 4px 0' }}>{row.page}</td>
+                                                                                    <td style={{ padding: '4px 8px' }}>{row.sectionType}{row.variant ? ` (${row.variant})` : ''}</td>
+                                                                                    <td style={{ padding: '4px 8px' }}><strong>{row.category}</strong></td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            ) : (
+                                                                <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#94a3b8' }}>Generate a blueprint first to see which sections use which image category. Then upload images for those categories above.</p>
+                                                            );
+                                                        })()}
                                                         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                                                             <select value={imageUploadSectionKey} onChange={e => setImageUploadSectionKey(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                                                                 {['exterior', 'interior', 'lifestyle', 'people', 'neighborhood'].map(k => <option key={k} value={k}>{k.charAt(0).toUpperCase() + k.slice(1)}</option>)}
@@ -1573,23 +1637,34 @@ export default function ConfigurationPage() {
                                                             <input type="file" accept="image/*" multiple onChange={e => { const files = e.target.files; if (files?.length) handleUploadTemplateImages(selectedTemplate, Array.from(files), imageUploadSectionKey); e.target.value = ''; }} disabled={!canEditTemplates || imageUploading} style={{ fontSize: '12px' }} />
                                                             {imageUploading && <span style={{ color: '#64748b', fontSize: '12px' }}>Uploading…</span>}
                                                         </div>
-                                                        {((selectedTemplate.meta_json as Record<string, unknown>)?.images as Record<string, string[]>) && Object.keys((selectedTemplate.meta_json as Record<string, unknown>).images as Record<string, string[]>).length > 0 && (
-                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                                                {Object.entries((selectedTemplate.meta_json as Record<string, Record<string, string[]>>).images).map(([key, urls]) => (
-                                                                    <div key={key} style={{ marginBottom: '8px' }}>
-                                                                        <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>{key}</div>
-                                                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                                                            {(Array.isArray(urls) ? urls : [urls]).slice(0, 20).map((url, i) => (
-                                                                                <a key={i} href={url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
-                                                                                    <img src={url} alt="" style={{ width: '80px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                                                                                </a>
-                                                                            ))}
-                                                                            {(Array.isArray(urls) ? urls : [urls]).length > 20 && <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>+{(Array.isArray(urls) ? urls : [urls]).length - 20} more</span>}
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        )}
+                                                        {(() => {
+                                                            const metaImages = (selectedTemplate.meta_json as Record<string, unknown>)?.images;
+                                                            if (!metaImages || typeof metaImages !== 'object') return null;
+                                                            const entries = Object.entries(metaImages as Record<string, unknown>).filter(([, v]) => v !== undefined && v !== null);
+                                                            if (entries.length === 0) return null;
+                                                            return (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                                    {entries.map(([key, urls]) => {
+                                                                        const list = Array.isArray(urls) ? urls as string[] : [urls as string];
+                                                                        const valid = list.filter((u): u is string => typeof u === 'string' && u.length > 0);
+                                                                        if (valid.length === 0) return null;
+                                                                        return (
+                                                                            <div key={key} style={{ marginBottom: '4px' }}>
+                                                                                <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>{key} ({valid.length} image{valid.length !== 1 ? 's' : ''})</div>
+                                                                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                                                    {valid.slice(0, 20).map((url, i) => (
+                                                                                        <a key={i} href={url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+                                                                                            <img src={url} alt="" style={{ width: '80px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+                                                                                        </a>
+                                                                                    ))}
+                                                                                    {valid.length > 20 && <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>+{valid.length - 20} more</span>}
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            );
+                                                        })()}
                                                         {!pageList.length && <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '11px' }}>{JSON.stringify(selectedTemplate.pages_json || [], null, 2)}</pre>}
                                                     </>
                                                 );
@@ -2464,8 +2539,8 @@ export default function ConfigurationPage() {
                     <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <PageHeader
                             title="Global HITL Gates"
-                            purpose="Toggle stage gates to require human approval globally."
-                            affects="Affects approval requirements before a stage can proceed."
+                            purpose="Choose how much human approval is required before stages can proceed. Default for all projects is No HITL."
+                            affects="When a gate is on: JobRun ends as NEEDS_HUMAN, StageOutput gets gate_decision=PAUSED_HITL, and the project does not auto-advance until approved."
                             variant="section"
                         />
                         {renderDirtyDot('hitl_gates')}
@@ -2476,35 +2551,58 @@ export default function ConfigurationPage() {
                             Only Admin can change this setting.
                         </p>
                     )}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
-                        {[
-                            { key: 'onboarding', label: 'Onboarding' },
-                            { key: 'assignment', label: 'Assignment' },
-                            { key: 'build', label: 'Build' },
-                            { key: 'test', label: 'Test' },
-                            { key: 'defect_validation', label: 'Defect Validation' },
-                            { key: 'complete', label: 'Complete' },
-                        ].map(({ key, label }) => (
-                            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px' }}>
-                                <input
-                                    type="checkbox"
-                                    checked={(globalStageGates as any)[key]}
-                                    onChange={(e) => setGlobalStageGates(prev => ({ ...prev, [key]: e.target.checked }))}
-                                    disabled={!canEditGates}
-                                />
-                                <span style={{ fontSize: '14px', fontWeight: 600 }}>{label}</span>
-                            </label>
-                        ))}
-                    </div>
-                    <div style={{ marginTop: '16px' }}>
-                        <button
-                            onClick={handleSaveGlobalGates}
-                            disabled={savingGates || !canEditGates}
-                            style={{ padding: '8px 24px', background: '#2563eb', color: 'white', borderRadius: '6px', border: 'none', cursor: canEditGates ? 'pointer' : 'not-allowed', fontWeight: 600, fontSize: '13px', opacity: savingGates || !canEditGates ? 0.7 : 1 }}
-                        >
-                            {savingGates ? 'Saving...' : 'Save Global Gates'}
-                        </button>
-                    </div>
+                    {(() => {
+                        const gateKeys = ['onboarding', 'assignment', 'build', 'test', 'defect_validation', 'complete'] as const;
+                        const gates = globalStageGates as Record<string, boolean>;
+                        const countOn = gateKeys.filter(k => gates[k]).length;
+                        const preset = countOn === 0 ? 'none' : countOn === gateKeys.length ? 'full' : 'partial';
+                        const setPreset = (p: 'none' | 'partial' | 'full') => {
+                            if (p === 'none') setGlobalStageGates(prev => ({ ...prev, ...Object.fromEntries(gateKeys.map(k => [k, false])) }));
+                            if (p === 'full') setGlobalStageGates(prev => ({ ...prev, ...Object.fromEntries(gateKeys.map(k => [k, true])) }));
+                        };
+                        return (
+                            <>
+                                <div style={{ marginBottom: '16px' }}>
+                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>HITL mode</div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                        <button type="button" onClick={() => setPreset('none')} disabled={!canEditGates} title="No human approval required at any stage (default for new projects)" style={{ padding: '8px 14px', borderRadius: '8px', border: '2px solid', fontSize: '13px', fontWeight: 600, cursor: canEditGates ? 'pointer' : 'not-allowed', background: preset === 'none' ? '#eff6ff' : 'white', borderColor: preset === 'none' ? '#2563eb' : '#e2e8f0', color: preset === 'none' ? '#1d4ed8' : '#475569' }}>No HITL</button>
+                                        <button type="button" onClick={() => setPreset('full')} disabled={!canEditGates} title="Require approval at every stage" style={{ padding: '8px 14px', borderRadius: '8px', border: '2px solid', fontSize: '13px', fontWeight: 600, cursor: canEditGates ? 'pointer' : 'not-allowed', background: preset === 'full' ? '#fef3c7' : 'white', borderColor: preset === 'full' ? '#f59e0b' : '#e2e8f0', color: preset === 'full' ? '#92400e' : '#475569' }}>Full HITL</button>
+                                        <span style={{ alignSelf: 'center', fontSize: '12px', color: '#94a3b8' }}>Partial = choose stages below</span>
+                                    </div>
+                                </div>
+                                <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px' }}>Stages requiring approval (partial mode)</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
+                                    {[
+                                        { key: 'onboarding', label: 'Onboarding' },
+                                        { key: 'assignment', label: 'Assignment' },
+                                        { key: 'build', label: 'Build' },
+                                        { key: 'test', label: 'Test' },
+                                        { key: 'defect_validation', label: 'Defect Validation' },
+                                        { key: 'complete', label: 'Complete' },
+                                    ].map(({ key, label }) => (
+                                        <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px 12px' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={(globalStageGates as any)[key]}
+                                                onChange={(e) => setGlobalStageGates(prev => ({ ...prev, [key]: e.target.checked }))}
+                                                disabled={!canEditGates}
+                                            />
+                                            <span style={{ fontSize: '14px', fontWeight: 600 }}>{label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                                <div style={{ marginTop: '16px' }}>
+                                    <button
+                                        onClick={handleSaveGlobalGates}
+                                        disabled={savingGates || !canEditGates}
+                                        style={{ padding: '8px 24px', background: '#2563eb', color: 'white', borderRadius: '6px', border: 'none', cursor: canEditGates ? 'pointer' : 'not-allowed', fontWeight: 600, fontSize: '13px', opacity: savingGates || !canEditGates ? 0.7 : 1 }}
+                                    >
+                                        {savingGates ? 'Saving...' : 'Save Global Gates'}
+                                    </button>
+                                </div>
+                            </>
+                        );
+                    })()}
                 </section>
                 )}
 

@@ -20,9 +20,11 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Lighthouse and Playwright browsers (chromium + headless shell for axe/Lighthouse)
-RUN npm install -g lighthouse
-RUN python -m playwright install --with-deps chromium && python -m playwright install --with-deps --only-shell
+# Install Lighthouse and Playwright browsers to a fixed path (so runtime finds them when HOME=/opt/render on Render)
+ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
+RUN npm install -g lighthouse \
+    && mkdir -p /app/.cache/ms-playwright \
+    && python -m playwright install --with-deps chromium
 
 # Copy application code
 COPY . .

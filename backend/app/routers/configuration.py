@@ -27,6 +27,22 @@ def _require_admin_manager(user: User) -> None:
     require_admin_manager(user)
 
 
+def _normalize_template_meta_images(template: TemplateRegistry) -> None:
+    """Ensure meta_json.images is category -> list of URLs so API always returns arrays (fixes legacy single string)."""
+    if not getattr(template, "meta_json", None) or not isinstance(template.meta_json, dict):
+        return
+    images = template.meta_json.get("images")
+    if not images or not isinstance(images, dict):
+        return
+    normalized = {}
+    for k, v in images.items():
+        if isinstance(v, list):
+            normalized[k] = [u for u in v if u]
+        else:
+            normalized[k] = [v] if v else []
+    template.meta_json = {**template.meta_json, "images": normalized}
+
+
 def _display_error_message(error_code: Optional[str], error_message: Optional[str], error_details: Optional[str]) -> str:
     """Return a safe display message; normalize OPENAI 429/quota for old runs that stored the generic message."""
     msg = (error_message or "").strip()
@@ -171,6 +187,7 @@ def list_templates(
     for t in templates:
         if getattr(t, "preview_thumbnail_url", None):
             t.preview_thumbnail_url = refresh_presigned_thumbnail_url(t.preview_thumbnail_url)
+        _normalize_template_meta_images(t)
     return templates
 
 
@@ -274,6 +291,7 @@ def get_template(
         raise HTTPException(status_code=404, detail="Template not found")
     if getattr(template, "preview_thumbnail_url", None):
         template.preview_thumbnail_url = refresh_presigned_thumbnail_url(template.preview_thumbnail_url)
+    _normalize_template_meta_images(template)
     return template
 
 
