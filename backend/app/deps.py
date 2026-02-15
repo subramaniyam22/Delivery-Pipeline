@@ -78,3 +78,18 @@ def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
         return None
         
     return db.query(User).filter(User.email == email).first()
+
+
+def get_current_user_for_preview(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    """Auth for preview proxy: accept token from query (for iframe) or header/cookie."""
+    token = request.query_params.get("access_token")
+    if token:
+        user = get_current_user_from_token(token, db)
+        if user:
+            return user
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    return get_current_user(request, credentials, db)

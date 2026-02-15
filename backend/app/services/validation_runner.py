@@ -171,7 +171,7 @@ def run_axe(preview_url: str, timeouts: Optional[Dict[str, int]] = None) -> Dict
         result["error"] = "Axe requires HTTP(S) URL"
         return result
     timeout_sec = (timeouts or {}).get("axe_sec", 60)
-    # Force Playwright to use our install path (avoids chromium_headless_shell under /opt/render on Render)
+    # Force Playwright to use Docker-installed browsers (avoids chromium_headless_shell under /opt/render on Render)
     if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
         chrome_path_hint = _find_chrome_path()
         if chrome_path_hint and "/ms-playwright" in chrome_path_hint:

@@ -21,6 +21,7 @@ export default function ReportsPage() {
         });
     }, []);
 
+    const projectsDelivered = executiveDashboard?.projects_delivered ?? 0;
     const totalProjects = executiveDashboard?.total_projects ?? 0;
     const delayedCount = executiveDashboard?.delayed_count ?? 0;
     const sentiment = metrics?.quality_metrics?.avg_client_sentiment;
@@ -28,7 +29,7 @@ export default function ReportsPage() {
     const qaPassRate = metrics?.quality_metrics?.qa_pass_rate;
 
     const summaryCards = [
-        { label: 'Projects Delivered', value: String(totalProjects), helper: 'Active projects in pipeline' },
+        { label: 'Projects Delivered', value: String(projectsDelivered), helper: 'Completed and delivered' },
         { label: 'Avg. Cycle Time', value: '—', helper: 'From stage history' },
         { label: 'SLA Breaches', value: String(delayedCount), helper: 'Delayed / at-risk' },
         { label: 'Client Sentiment', value: sentiment != null ? String(sentiment) : '—', helper: 'Average score' },

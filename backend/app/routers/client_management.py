@@ -121,18 +121,24 @@ def get_projects_with_client_info(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get all projects with client information (Consultant+)"""
+    """Get all projects with client information (Consultant+). Includes DRAFT, ACTIVE, PAUSED, and COMPLETED so client communications can be managed for all relevant work."""
     check_consultant_or_above(current_user)
     
+    statuses_for_client_mgmt = [
+        ProjectStatus.DRAFT,
+        ProjectStatus.ACTIVE,
+        ProjectStatus.PAUSED,
+        ProjectStatus.COMPLETED,
+    ]
     # Get projects based on role
     if current_user.role in [Role.ADMIN, Role.MANAGER]:
         projects = db.query(Project).filter(
-            Project.status.in_([ProjectStatus.DRAFT, ProjectStatus.ACTIVE])
+            Project.status.in_(statuses_for_client_mgmt)
         ).all()
     else:
         # Consultant/PC only sees their assigned projects
         projects = db.query(Project).filter(
-            Project.status.in_([ProjectStatus.DRAFT, ProjectStatus.ACTIVE]),
+            Project.status.in_(statuses_for_client_mgmt),
             (Project.consultant_user_id == current_user.id) | 
             (Project.pc_user_id == current_user.id)
         ).all()

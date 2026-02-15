@@ -14,7 +14,7 @@ import uuid
 
 from app.db import get_db
 from app.db import SessionLocal
-from app.deps import get_current_active_user
+from app.deps import get_current_active_user, get_current_user_for_preview
 from app.models import TemplateRegistry, User, AuditLog, TemplateBlueprintJob, TemplateBlueprintRun, TemplateValidationJob, TemplateEvolutionProposal, ClientSentiment, Project, DeliveryOutcome
 from app.schemas import TemplateCreate, TemplateUpdate, TemplateResponse, SetRecommendedBody
 from app.config import settings
@@ -511,9 +511,9 @@ def serve_template_preview(
     template_id: str,
     path: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user_for_preview),
 ):
-    """Serve preview assets from storage so in-iframe navigation works (avoids 403 on presigned S3)."""
+    """Serve preview assets from storage. Auth via Bearer or ?access_token= for iframe (no cookies in cross-origin)."""
     template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -537,7 +537,8 @@ def serve_template_preview(
         media_type = "text/css"
     elif key.endswith(".js"):
         media_type = "application/javascript"
-    return Response(content=body, media_type=media_type)
+    headers = {"Content-Security-Policy": "frame-ancestors *"}
+    return Response(content=body, media_type=media_type, headers=headers)
 
 
 @router.post("/api/templates/{template_id}/generate-preview")

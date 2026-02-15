@@ -840,7 +840,12 @@ export default function ConfigurationPage() {
     /** Use proxy URL for embedded preview and open-in-tab so in-preview navigation works (avoids 403 on S3 presigned). */
     const getPreviewIframeUrl = (template: TemplateRegistry) => {
         if ((template.preview_status || '') !== 'ready' || !template.id) return template.preview_url || '';
-        return `${API_BASE_URL}/api/templates/${template.id}/preview/`;
+        const base = `${API_BASE_URL}/api/templates/${template.id}/preview/`;
+        if (typeof window !== 'undefined') {
+            const token = localStorage.getItem('access_token');
+            if (token) return `${base}?access_token=${encodeURIComponent(token)}`;
+        }
+        return base;
     };
 
     const getPreviewStatusLabel = (template: TemplateRegistry) => {
@@ -879,10 +884,12 @@ export default function ConfigurationPage() {
         useEffect(() => {
             setDraft(template.description || '');
         }, [template.id, template.description]);
-        const handleSave = async () => {
+        const handleBlur = async () => {
+            const trimmed = (draft || '').trim() || null;
+            if (trimmed === (template.description || '').trim() || (trimmed === '' && !template.description)) return;
             setSaving(true);
             try {
-                const res = await configurationAPI.updateTemplate(template.id, { description: (draft || '').trim() || null });
+                const res = await configurationAPI.updateTemplate(template.id, { description: trimmed });
                 onSaved(res.data as TemplateRegistry);
             } catch {
                 // error surfaced by parent
@@ -895,13 +902,12 @@ export default function ConfigurationPage() {
                 <textarea
                     value={draft}
                     onChange={e => setDraft(e.target.value)}
-                    placeholder="Short description for list and overview"
+                    onBlur={handleBlur}
+                    placeholder="Short description for list and overview (saves when you leave the field)"
                     rows={2}
                     style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', resize: 'vertical' }}
                 />
-                <button type="button" onClick={handleSave} disabled={saving} style={{ marginTop: '6px', padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: saving ? 'not-allowed' : 'pointer' }}>
-                    {saving ? 'Saving…' : 'Save description'}
-                </button>
+                {saving && <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>Saving…</span>}
             </div>
         );
     }
@@ -1878,9 +1884,7 @@ export default function ConfigurationPage() {
                                             {validationToast && (
                                                 <div role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px', padding: '12px 16px', background: '#dbeafe', border: '1px solid #93c5fd', borderRadius: '8px', color: '#1e40af', fontSize: '13px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
                                                     <span>{validationToast}</span>
-                                                    <button type="button" onClick={() => setValidationToast(null)} aria-label="Close" style={{ flexShrink: 0, padding: '4px', border: 'none', background: 'transparent', color: '#1e40af', cursor: 'pointer', borderRadius: '4px', lineHeight: 1 }} title="Close">
-                                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                                                    </button>
+                                                    <button type="button" onClick={() => setValidationToast(null)} aria-label="Close message" style={{ flexShrink: 0, padding: '6px 10px', border: '1px solid #1e40af', background: 'white', color: '#1e40af', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }} title="Close">Close</button>
                                                 </div>
                                             )}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
@@ -2169,7 +2173,8 @@ export default function ConfigurationPage() {
                                 </label>
                                 <label style={{ fontSize: '13px' }}>Feature tags (comma-separated) <input type="text" value={wizardForm.feature_tags} onChange={e => setWizardForm(f => ({ ...f, feature_tags: e.target.value }))} placeholder="gallery, contact, map" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
                                 <div style={{ marginTop: '8px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                    <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px', color: '#475569' }}>Image prompts (optional)</div>
+                                    <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', color: '#475569' }}>Image prompts (optional)</div>
+                                    <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>Short text descriptions used to guide AI when generating or selecting images for this template (e.g. &quot;Modern glass-fronted building with landscaped entrance&quot; for Exterior). Leave blank to skip. They help previews and client sites look consistent and professional.</p>
                                     {(['exterior', 'interior', 'lifestyle', 'people', 'neighborhood'] as const).map(k => (
                                         <label key={k} style={{ display: 'block', fontSize: '12px', marginBottom: '6px' }}>
                                             {k.charAt(0).toUpperCase() + k.slice(1)} <input type="text" value={wizardForm.image_prompts[k] || ''} onChange={e => setWizardForm(f => ({ ...f, image_prompts: { ...f.image_prompts, [k]: e.target.value } }))} placeholder={`e.g. ${k} imagery`} style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #cbd5e1', marginTop: '2px' }} />
@@ -2605,6 +2610,9 @@ export default function ConfigurationPage() {
                         {renderDirtyDot('preview_strategy')}
                         {renderStatusChip('preview_strategy')}
                     </div>
+                    <p style={{ marginTop: 0, marginBottom: '16px', color: '#475569', fontSize: '13px', maxWidth: '560px' }}>
+                        <strong>Static Preview</strong> pre-builds HTML and serves it from cache for fast loading; best for quick checks. <strong>Live Preview</strong> builds the template in a production-like environment so the preview matches the final site more closely, at the cost of slower load times.
+                    </p>
                     {!canEditPreviewStrategy && (
                         <p style={{ marginTop: 0, marginBottom: '12px', color: '#64748b', fontSize: '12px' }}>
                             Only Admin can change this setting.

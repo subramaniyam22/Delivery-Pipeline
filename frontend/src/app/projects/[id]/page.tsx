@@ -2587,7 +2587,7 @@ export default function ProjectDetailPage() {
                                                     <label className="switch">
                                                         <input
                                                             type="checkbox"
-                                                            checked={onboardingData.auto_reminder_enabled}
+                                                            checked={onboardingData.auto_reminder_enabled !== false}
                                                             onChange={(e) => {
                                                                 onboardingAPI.toggleAutoReminder(projectId, e.target.checked, reminderInterval)
                                                                     .then(() => loadOnboardingData())

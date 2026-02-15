@@ -59,6 +59,10 @@ configure_logging(logging.INFO)
 logger = logging.getLogger(__name__)
 IS_PROD = os.getenv("ENVIRONMENT") == "production"
 
+# Ensure Playwright uses Docker-installed browsers (template validation)
+if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH") and os.path.isdir("/app/.cache/ms-playwright"):
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/.cache/ms-playwright"
+
 
 def run_migrations():
     """Run Alembic migrations on startup"""

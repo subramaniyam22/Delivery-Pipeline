@@ -61,6 +61,7 @@ class ProjectDelayStatus(BaseModel):
 
 class ExecutiveDashboard(BaseModel):
     total_projects: int
+    projects_delivered: int  # COMPLETED only
     on_track_count: int
     warning_count: int
     critical_count: int
@@ -180,10 +181,12 @@ def get_executive_dashboard(
     """Get executive dashboard with project delay overview (Admin only)"""
     check_admin(current_user)
     
-    # Get all active projects
+    # Active pipeline projects (for delay/on-track counts)
     projects = db.query(Project).filter(
         Project.status.in_(["DRAFT", "ACTIVE"])
     ).all()
+    # Delivered = COMPLETED only (for Reports "Projects Delivered" card)
+    projects_delivered = db.query(Project).filter(Project.status == "COMPLETED").count()
     
     # Get SLA configs
     sla_configs_list = db.query(SLAConfiguration).filter(
@@ -224,6 +227,7 @@ def get_executive_dashboard(
     
     return ExecutiveDashboard(
         total_projects=len(projects),
+        projects_delivered=projects_delivered,
         on_track_count=on_track,
         warning_count=warning,
         critical_count=critical,

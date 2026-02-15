@@ -25,7 +25,8 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
 ENV PATH="/usr/local/bin:$PATH"
 RUN npm install -g lighthouse \
     && mkdir -p /app/.cache/ms-playwright \
-    && python -m playwright install --with-deps chromium
+    && python -m playwright install --with-deps chromium \
+    && python -m playwright install --with-deps --only-shell
 
 # Copy application code
 COPY . .

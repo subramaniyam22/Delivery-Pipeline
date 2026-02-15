@@ -482,3 +482,22 @@ export const configurationAPI = {
         api.put(`/sla/configurations/${stage}`, data),
     getExecutiveDashboard: () => api.get('/sla/executive-dashboard'),
 };
+
+// Client Management (Consultant+)
+export const clientManagementAPI = {
+    getProjects: () => api.get<Array<{
+        project_id: string;
+        project_title: string;
+        client_name: string;
+        client_company: string | null;
+        client_primary_contact: string | null;
+        client_emails: string[];
+        pending_requirements: Array<{ requirement_type: string; description: string; status: string }>;
+        last_reminder_sent: string | null;
+    }>>('/client-management/projects'),
+    updateClientEmails: (projectId: string, data: { client_emails: string[]; client_primary_contact?: string | null; client_company?: string | null }) =>
+        api.put(`/client-management/projects/${projectId}/client-emails`, data),
+    sendReminder: (data: { project_id: string; reminder_type: string; subject: string; message: string; send_to?: string[] }) =>
+        api.post('/client-management/send-reminder', data),
+    getReminders: (projectId: string) => api.get(`/client-management/reminders/${projectId}`),
+};

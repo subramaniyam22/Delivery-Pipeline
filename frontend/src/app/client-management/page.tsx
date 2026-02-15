@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import RequireCapability from '@/components/RequireCapability';
 import PageHeader from '@/components/PageHeader';
+import { clientManagementAPI } from '@/lib/api';
 
 interface PendingRequirement {
   requirement_type: string;
@@ -37,6 +38,7 @@ export default function ClientManagementPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectClientInfo[]>([]);
   const [selectedProject, setSelectedProject] = useState<ProjectClientInfo | null>(null);
   const [showEmailModal, setShowEmailModal] = useState(false);
@@ -76,36 +78,18 @@ export default function ClientManagementPage() {
     loadProjects();
   }, [router]);
 
-  const getApiUrl = () => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://localhost:8000';
-      }
-      return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    }
-    return 'http://localhost:8000';
-  };
-
-  const getAuthHeaders = () => {
-    const token = localStorage.getItem('access_token');
-    return {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    };
-  };
-
   const loadProjects = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const response = await fetch(`${getApiUrl()}/client-management/projects`, {
-        headers: getAuthHeaders()
-      });
-      if (response.ok) {
-        setProjects(await response.json());
-      }
-    } catch (error) {
-      console.error('Failed to load projects:', error);
+      const res = await clientManagementAPI.getProjects();
+      setProjects(Array.isArray(res.data) ? res.data : []);
+    } catch (err: any) {
+      console.error('Failed to load projects:', err);
+      const detail = err.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((d: any) => d?.msg ?? d?.message).filter(Boolean).join('. ') : 'Unable to load projects. Check your connection or try again.';
+      setLoadError(msg || 'Unable to load projects. Please try again.');
+      setProjects([]);
     } finally {
       setLoading(false);
     }
@@ -113,14 +97,11 @@ export default function ClientManagementPage() {
 
   const loadReminderHistory = async (projectId: string) => {
     try {
-      const response = await fetch(`${getApiUrl()}/client-management/reminders/${projectId}`, {
-        headers: getAuthHeaders()
-      });
-      if (response.ok) {
-        setReminderHistory(await response.json());
-      }
+      const res = await clientManagementAPI.getReminders(projectId);
+      setReminderHistory(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
       console.error('Failed to load reminders:', error);
+      setReminderHistory([]);
     }
   };
 
@@ -151,32 +132,18 @@ export default function ClientManagementPage() {
   const handleEmailUpdate = async () => {
     if (!selectedProject) return;
     setSubmitting(true);
-    
     try {
-      const response = await fetch(
-        `${getApiUrl()}/client-management/projects/${selectedProject.project_id}/client-emails`,
-        {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: JSON.stringify({
-            client_emails: emailForm.client_emails.filter(e => e.trim()),
-            client_primary_contact: emailForm.client_primary_contact || null,
-            client_company: emailForm.client_company || null
-          })
-        }
-      );
-      
-      if (response.ok) {
-        setShowEmailModal(false);
-        loadProjects();
-        alert('Client information updated successfully!');
-      } else {
-        const error = await response.json();
-        alert(error.detail || 'Failed to update client information');
-      }
-    } catch (error) {
-      console.error('Error updating emails:', error);
-      alert('Failed to update client information');
+      await clientManagementAPI.updateClientEmails(selectedProject.project_id, {
+        client_emails: emailForm.client_emails.filter(e => e.trim()),
+        client_primary_contact: emailForm.client_primary_contact || null,
+        client_company: emailForm.client_company || null
+      });
+      setShowEmailModal(false);
+      loadProjects();
+      alert('Client information updated successfully!');
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      alert(typeof detail === 'string' ? detail : 'Failed to update client information');
     } finally {
       setSubmitting(false);
     }
@@ -192,27 +159,17 @@ export default function ClientManagementPage() {
     setSubmitting(true);
     
     try {
-      const response = await fetch(`${getApiUrl()}/client-management/send-reminder`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          project_id: selectedProject.project_id,
-          reminder_type: reminderForm.reminder_type,
-          subject: reminderForm.subject,
-          message: reminderForm.message
-        })
+      await clientManagementAPI.sendReminder({
+        project_id: selectedProject.project_id,
+        reminder_type: reminderForm.reminder_type,
+        subject: reminderForm.subject,
+        message: reminderForm.message
       });
-      
-      if (response.ok) {
-        loadReminderHistory(selectedProject.project_id);
-        alert('Reminder sent successfully!');
-      } else {
-        const error = await response.json();
-        alert(error.detail || 'Failed to send reminder');
-      }
-    } catch (error) {
-      console.error('Error sending reminder:', error);
-      alert('Failed to send reminder');
+      loadReminderHistory(selectedProject.project_id);
+      alert('Reminder sent successfully!');
+    } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      alert(typeof detail === 'string' ? detail : 'Failed to send reminder');
     } finally {
       setSubmitting(false);
     }
@@ -266,6 +223,12 @@ export default function ClientManagementPage() {
           />
         </div>
 
+        {loadError && (
+          <div className="table-wrapper" style={{ marginBottom: '16px', padding: '16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b' }}>
+            <p style={{ margin: '0 0 12px' }}>{loadError}</p>
+            <button type="button" onClick={() => loadProjects()} style={{ padding: '8px 16px', background: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>Try again</button>
+          </div>
+        )}
         <div className="table-wrapper">
           <table className="client-table">
             <thead>
@@ -332,7 +295,7 @@ export default function ClientManagementPage() {
                   </td>
                 </tr>
               ))}
-              {projects.length === 0 && (
+              {projects.length === 0 && !loading && !loadError && (
                 <tr>
                   <td colSpan={8} className="empty-row">
                     No projects assigned to manage client communications.

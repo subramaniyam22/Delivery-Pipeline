@@ -461,49 +461,63 @@ export default function DashboardPage() {
                                     _score: t.performance_metrics_json?.weighted_score ?? t.performance_metrics_json?.avg_sentiment ?? 0,
                                 }));
                             const sorted = [...withScore].sort((a: any, b: any) => (b._score ?? 0) - (a._score ?? 0));
-                            const top = sorted.slice(0, 5);
+                            const dedupeByName = (list: any[]) => {
+                                const seen = new Set<string>();
+                                return list.filter((t: any) => {
+                                    const name = (t.name || '').trim() || t.id;
+                                    if (seen.has(name)) return false;
+                                    seen.add(name);
+                                    return true;
+                                });
+                            };
+                            const sortedUnique = dedupeByName(sorted);
+                            const top = sortedUnique.slice(0, 5);
                             const topIds = new Set(top.map((t: any) => t.id));
-                            const needsImprovement = sorted
-                                .filter((t: any) => !topIds.has(t.id) && t.is_deprecated !== true)
-                                .filter((t: any) => {
-                                    const m = t.performance_metrics_json || {};
-                                    const score = m.weighted_score ?? m.avg_sentiment ?? 0;
-                                    const usage = m.usage_count ?? 0;
-                                    const sentiment = m.avg_sentiment ?? 5;
-                                    return score < 3.5 || (usage >= 2 && sentiment < 4);
-                                })
-                                .slice(0, 6);
+                            const needsImprovement = dedupeByName(
+                                sortedUnique.filter((t: any) => !topIds.has(t.id) && t.is_deprecated !== true)
+                                    .filter((t: any) => {
+                                        const m = t.performance_metrics_json || {};
+                                        const score = m.weighted_score ?? m.avg_sentiment ?? 0;
+                                        const usage = m.usage_count ?? 0;
+                                        const sentiment = m.avg_sentiment ?? 5;
+                                        return score < 3.5 || (usage >= 2 && sentiment < 4);
+                                    })
+                            ).slice(0, 6);
+                            const thresholdNote = 'Threshold: Top = highest weighted score; Needs improvement = score < 3.5 or (usage ≥ 2 and sentiment < 4).';
                             return (
-                                <div className="template-perf-grid">
-                                    <div className="template-perf-card">
-                                        <h3 className="template-perf-card-title">Top performing</h3>
-                                        {top.length === 0 ? (
-                                            <p className="template-perf-muted">Run &quot;Template metrics&quot; in Configuration to see data.</p>
-                                        ) : (
-                                            <ul className="template-perf-list">
-                                                {top.map((t: any) => (
-                                                    <li key={t.id}>
-                                                        <a href={`/configuration?tab=templates&template=${t.id}`} className="template-perf-link">{t.name}</a>
-                                                        <span className="template-perf-badge">{(t._score ?? 0).toFixed(1)}</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        )}
-                                    </div>
-                                    <div className="template-perf-card">
-                                        <h3 className="template-perf-card-title">Needs improvement</h3>
-                                        {needsImprovement.length === 0 ? (
-                                            <p className="template-perf-muted">None flagged.</p>
-                                        ) : (
-                                            <ul className="template-perf-list">
-                                                {needsImprovement.map((t: any) => (
-                                                    <li key={t.id}>
-                                                        <a href={`/configuration?tab=templates&template=${t.id}`} className="template-perf-link template-perf-link--warn">{t.name}</a>
-                                                        <span className="template-perf-badge template-perf-badge--warn">{(t.performance_metrics_json?.avg_sentiment ?? t._score ?? 0).toFixed(1)}</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        )}
+                                <div>
+                                    <p className="template-perf-muted" style={{ marginBottom: '12px', fontSize: '12px' }}>{thresholdNote} Use Configuration → Template Registry → Performance / Evolution for per-template details and AI-driven improvements.</p>
+                                    <div className="template-perf-grid">
+                                        <div className="template-perf-card">
+                                            <h3 className="template-perf-card-title">Top performing</h3>
+                                            {top.length === 0 ? (
+                                                <p className="template-perf-muted">Run &quot;Template metrics&quot; in Configuration to see data.</p>
+                                            ) : (
+                                                <ul className="template-perf-list">
+                                                    {top.map((t: any) => (
+                                                        <li key={t.id}>
+                                                            <a href={`/configuration?tab=templates&template=${t.id}`} className="template-perf-link">{t.name}</a>
+                                                            <span className="template-perf-badge">{(t._score ?? 0).toFixed(1)}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
+                                        <div className="template-perf-card">
+                                            <h3 className="template-perf-card-title">Needs improvement</h3>
+                                            {needsImprovement.length === 0 ? (
+                                                <p className="template-perf-muted">None flagged.</p>
+                                            ) : (
+                                                <ul className="template-perf-list">
+                                                    {needsImprovement.map((t: any) => (
+                                                        <li key={t.id}>
+                                                            <a href={`/configuration?tab=templates&template=${t.id}`} className="template-perf-link template-perf-link--warn">{t.name}</a>
+                                                            <span className="template-perf-badge template-perf-badge--warn">{(t.performance_metrics_json?.avg_sentiment ?? t._score ?? 0).toFixed(1)}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             );

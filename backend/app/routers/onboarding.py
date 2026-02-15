@@ -390,6 +390,8 @@ def get_onboarding_data(
         
         # Create predefined tasks for onboarding
         create_predefined_tasks_for_project(db, project_id, Stage.ONBOARDING, current_user.id)
+    else:
+        db.refresh(onboarding)  # Ensure we return latest persisted state (e.g. auto_reminder_enabled)
     
     return onboarding
 
