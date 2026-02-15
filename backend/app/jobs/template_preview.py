@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models import TemplateRegistry
 from app.services.demo_preview_data import get_demo_dataset_by_key, generate_demo_preview_dataset
-from app.services.preview_renderer import render_preview_assets
+from app.services.preview_renderer import render_preview_assets_single_page
 from app.services.storage import (
     PREVIEW_BUNDLE_MAX_BYTES,
     upload_preview_bundle,
@@ -68,7 +68,8 @@ def run_template_preview_pipeline(
         meta = getattr(template, "meta_json", None) or {}
         if isinstance(meta.get("images"), dict):
             template_images = {k: v if isinstance(v, list) else [v] for k, v in meta["images"].items() if v}
-        assets = render_preview_assets(blueprint, demo_dataset, template_images)
+        # Single-page preview so one S3 URL works; nav links use #section-X and avoid AccessDenied on other .html keys
+        assets = render_preview_assets_single_page(blueprint, demo_dataset, template_images)
         total_size = sum(
             len(c.encode("utf-8") if isinstance(c, str) else c)
             for c in assets.values()
