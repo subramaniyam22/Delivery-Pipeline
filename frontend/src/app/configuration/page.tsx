@@ -98,6 +98,7 @@ function EvolutionTab({ templateId }: { templateId: string }) {
     if (loading && proposals.length === 0) return <div style={{ padding: 16 }}>Loading proposals…</div>;
     return (
         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+            <p style={{ margin: '0 0 12px', color: '#64748b' }}>Propose evolution suggests template improvements based on usage and quality metrics. After you approve a proposal, changes can be applied to the template. This runs after templates are in use and complements the create → preview → validate → publish flow.</p>
             {error && <p style={{ color: '#dc2626', marginBottom: 12 }}>{error}</p>}
             <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
                 <button type="button" onClick={handlePropose} disabled={loading} style={{ padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: loading ? 'not-allowed' : 'pointer' }}>Propose evolution</button>
@@ -672,7 +673,11 @@ export default function ConfigurationPage() {
             const slaRes = results[1].status === 'fulfilled' ? results[1].value : null;
             const templatesData = templatesRes ? templatesRes.data : [];
             const slaData = slaRes ? slaRes.data : [];
-            if (templatesRes) setTemplates(templatesData);
+            if (templatesRes) {
+                const list = Array.isArray(templatesData) ? templatesData : [];
+                const byId = new Map(list.map((t: TemplateRegistry) => [t.id, t]));
+                setTemplates(Array.from(byId.values()));
+            }
             if (slaRes) setSlaDrafts(slaData);
             if (!templatesRes || !slaRes) {
                 setError('Some configuration data failed to load');
@@ -931,7 +936,7 @@ export default function ConfigurationPage() {
             setSuccess('Default template set');
             loadData();
         } catch (err: any) {
-            setError(err.response?.data?.detail || 'Set default failed');
+            setError(formatApiErrorDetail(err.response?.data?.detail) || 'Set default failed');
         }
     };
     const handleSetRecommendedTemplate = async (t: TemplateRegistry, value: boolean) => {
@@ -1482,18 +1487,21 @@ export default function ConfigurationPage() {
                                             <button key={sub} type="button" onClick={() => setTemplateDetailSubTab(sub)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: templateDetailSubTab === sub ? '#2563eb' : 'white', color: templateDetailSubTab === sub ? 'white' : '#475569', fontSize: '12px', cursor: 'pointer' }}>{sub === 'blueprint' ? 'Blueprint' : sub === 'performance' ? 'Performance' : sub === 'evolution' ? 'Evolution' : sub.charAt(0).toUpperCase() + sub.slice(1)}</button>
                                         ))}
                                     </div>
-                                    <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                        <button type="button" onClick={() => handleDuplicateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Duplicate</button>
-                                        <button type="button" onClick={() => handleArchiveTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Archive</button>
-                                        <button type="button" onClick={() => handleSetRecommendedTemplate(selectedTemplate, !selectedTemplate.is_recommended)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>{selectedTemplate.is_recommended ? 'Unrecommend' : 'Recommend'}</button>
-                                        <button type="button" onClick={() => handleSetDefaultTemplateFromCard(selectedTemplate)} disabled={!canEditTemplates || !selectedTemplate.is_published} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && selectedTemplate.is_published ? 'pointer' : 'not-allowed' }}>Set Default</button>
+                                    <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                                        <span style={{ fontSize: '11px', color: '#94a3b8', marginRight: '4px' }}>Create:</span>
                                         <button type="button" onClick={() => handleGeneratePreview(selectedTemplate)} disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling} title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : ''} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>Generate Preview</button>
                                         <button type="button" onClick={() => handleValidateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Validate</button>
-                                        <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires ready preview and passed validation (run Generate Preview, then Run Validation)' : ''} style={{ padding: '6px 12px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>Publish</button>
+                                        <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires ready preview and passed validation' : ''} style={{ padding: '6px 12px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>Publish</button>
                                         {!canPublishTemplate(selectedTemplate) && canEditTemplates && (
-                                            <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '4px' }}>{selectedTemplate.preview_status !== 'ready' ? '(Generate Preview first)' : (selectedTemplate.validation_status || 'not_run') !== 'passed' ? '(Run Validation and fix any failures)' : ''}</span>
+                                            <span style={{ fontSize: '11px', color: '#64748b' }}>{selectedTemplate.preview_status !== 'ready' ? '(Generate Preview first)' : (selectedTemplate.validation_status || 'not_run') !== 'passed' ? '(Run Validation first)' : ''}</span>
                                         )}
-                                        <button type="button" onClick={() => handleOpenPreview(selectedTemplate)} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Preview</button>
+                                        <button type="button" onClick={() => handleOpenPreview(selectedTemplate)} title="Open preview in new window" style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Open Preview</button>
+                                        <span style={{ width: '1px', height: '20px', background: '#e2e8f0', margin: '0 4px' }} />
+                                        <span style={{ fontSize: '11px', color: '#94a3b8', marginRight: '4px' }}>Settings:</span>
+                                        <button type="button" onClick={() => handleSetDefaultTemplateFromCard(selectedTemplate)} disabled={!canEditTemplates || !selectedTemplate.is_published} title="Use this template as the default for new projects" style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && selectedTemplate.is_published ? 'pointer' : 'not-allowed' }}>Set Default</button>
+                                        <button type="button" onClick={() => handleSetRecommendedTemplate(selectedTemplate, !selectedTemplate.is_recommended)} disabled={!canEditTemplates} title="Mark as recommended so it appears highlighted when choosing a template" style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>{selectedTemplate.is_recommended ? 'Unrecommend' : 'Recommend'}</button>
+                                        <button type="button" onClick={() => handleDuplicateTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Duplicate</button>
+                                        <button type="button" onClick={() => handleArchiveTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Archive</button>
                                         <button type="button" onClick={() => handleDeleteTemplate(selectedTemplate)} disabled={!canEditTemplates} style={{ padding: '6px 12px', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>Delete</button>
                                     </div>
                                     {templateDetailSubTab === 'overview' && (
@@ -1557,7 +1565,7 @@ export default function ConfigurationPage() {
                                                             </div>
                                                         )}
                                                         <h5 style={{ margin: '0 0 8px' }}>Template images</h5>
-                                                        <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '12px' }}>Upload images per category (hero, gallery, and section images use these by category). You can add many images per category; they are used in the preview by section type (e.g. exterior for hero, gallery).</p>
+                                                        <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '12px' }}>Upload images per category. You can add many per category; the preview uses them by the blueprint&apos;s section <code style={{ fontSize: '11px', background: '#f1f5f9', padding: '1px 4px' }}>image_prompt_category</code> (exterior → hero/gallery, interior → feature sections, etc.). To control which section uses which images, set the section type and image category in the blueprint (Structure/Blueprint tabs).</p>
                                                         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                                                             <select value={imageUploadSectionKey} onChange={e => setImageUploadSectionKey(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
                                                                 {['exterior', 'interior', 'lifestyle', 'people', 'neighborhood'].map(k => <option key={k} value={k}>{k.charAt(0).toUpperCase() + k.slice(1)}</option>)}
@@ -1807,14 +1815,14 @@ export default function ConfigurationPage() {
                                     {templateDetailSubTab === 'performance' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
                                             <h4 style={{ margin: '0 0 12px' }}>Performance metrics</h4>
-                                            {selectedTemplate.performance_metrics_json && typeof selectedTemplate.performance_metrics_json === 'object' ? (
+                                            {selectedTemplate.performance_metrics_json && typeof selectedTemplate.performance_metrics_json === 'object' && Object.keys(selectedTemplate.performance_metrics_json).length > 0 ? (
                                                 <ul style={{ margin: 0, paddingLeft: '20px' }}>
                                                     {Object.entries(selectedTemplate.performance_metrics_json).map(([k, v]) => (
                                                         <li key={k}><strong>{k}</strong>: {String(v)}</li>
                                                     ))}
                                                 </ul>
                                             ) : (
-                                                <p style={{ margin: 0, color: '#64748b' }}>No metrics yet. Run &quot;Template metrics&quot; in Admin config to aggregate.</p>
+                                                <p style={{ margin: 0, color: '#64748b' }}>No metrics yet. This tab shows usage and quality data (e.g. usage count, average sentiment) once &quot;Template metrics&quot; has been run in Admin config to aggregate from projects using this template.</p>
                                             )}
                                         </div>
                                     )}

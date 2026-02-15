@@ -4,6 +4,7 @@ Used by template validation pipeline (worker).
 """
 from __future__ import annotations
 
+import glob
 import json
 import logging
 import os
@@ -13,6 +14,24 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _find_chrome_path() -> Optional[str]:
+    """Find Chrome/Chromium for Lighthouse. Uses CHROME_PATH env, or Playwright's bundled Chromium."""
+    path = os.environ.get("CHROME_PATH")
+    if path and os.path.isfile(path):
+        return path
+    candidates = [
+        os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux/chrome"),
+        "/root/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
+        "/app/.cache/ms-playwright/chromium-*/chrome-linux/chrome",
+    ]
+    for pattern in candidates:
+        matches = glob.glob(pattern)
+        for m in matches:
+            if os.path.isfile(m) and os.access(m, os.X_OK):
+                return m
+    return None
 
 
 def _normalize_thresholds(thresholds: Dict[str, Any]) -> Dict[str, Any]:
@@ -56,6 +75,10 @@ def run_lighthouse(preview_url: str, timeouts: Optional[Dict[str, int]] = None) 
     timeout_sec = timeouts.get("lighthouse_sec", 120)
     workdir = tempfile.mkdtemp(prefix="lighthouse_")
     report_path = os.path.join(workdir, "lighthouse-report.json")
+    env = dict(os.environ)
+    chrome_path = _find_chrome_path()
+    if chrome_path:
+        env["CHROME_PATH"] = chrome_path
     try:
         proc = subprocess.run(
             [
@@ -70,11 +93,14 @@ def run_lighthouse(preview_url: str, timeouts: Optional[Dict[str, int]] = None) 
             text=True,
             timeout=timeout_sec,
             cwd=workdir,
+            env=env,
         )
         if proc.returncode != 0:
             stderr = (proc.stderr or "").strip() or (proc.stdout or "").strip()
             hint = ""
-            if "ECONNREFUSED" in stderr or "connection" in stderr.lower() or "Unable to connect" in stderr:
+            if "CHROME_PATH" in stderr:
+                hint = " (Set CHROME_PATH to a Chrome/Chromium executable, or ensure Playwright chromium is installed: python -m playwright install chromium)"
+            elif "ECONNREFUSED" in stderr or "connection" in stderr.lower() or "Unable to connect" in stderr:
                 hint = " (Preview URL must be reachable from this process; in Docker set BACKEND_URL to the backend service URL, e.g. http://backend:8000)"
             result["error"] = f"Lighthouse failed: exit {proc.returncode}. {stderr[:500]}{hint}"
             return result
