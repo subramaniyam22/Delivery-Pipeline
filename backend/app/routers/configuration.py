@@ -472,6 +472,13 @@ def delete_template(
                 "project_titles": project_titles,
             }
             raise HTTPException(status_code=409, detail=detail)
+    # Clear project references (selected_template_id is a string column, not FK) so delete is not blocked
+    try:
+        db.query(Project).filter(Project.selected_template_id == str(template_id)).update(
+            {Project.selected_template_id: None}, synchronize_session="fetch"
+        )
+    except Exception as clear_err:
+        logging.getLogger(__name__).warning("Template delete: clear project refs: %s", clear_err)
     try:
         db.delete(template)
         db.add(
@@ -502,9 +509,10 @@ def delete_template(
     except Exception as e:
         db.rollback()
         logging.getLogger(__name__).exception("Template delete unexpected error: %s", e)
+        err_msg = (str(e) or type(e).__name__)[:200]
         raise HTTPException(
             status_code=500,
-            detail="Template could not be deleted. Please try again or contact support.",
+            detail=f"Template could not be deleted: {err_msg}",
         ) from e
 
 
@@ -583,6 +591,28 @@ def generate_template_preview(
     db.commit()
     background_tasks.add_task(_run_template_preview_pipeline, template_id)
     return {"preview_status": "generating"}
+
+
+@router.post("/api/templates/{template_id}/preview/reset")
+def reset_template_preview(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Clear stuck 'generating' preview status so the template can be retried or deleted. Admin/Manager only."""
+    _require_admin_manager(current_user)
+    try:
+        from uuid import UUID
+        tid = UUID(template_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=404, detail="Template not found")
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == tid).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    template.preview_status = "not_generated"
+    template.preview_error = None
+    db.commit()
+    return {"preview_status": "not_generated"}
 
 
 def _run_validation_checks(template: TemplateRegistry) -> Tuple[bool, dict]:

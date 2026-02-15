@@ -1050,6 +1050,19 @@ export default function ConfigurationPage() {
         }
     };
 
+    const handleResetPreview = async (template: TemplateRegistry) => {
+        if (!canEditTemplates) return;
+        try {
+            await configurationAPI.resetTemplatePreview(template.id);
+            const updated = await configurationAPI.getTemplate(template.id);
+            updateTemplateInState(updated.data as TemplateRegistry);
+            if (previewTemplate?.id === template.id) setPreviewTemplate(updated.data as TemplateRegistry);
+            setSuccess('Preview status reset. You can generate again or delete the template.');
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to reset preview status');
+        }
+    };
+
     const handleOpenPreview = (template: TemplateRegistry) => {
         setPreviewTemplate(template);
         setPreviewModalOpen(true);
@@ -1869,6 +1882,16 @@ export default function ConfigurationPage() {
                                                 >
                                                     {selectedTemplate.preview_status === 'generating' || previewPolling ? 'Generating…' : selectedTemplate.preview_status === 'ready' ? 'Regenerate Preview' : 'Generate Preview'}
                                                 </button>
+                                                {(selectedTemplate.preview_status === 'generating' || previewPolling) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleResetPreview(selectedTemplate)}
+                                                        title="Clear stuck preview so you can generate again or delete the template"
+                                                        style={{ padding: '8px 16px', background: 'white', color: '#b91c1c', border: '1px solid #b91c1c', borderRadius: '6px', fontSize: '13px', cursor: canEditTemplates ? 'pointer' : 'not-allowed', marginLeft: '8px' }}
+                                                    >
+                                                        Reset preview
+                                                    </button>
+                                                )}
                                             </div>
                                             {selectedTemplate.preview_status === 'failed' && selectedTemplate.preview_error && (
                                                 <div style={{ padding: '12px', background: '#fee2e2', borderRadius: '8px', color: '#991b1b', fontSize: '13px', marginBottom: '12px' }}>{selectedTemplate.preview_error}</div>
@@ -2364,9 +2387,18 @@ export default function ConfigurationPage() {
                                     return (
                                         <>
                                 {previewTemplate.preview_status === 'generating' || previewPolling ? (
+                                    <>
                                     <button disabled style={{ padding: '8px 16px', background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '6px' }}>
                                         Generating...
                                     </button>
+                                    <button
+                                        onClick={() => handleResetPreview(previewTemplate)}
+                                        title="Clear stuck preview"
+                                        style={{ padding: '8px 16px', background: 'white', color: '#b91c1c', border: '1px solid #b91c1c', borderRadius: '6px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}
+                                    >
+                                        Reset preview
+                                    </button>
+                                    </>
                                 ) : (
                                     <button
                                         onClick={() => handleGeneratePreview(previewTemplate)}

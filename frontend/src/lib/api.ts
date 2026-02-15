@@ -428,6 +428,8 @@ export const configurationAPI = {
     deleteTemplate: (id: string) => api.delete(`/api/templates/${id}`),
     generateTemplatePreview: (id: string, body?: { force?: boolean }) =>
         api.post(`/api/templates/${id}/generate-preview`, body || {}),
+    resetTemplatePreview: (id: string) =>
+        api.post(`/api/templates/${id}/preview/reset`),
     generateBlueprint: (id: string, body?: { regenerate?: boolean; max_iterations?: number }) =>
         api.post(`/api/templates/${id}/generate-blueprint`, body || {}),
     generateBlueprintRun: (id: string, body?: { regenerate?: boolean; max_iterations?: number }) =>
