@@ -63,6 +63,9 @@ services:
         value: https://delivery-backend.onrender.com
       - key: NODE_VERSION
         value: 20
+      # Reduce OOM risk during build on free tier (512MB instance)
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=460
 
   # Background Worker (Docker: Node 20 + Lighthouse + Chromium + Playwright)
   - type: worker
