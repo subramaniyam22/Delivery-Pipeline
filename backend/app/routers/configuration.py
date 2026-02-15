@@ -605,20 +605,19 @@ def generate_template_preview(
     db.commit()
 
     if sync_mode:
-        # Run pipeline in request with timeout so we get a clear result or failure (avoids stuck "generating" on free tier)
-        PREVIEW_SYNC_TIMEOUT = 25
+        # Run pipeline with timeout so we get a clear result or failure (Render cold start + upload can take 60s+)
+        PREVIEW_SYNC_TIMEOUT = int(os.getenv("PREVIEW_SYNC_TIMEOUT", "90"))
         result_holder: dict = {}
 
         def _run_sync() -> None:
             from app.jobs.template_preview import run_template_preview_pipeline
             from uuid import UUID
-            result_holder["out"] = run_template_preview_pipeline(UUID(template_id))
+            result_holder["out"] = run_template_preview_pipeline(UUID(template_id), skip_semaphore=True)
 
         thread = threading.Thread(target=_run_sync, daemon=True)
         thread.start()
         thread.join(timeout=PREVIEW_SYNC_TIMEOUT)
         if thread.is_alive():
-            # Timeout: mark failed so UI is not stuck
             t = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
             if t:
                 t.preview_status = "failed"
@@ -629,11 +628,17 @@ def generate_template_preview(
                 "error": "Preview generation timed out. Use Reset preview then try again.",
             }
         out = result_holder.get("out") or {}
-        status = out.get("status", "failed")
         t = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+        if t:
+            try:
+                db.refresh(t)
+            except Exception:
+                pass
+        status = (t.preview_status or "failed") if t else "failed"
+        err_msg = out.get("error") or (getattr(t, "preview_error", None) if t else None) or ""
         return {
-            "preview_status": (t.preview_status or "failed") if t else "failed",
-            "error": out.get("error"),
+            "preview_status": status,
+            "error": err_msg if status != "ready" else None,
         }
 
     background_tasks.add_task(_run_template_preview_pipeline, template_id)

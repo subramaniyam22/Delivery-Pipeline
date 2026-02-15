@@ -1037,8 +1037,9 @@ export default function ConfigurationPage() {
             return;
         }
         setTemplateDetailSubTab('preview');
+        updateTemplateInState({ ...template, preview_status: 'generating', preview_error: null });
         try {
-            // Use sync by default so preview completes or fails clearly (avoids stuck "Generating" on free tier)
+            // Use sync so preview completes or fails clearly (90s timeout; skips semaphore wait)
             const res = await configurationAPI.generateTemplatePreview(template.id, {
                 force: template.preview_status === 'ready',
                 sync: true,
@@ -1050,7 +1051,8 @@ export default function ConfigurationPage() {
             if ((data.preview_status || (updated.data as any)?.preview_status) === 'ready') {
                 setSuccess('Preview generated successfully');
             } else {
-                setError(data.error || (updated.data as any)?.preview_error || 'Preview generation failed');
+                const errMsg = data.error || (updated.data as any)?.preview_error || 'Preview generation failed';
+                setError(errMsg);
             }
         } catch (err: any) {
             const detail = err.response?.data?.detail;
