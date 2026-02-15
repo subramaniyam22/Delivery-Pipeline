@@ -42,6 +42,7 @@ interface RequirementsData {
     custom_graphic_notes?: string;
     navigation_notes_option?: string;
     navigation_notes?: string;
+    reference_links?: string;  // optional links to websites client likes (template section)
     stock_images_reference?: string;
     floor_plan_images?: string;
     sitemap?: string;
@@ -1662,10 +1663,10 @@ export default function ClientOnboardingPage() {
                             <div className="form-group" style={{ marginTop: '20px' }}>
                                 <label>Reference links (optional)</label>
                                 <textarea
-                                    value={formData.data.requirements?.stock_images_reference || ''}
-                                    onChange={(e) => updateRequirementsLocal({ stock_images_reference: e.target.value })}
+                                    value={formData.data.requirements?.reference_links || ''}
+                                    onChange={(e) => updateRequirementsLocal({ reference_links: e.target.value })}
                                     onBlur={() => saveFormData({ requirements: formData.data.requirements })}
-                                    onFocus={() => handleFieldFocus('stock_images_reference', 'Reference links')}
+                                    onFocus={() => handleFieldFocus('reference_links', 'Reference links')}
                                     rows={3}
                                     placeholder="Add links to websites you like..."
                                 />

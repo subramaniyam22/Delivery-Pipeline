@@ -455,7 +455,15 @@ def delete_template(
     template_name = getattr(template, "name", None) or ""
     is_published = getattr(template, "is_published", False) or (getattr(template, "status", None) or "").lower() == "published"
     if is_published:
-        has_refs, refs = _template_has_references(db, template_id)
+        try:
+            has_refs, refs = _template_has_references(db, template_id)
+        except Exception as e:
+            logging.getLogger(__name__).exception("Template delete: failed to check references: %s", e)
+            db.rollback()
+            raise HTTPException(
+                status_code=500,
+                detail="Template could not be deleted: failed to check references. Please try again or contact support.",
+            ) from e
         if has_refs:
             project_titles = [p.get("title", "") for p in refs.get("projects", [])]
             detail = {
@@ -464,16 +472,16 @@ def delete_template(
                 "project_titles": project_titles,
             }
             raise HTTPException(status_code=409, detail=detail)
-    db.delete(template)
-    db.add(
-        AuditLog(
-            project_id=None,
-            actor_user_id=current_user.id,
-            action="TEMPLATE_DELETED",
-            payload_json={"template_id": str(template_id), "name": template_name},
-        )
-    )
     try:
+        db.delete(template)
+        db.add(
+            AuditLog(
+                project_id=None,
+                actor_user_id=current_user.id,
+                action="TEMPLATE_DELETED",
+                payload_json={"template_id": str(template_id), "name": template_name},
+            )
+        )
         db.commit()
     except IntegrityError as e:
         db.rollback()
@@ -488,10 +496,16 @@ def delete_template(
             "references": refs,
         } if refs else "Template cannot be deleted due to database constraints."
         raise HTTPException(status_code=409, detail=detail) from e
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         logging.getLogger(__name__).exception("Template delete unexpected error: %s", e)
-        raise
+        raise HTTPException(
+            status_code=500,
+            detail="Template could not be deleted. Please try again or contact support.",
+        ) from e
 
 
 def _template_preview_prefix(template: TemplateRegistry) -> str:
