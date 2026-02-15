@@ -1050,6 +1050,30 @@ export default function ConfigurationPage() {
         }
     };
 
+    const handleGeneratePreviewSync = async (template: TemplateRegistry) => {
+        if (!canEditTemplates || template.source_type === 'git' || !template.blueprint_json) return;
+        setTemplateDetailSubTab('preview');
+        try {
+            const res = await configurationAPI.generateTemplatePreview(template.id, {
+                force: template.preview_status === 'ready',
+                sync: true,
+            });
+            const data = res.data as { preview_status?: string; error?: string };
+            const updated = await configurationAPI.getTemplate(template.id);
+            updateTemplateInState(updated.data as TemplateRegistry);
+            if (previewTemplate?.id === template.id) setPreviewTemplate(updated.data as TemplateRegistry);
+            if ((data.preview_status || updated.data?.preview_status) === 'ready') {
+                setSuccess('Preview generated successfully');
+            } else {
+                setError(data.error || (updated.data as any)?.preview_error || 'Preview generation failed');
+            }
+        } catch (err: any) {
+            const detail = err.response?.data?.detail;
+            const msg = typeof detail === 'string' ? detail : (err.response?.data?.error) || 'Preview generation failed';
+            setError(msg);
+        }
+    };
+
     const handleResetPreview = async (template: TemplateRegistry) => {
         if (!canEditTemplates) return;
         try {
@@ -1877,11 +1901,21 @@ export default function ConfigurationPage() {
                                                     type="button"
                                                     onClick={() => handleGeneratePreview(selectedTemplate)}
                                                     disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling}
-                                                    title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : selectedTemplate.preview_status === 'generating' || previewPolling ? 'Generating…' : ''}
+                                                    title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : selectedTemplate.preview_status === 'generating' || previewPolling ? 'Generating…' : 'Runs in background; may not complete on free tier'}
                                                     style={{ padding: '8px 16px', background: (selectedTemplate.preview_status === 'ready' ? '#e0f2fe' : '#2563eb'), color: (selectedTemplate.preview_status === 'ready' ? '#0369a1' : 'white'), border: '1px solid ' + (selectedTemplate.preview_status === 'ready' ? '#0ea5e9' : '#2563eb'), borderRadius: '6px', fontSize: '13px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}
                                                 >
                                                     {selectedTemplate.preview_status === 'generating' || previewPolling ? 'Generating…' : selectedTemplate.preview_status === 'ready' ? 'Regenerate Preview' : 'Generate Preview'}
                                                 </button>
+                                                {(selectedTemplate.preview_status !== 'generating' && !previewPolling) && canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleGeneratePreviewSync(selectedTemplate)}
+                                                        title="Wait in this page for result (recommended if preview gets stuck)"
+                                                        style={{ padding: '8px 16px', background: 'white', color: '#0369a1', border: '1px solid #0ea5e9', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', marginLeft: '8px' }}
+                                                    >
+                                                        Generate Preview (sync)
+                                                    </button>
+                                                )}
                                                 {(selectedTemplate.preview_status === 'generating' || previewPolling) && (
                                                     <button
                                                         type="button"
@@ -2400,10 +2434,11 @@ export default function ConfigurationPage() {
                                     </button>
                                     </>
                                 ) : (
+                                    <>
                                     <button
                                         onClick={() => handleGeneratePreview(previewTemplate)}
                                         disabled={isGitTemplate || !canEditTemplates || !previewTemplate.blueprint_json}
-                                        title={!previewTemplate.blueprint_json ? 'Generate blueprint first' : ''}
+                                        title={!previewTemplate.blueprint_json ? 'Generate blueprint first' : 'Runs in background'}
                                         style={{
                                             padding: '8px 16px',
                                             background: '#2563eb',
@@ -2416,6 +2451,15 @@ export default function ConfigurationPage() {
                                     >
                                         {previewTemplate.preview_status === 'ready' ? 'Regenerate Preview' : 'Generate Preview'}
                                     </button>
+                                    <button
+                                        onClick={() => handleGeneratePreviewSync(previewTemplate)}
+                                        disabled={isGitTemplate || !canEditTemplates || !previewTemplate.blueprint_json}
+                                        title="Wait for result (recommended if preview gets stuck)"
+                                        style={{ padding: '8px 16px', background: 'white', color: '#0369a1', border: '1px solid #0ea5e9', borderRadius: '6px', cursor: (isGitTemplate || !canEditTemplates || !previewTemplate.blueprint_json) ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        Generate Preview (sync)
+                                    </button>
+                                    </>
                                 )}
                                 {(getPreviewIframeUrl(previewTemplate) || getTemplatePreviewUrl(previewTemplate)) && (
                                     <a

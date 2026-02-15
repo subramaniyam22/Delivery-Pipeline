@@ -426,7 +426,7 @@ export const configurationAPI = {
     }>(`/api/templates/${id}/references`),
     updateTemplate: (id: string, data: any) => api.put(`/api/templates/${id}`, data),
     deleteTemplate: (id: string) => api.delete(`/api/templates/${id}`),
-    generateTemplatePreview: (id: string, body?: { force?: boolean }) =>
+    generateTemplatePreview: (id: string, body?: { force?: boolean; sync?: boolean }) =>
         api.post(`/api/templates/${id}/generate-preview`, body || {}),
     resetTemplatePreview: (id: string) =>
         api.post(`/api/templates/${id}/preview/reset`),

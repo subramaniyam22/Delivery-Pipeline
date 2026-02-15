@@ -11,6 +11,7 @@ import os
 import html
 import copy
 import uuid
+import threading
 
 from app.db import get_db
 from app.db import SessionLocal
@@ -472,13 +473,27 @@ def delete_template(
                 "project_titles": project_titles,
             }
             raise HTTPException(status_code=409, detail=detail)
-    # Clear project references (selected_template_id is a string column, not FK) so delete is not blocked
+    # Clear project references (selected_template_id is a string column, not FK)
     try:
         db.query(Project).filter(Project.selected_template_id == str(template_id)).update(
             {Project.selected_template_id: None}, synchronize_session="fetch"
         )
     except Exception as clear_err:
         logging.getLogger(__name__).warning("Template delete: clear project refs: %s", clear_err)
+    # Explicitly remove or null all child rows that reference this template (avoids CASCADE issues)
+    try:
+        db.query(TemplateEvolutionProposal).filter(TemplateEvolutionProposal.template_id == tid).delete(synchronize_session="fetch")
+        db.query(TemplateBlueprintRun).filter(TemplateBlueprintRun.template_id == tid).delete(synchronize_session="fetch")
+        db.query(TemplateBlueprintJob).filter(TemplateBlueprintJob.template_id == tid).delete(synchronize_session="fetch")
+        db.query(TemplateValidationJob).filter(TemplateValidationJob.template_id == tid).delete(synchronize_session="fetch")
+        db.query(DeliveryOutcome).filter(DeliveryOutcome.template_registry_id == tid).update(
+            {DeliveryOutcome.template_registry_id: None}, synchronize_session="fetch"
+        )
+        db.query(ClientSentiment).filter(ClientSentiment.template_registry_id == tid).update(
+            {ClientSentiment.template_registry_id: None}, synchronize_session="fetch"
+        )
+    except Exception as child_err:
+        logging.getLogger(__name__).warning("Template delete: clear child rows: %s", child_err)
     try:
         db.delete(template)
         db.add(
@@ -582,6 +597,7 @@ def generate_template_preview(
         raise HTTPException(status_code=400, detail="Generate blueprint first")
     data = body or {}
     force = data.get("force", False)
+    sync_mode = data.get("sync", False)
     if not force and (template.preview_status or "") == "ready" and getattr(template, "blueprint_hash", None):
         existing_hash = getattr(template, "blueprint_hash", None)
         if existing_hash:
@@ -589,6 +605,39 @@ def generate_template_preview(
     template.preview_status = "generating"
     template.preview_error = None
     db.commit()
+
+    if sync_mode:
+        # Run pipeline in request with timeout so we get a clear result or failure (avoids stuck "generating" on free tier)
+        PREVIEW_SYNC_TIMEOUT = 25
+        result_holder: dict = {}
+
+        def _run_sync() -> None:
+            from app.jobs.template_preview import run_template_preview_pipeline
+            from uuid import UUID
+            result_holder["out"] = run_template_preview_pipeline(UUID(template_id))
+
+        thread = threading.Thread(target=_run_sync, daemon=True)
+        thread.start()
+        thread.join(timeout=PREVIEW_SYNC_TIMEOUT)
+        if thread.is_alive():
+            # Timeout: mark failed so UI is not stuck
+            t = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+            if t:
+                t.preview_status = "failed"
+                t.preview_error = "Preview generation timed out. Use Reset preview then try again."
+                db.commit()
+            return {
+                "preview_status": "failed",
+                "error": "Preview generation timed out. Use Reset preview then try again.",
+            }
+        out = result_holder.get("out") or {}
+        status = out.get("status", "failed")
+        t = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+        return {
+            "preview_status": (t.preview_status or "failed") if t else "failed",
+            "error": out.get("error"),
+        }
+
     background_tasks.add_task(_run_template_preview_pipeline, template_id)
     return {"preview_status": "generating"}
 
