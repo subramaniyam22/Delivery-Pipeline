@@ -1,11 +1,44 @@
 """
 Render static HTML preview from blueprint_json + demo_dataset.
 Uses Jinja2 snippets per section type; tokens for colors/typography; demo data in content_slots.
+WCAG 2 AA: contrast and landmarks (one main, unique section labels) applied in tokens and structure.
 """
 from typing import Any, Dict, List, Optional
 
 import html as html_module
 from jinja2 import Environment, BaseLoader
+
+
+def _hex_to_rgb(hex_color: str) -> tuple:
+    """Parse #rrggbb to (r,g,b) 0-255."""
+    h = (hex_color or "").strip().lstrip("#")
+    if len(h) == 6:
+        return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    if len(h) == 3:
+        return int(h[0] * 2, 16), int(h[1] * 2, 16), int(h[2] * 2, 16)
+    return 0, 0, 0
+
+
+def _relative_luminance(r: int, g: int, b: int) -> float:
+    """Relative luminance 0-1 (WCAG)."""
+    def f(x: int) -> float:
+        x = x / 255.0
+        return (x / 12.92) if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+
+
+def _contrast_text_on(hex_bg: str) -> str:
+    """Return a foreground hex that meets WCAG AA contrast on hex_bg (e.g. #ffffff or #1a1a2e)."""
+    r, g, b = _hex_to_rgb(hex_bg)
+    lum = _relative_luminance(r, g, b)
+    return "#ffffff" if lum < 0.4 else "#1a1a2e"
+
+
+def _contrast_button_on_white(hex_primary: str) -> str:
+    """Return a button text color on white background that meets WCAG AA (use primary if dark enough, else dark blue)."""
+    r, g, b = _hex_to_rgb(hex_primary)
+    lum = _relative_luminance(r, g, b)
+    return hex_primary if lum < 0.4 else "#1e3a5f"
 
 # Section type -> (html snippet template, optional variant handling)
 SECTION_SNIPPETS = {
@@ -14,7 +47,7 @@ SECTION_SNIPPETS = {
   <div class="container" style="max-width: 900px; margin: 0 auto;">
     <h1 style="font-family: {{ font_family }}; font-size: {{ h1_size }}px; margin: 0 0 12px;">{{ hero_title }}</h1>
     <p style="font-size: {{ body_size }}px; opacity: 0.95; margin: 0;">{{ hero_subtitle }}</p>
-    {% if cta_text %}<a href="{{ cta_href }}" class="cta" style="display: inline-block; margin-top: 20px; padding: 12px 24px; background: {{ accent }}; color: white; border-radius: {{ card_radius }}px; text-decoration: none;">{{ cta_text }}</a>{% endif %}
+    {% if cta_text %}<a href="{{ cta_href }}" class="cta" style="display: inline-block; margin-top: 20px; padding: 12px 24px; background: {{ accent }}; color: {{ text_on_accent }}; border-radius: {{ card_radius }}px; text-decoration: none;">{{ cta_text }}</a>{% endif %}
   </div>
 </section>""",
     "trust_bar": """
@@ -84,11 +117,11 @@ SECTION_SNIPPETS = {
   </div>
 </section>""",
     "cta_banner": """
-<section class="section-cta" {{ aria_attr }} style="padding: {{ section_padding }}px 24px; background: {{ primary }}; color: white; text-align: center;">
+<section class="section-cta" {{ aria_attr }} style="padding: {{ section_padding }}px 24px; background: {{ primary }}; color: {{ text_on_primary }}; text-align: center;">
   <div class="container" style="max-width: 700px; margin: 0 auto;">
     <h2 style="font-family: {{ font_family }}; font-size: {{ h2_size }}px; margin: 0 0 12px;">{{ cta_heading }}</h2>
     <p style="margin: 0 0 20px;">{{ cta_subtext }}</p>
-    <a href="{{ cta_link }}" style="display: inline-block; padding: 12px 24px; background: white; color: {{ primary }}; border-radius: {{ card_radius }}px; text-decoration: none;">{{ cta_button }}</a>
+    <a href="{{ cta_link }}" style="display: inline-block; padding: 12px 24px; background: white; color: {{ button_text_on_white }}; border-radius: {{ card_radius }}px; text-decoration: none;">{{ cta_button }}</a>
   </div>
 </section>""",
     "contact_form": """
@@ -99,7 +132,7 @@ SECTION_SNIPPETS = {
       <input type="text" placeholder="Name" disabled style="padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px;" />
       <input type="email" placeholder="Email" disabled style="padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px;" />
       <textarea placeholder="Message" rows="4" disabled style="padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px;"></textarea>
-      <button type="button" disabled style="padding: 12px; background: {{ primary }}; color: white; border: none; border-radius: 8px;">Send (preview)</button>
+      <button type="button" disabled style="padding: 12px; background: {{ primary }}; color: {{ text_on_primary }}; border: none; border-radius: 8px;">Send (preview)</button>
     </form>
   </div>
 </section>""",
@@ -120,13 +153,18 @@ def _get_tokens(blueprint: Dict[str, Any]) -> Dict[str, Any]:
     typography = tokens.get("typography") or {}
     scale = typography.get("scale") or {}
     spacing = tokens.get("spacing") or {}
+    primary = colors.get("primary") or "#2563eb"
+    accent = colors.get("accent") or "#3b82f6"
     return {
-        "primary": (colors.get("primary") or "#2563eb"),
+        "primary": primary,
         "secondary": (colors.get("secondary") or "#1e40af"),
         "background": (colors.get("background") or "#ffffff"),
         "text": (colors.get("text") or "#0f172a"),
-        "accent": (colors.get("accent") or "#3b82f6"),
-        "text_light": "#ffffff",
+        "accent": accent,
+        "text_light": _contrast_text_on(primary),
+        "text_on_primary": _contrast_text_on(primary),
+        "text_on_accent": _contrast_text_on(accent),
+        "button_text_on_white": _contrast_button_on_white(primary),
         "font_family": (typography.get("fontFamily") or "Inter, sans-serif"),
         "h1_size": scale.get("h1") or 32,
         "h2_size": scale.get("h2") or 24,
@@ -196,18 +234,37 @@ def _get_demo_slots(
     return out
 
 
+_SECTION_TYPE_LABELS: Dict[str, str] = {
+    "hero": "Hero",
+    "trust_bar": "Trust bar",
+    "amenities_grid": "Amenities",
+    "gallery_grid": "Gallery",
+    "floorplan_cards": "Floor plans",
+    "location_map": "Location",
+    "testimonials": "Testimonials",
+    "faq": "FAQ",
+    "feature_split": "Feature",
+    "cta_banner": "Call to action",
+    "contact_form": "Contact",
+}
+
+
 def _render_section(
     sec: Dict[str, Any],
     tokens: Dict[str, Any],
     demo: Dict[str, Any],
     env: Environment,
     template_images: Optional[Dict[str, List[str]]] = None,
+    section_index: int = 0,
 ) -> str:
     stype = (sec.get("type") or "hero").strip()
     content_slots = sec.get("content_slots") or {}
     image_prompt_category = (sec.get("image_prompt_category") or "").strip() or None
     a11y = sec.get("a11y") or {}
     aria_label = a11y.get("ariaLabel") if isinstance(a11y, dict) else None
+    if not aria_label:
+        type_label = _SECTION_TYPE_LABELS.get(stype) or stype.replace("_", " ").title()
+        aria_label = f"{type_label} {section_index + 1}"
     aria_attr = f'aria-label="{html_module.escape(aria_label)}"' if aria_label else ""
     slots = _get_demo_slots(stype, content_slots, demo, template_images, image_prompt_category)
     ctx = {**tokens, **slots, "aria_attr": aria_attr}
@@ -225,6 +282,7 @@ def _nav_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
     nav = blueprint.get("navigation") or {}
     items = nav.get("items") or []
     primary = tokens.get("primary", "#2563eb")
+    text_on_primary = tokens.get("text_on_primary", "#ffffff")
     font_family = tokens.get("font_family", "Inter, sans-serif")
 
     def _href_for_slug(slug: str) -> str:
@@ -234,10 +292,10 @@ def _nav_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
         return f"{s}.html"
 
     links = "".join(
-        f'<a href="{_href_for_slug(item.get("href") or "")}" style="color: white; text-decoration: none; padding: 8px 16px;">{html_module.escape(item.get("label") or "")}</a>'
+        f'<a href="{_href_for_slug(item.get("href") or "")}" style="color: {text_on_primary}; text-decoration: none; padding: 8px 16px;">{html_module.escape(item.get("label") or "")}</a>'
         for item in items if isinstance(item, dict)
     )
-    return f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main"><a href="index.html" style="color: white; text-decoration: none; font-weight: 600;">{html_module.escape((blueprint.get("meta") or {}).get("name") or "Home")}</a>{links}</nav>'
+    return f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main navigation"><a href="index.html" style="color: {text_on_primary}; text-decoration: none; font-weight: 600;">{html_module.escape((blueprint.get("meta") or {}).get("name") or "Home")}</a>{links}</nav>'
 
 
 def _footer_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
@@ -272,9 +330,9 @@ def _render_one_page_html(
     env = Environment(loader=BaseLoader(), autoescape=True)
     template_images = template_images or {}
     sections_html = []
-    for sec in (page.get("sections") or []):
+    for i, sec in enumerate(page.get("sections") or []):
         if isinstance(sec, dict):
-            sections_html.append(_render_section(sec, tokens, demo_dataset, env, template_images))
+            sections_html.append(_render_section(sec, tokens, demo_dataset, env, template_images, section_index=i))
     nav = _nav_html(blueprint_json, tokens)
     footer = _footer_html(blueprint_json, tokens)
     meta_name = (blueprint_json.get("meta") or {}).get("name") or "Preview"
@@ -295,7 +353,9 @@ def _render_one_page_html(
 </head>
 <body>
 {nav}
+<main id="main-content" role="main" aria-label="Main content">
 {"".join(sections_html)}
+</main>
 {footer}
 </body>
 </html>"""
