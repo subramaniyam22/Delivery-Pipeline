@@ -44,6 +44,9 @@ services:
       # Set BACKEND_URL in Dashboard to this service's URL (e.g. https://delivery-backend.onrender.com) for preview links
       - key: BACKEND_URL
         value: https://delivery-backend.onrender.com
+      # Validation: Playwright/Lighthouse use this path (must match backend Dockerfile)
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /app/.cache/ms-playwright
 
   # Frontend Service
   - type: web

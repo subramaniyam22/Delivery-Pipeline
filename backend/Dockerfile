@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Lighthouse and Playwright browsers to a fixed path (so runtime finds them when HOME=/opt/render on Render)
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
+ENV PATH="/usr/local/bin:$PATH"
 RUN npm install -g lighthouse \
     && mkdir -p /app/.cache/ms-playwright \
     && python -m playwright install --with-deps chromium

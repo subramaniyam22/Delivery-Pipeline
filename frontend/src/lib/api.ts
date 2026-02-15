@@ -21,6 +21,7 @@ const getApiUrl = () => {
 };
 
 const API_BASE_URL = getApiUrl();
+export { getApiUrl, API_BASE_URL };
 
 // Create axios instance with cookie support
 const api = axios.create({
@@ -441,11 +442,21 @@ export const configurationAPI = {
     validateTemplate: (id: string, body?: { force?: boolean }) =>
         api.post(`/api/templates/${id}/validate`, body || {}),
     getTemplateValidationJob: (id: string) => api.get(`/api/templates/${id}/validation-job`),
+    getFixBlueprintSuggestions: (id: string) => api.get<{ plain_language_summary: string; technical_details?: string | null; code_snippets?: Array<{ title: string; code: string }>; interim_actions?: string[] }>(`/api/templates/${id}/fix-blueprint-suggestions`),
     validateTemplateCopy: (id: string) => api.post(`/api/templates/${id}/validate-copy`),
     validateTemplateSeo: (id: string) => api.post(`/api/templates/${id}/validate-seo`),
     uploadTemplateImage: (id: string, formData: FormData) =>
         api.post(`/api/templates/${id}/images`, formData, {
-            // Force browser to set multipart/form-data with boundary (default application/json causes 422)
+            transformRequest: [(data, headers) => {
+                if (data instanceof FormData) {
+                    delete headers['Content-Type'];
+                }
+                return data;
+            }],
+        }),
+    /** Upload multiple images for one category in one request (atomic). */
+    uploadTemplateImagesBatch: (id: string, formData: FormData) =>
+        api.post(`/api/templates/${id}/images/batch`, formData, {
             transformRequest: [(data, headers) => {
                 if (data instanceof FormData) {
                     delete headers['Content-Type'];

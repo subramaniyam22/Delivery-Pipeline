@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { configurationAPI, configAPI } from '@/lib/api';
+import { configurationAPI, configAPI, API_BASE_URL } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
 import RequireCapability from '@/components/RequireCapability';
@@ -10,7 +10,7 @@ import { Dialog } from '@/components/ui/dialog';
 import PageHeader from '@/components/PageHeader';
 
 type ConfigTab = 'template_registry' | 'sla' | 'thresholds' | 'preview_strategy' | 'hitl_gates' | 'learning';
-type TemplateDetailSubTab = 'overview' | 'structure' | 'preview' | 'validation' | 'versions' | 'blueprint' | 'performance' | 'evolution';
+type TemplateDetailSubTab = 'overview' | 'preview' | 'validation' | 'versions' | 'blueprint' | 'performance' | 'evolution';
 
 interface TemplateRegistry {
     id: string;
@@ -248,10 +248,16 @@ export default function ConfigurationPage() {
     const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
     const [templateDetailSubTab, setTemplateDetailSubTab] = useState<TemplateDetailSubTab>('overview');
     const [selectedStructurePageIndex, setSelectedStructurePageIndex] = useState<number | null>(0);
+    const [validationToast, setValidationToast] = useState<string | null>(null);
     const [copyValidationLoading, setCopyValidationLoading] = useState(false);
     const [seoValidationLoading, setSeoValidationLoading] = useState(false);
     const [imageUploadSectionKey, setImageUploadSectionKey] = useState('exterior');
     const [imageUploading, setImageUploading] = useState(false);
+    const [fixBlueprintModalOpen, setFixBlueprintModalOpen] = useState(false);
+    const [fixBlueprintLoading, setFixBlueprintLoading] = useState(false);
+    const [fixBlueprintSuggestions, setFixBlueprintSuggestions] = useState<{ plain_language_summary: string; technical_details?: string | null; code_snippets?: Array<{ title: string; code: string }>; interim_actions?: string[] } | null>(null);
+    const [fixBlueprintShowTechnical, setFixBlueprintShowTechnical] = useState(false);
+    const [previewViewport, setPreviewViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
 
     useEffect(() => {
         configurationAPI.getSystemHealth().then((r: any) => {
@@ -275,11 +281,11 @@ export default function ConfigurationPage() {
     const [templateListFilters, setTemplateListFilters] = useState<{ q?: string; status?: string; category?: string; style?: string; tag?: string }>({});
     const [wizardStep, setWizardStep] = useState(1);
     const [wizardForm, setWizardForm] = useState<{
-        source: 'ai' | 'git'; name: string; category: string; style: string; feature_tags: string; intent: string;
+        source: 'ai' | 'git'; name: string; description: string; category: string; style: string; feature_tags: string; intent: string;
         repo_url: string; repo_branch: string; repo_path: string; preset: string;
         industry: string; image_prompts: Record<string, string>; validate_responsiveness: boolean;
     }>({
-        source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '',
+        source: 'ai', name: '', description: '', category: '', style: '', feature_tags: '', intent: '',
         repo_url: '', repo_branch: 'main', repo_path: '', preset: '',
         industry: 'real_estate',
         image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' },
@@ -831,6 +837,12 @@ export default function ConfigurationPage() {
         return cleanedRepo;
     };
 
+    /** Use proxy URL for embedded preview and open-in-tab so in-preview navigation works (avoids 403 on S3 presigned). */
+    const getPreviewIframeUrl = (template: TemplateRegistry) => {
+        if ((template.preview_status || '') !== 'ready' || !template.id) return template.preview_url || '';
+        return `${API_BASE_URL}/api/templates/${template.id}/preview/`;
+    };
+
     const getPreviewStatusLabel = (template: TemplateRegistry) => {
         const derivedSource = template.source_type || (template.repo_url ? 'git' : 'ai');
         if (derivedSource === 'git' && !template.preview_url && template.repo_url) {
@@ -860,6 +872,39 @@ export default function ConfigurationPage() {
             setPreviewTemplate(updated);
         }
     };
+
+    function OverviewDescriptionEditor({ template, onSaved }: { template: TemplateRegistry; onSaved: (t: TemplateRegistry) => void }) {
+        const [draft, setDraft] = useState(template.description || '');
+        const [saving, setSaving] = useState(false);
+        useEffect(() => {
+            setDraft(template.description || '');
+        }, [template.id, template.description]);
+        const handleSave = async () => {
+            setSaving(true);
+            try {
+                const res = await configurationAPI.updateTemplate(template.id, { description: (draft || '').trim() || null });
+                onSaved(res.data as TemplateRegistry);
+            } catch {
+                // error surfaced by parent
+            } finally {
+                setSaving(false);
+            }
+        };
+        return (
+            <div>
+                <textarea
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    placeholder="Short description for list and overview"
+                    rows={2}
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', resize: 'vertical' }}
+                />
+                <button type="button" onClick={handleSave} disabled={saving} style={{ marginTop: '6px', padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: saving ? 'not-allowed' : 'pointer' }}>
+                    {saving ? 'Saving…' : 'Save description'}
+                </button>
+            </div>
+        );
+    }
 
     const selectedTemplate = selectedTemplateId ? templates.find(t => t.id === selectedTemplateId) ?? null : null;
     const canPublishTemplate = (t: TemplateRegistry) =>
@@ -899,7 +944,7 @@ export default function ConfigurationPage() {
             const updated = await configurationAPI.getTemplate(t.id);
             updateTemplateInState(updated.data as TemplateRegistry);
             const passed = (res.data as { passed?: boolean }).passed;
-            setSuccess(passed ? 'Validation passed' : 'Validation completed (see results)');
+            setValidationToast(passed ? 'Validation passed' : 'Validation completed (see results)');
             setTemplateDetailSubTab('validation');
         } catch (err: any) {
             setError(formatApiErrorDetail(err.response?.data?.detail) || 'Validation failed');
@@ -1083,7 +1128,8 @@ export default function ConfigurationPage() {
                     done = true;
                     const updated = await configurationAPI.getTemplate(templateId);
                     updateTemplateInState(updated.data as TemplateRegistry);
-                    setSuccess(d.status === 'success' ? 'Validation finished' : 'Validation failed');
+                    setValidationToast(d.status === 'success' ? 'Validation finished' : 'Validation failed');
+                    setTemplateDetailSubTab('validation');
                 }
             } catch {
                 done = true;
@@ -1164,12 +1210,10 @@ export default function ConfigurationPage() {
         setImageUploading(true);
         setError('');
         try {
-            for (const file of valid) {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('section_key', sectionKey);
-                await configurationAPI.uploadTemplateImage(template.id, formData);
-            }
+            const formData = new FormData();
+            valid.forEach(f => formData.append('files', f));
+            formData.append('section_key', sectionKey);
+            await configurationAPI.uploadTemplateImagesBatch(template.id, formData);
             const res = await configurationAPI.getTemplate(template.id);
             updateTemplateInState(res.data as TemplateRegistry);
             setSuccess(valid.length > 1 ? `${valid.length} images uploaded` : 'Image uploaded');
@@ -1177,6 +1221,37 @@ export default function ConfigurationPage() {
             setError(formatApiErrorDetail(err.response?.data?.detail) || 'Image upload failed');
         } finally {
             setImageUploading(false);
+        }
+    };
+
+    const handleReorderTemplateImages = async (template: TemplateRegistry, fromCategory: string, fromIndex: number, toCategory: string, toIndex: number) => {
+        if (!canEditTemplates) return;
+        const meta = (template.meta_json as Record<string, unknown>) || {};
+        const images: Record<string, string[]> = {};
+        Object.entries(meta.images as Record<string, unknown> || {}).forEach(([k, v]) => {
+            images[k] = Array.isArray(v) ? [...(v as string[])] : v ? [String(v)] : [];
+        });
+        const fromList = images[fromCategory];
+        if (!fromList || fromIndex < 0 || fromIndex >= fromList.length) return;
+        const [movedUrl] = fromList.splice(fromIndex, 1);
+        if (fromCategory === toCategory) {
+            if (toIndex < 0 || toIndex > fromList.length) return;
+            fromList.splice(toIndex, 0, movedUrl);
+            images[fromCategory] = fromList;
+        } else {
+            if (!images[toCategory]) images[toCategory] = [];
+            const toList = images[toCategory];
+            const insertAt = Math.max(0, Math.min(toIndex, toList.length));
+            toList.splice(insertAt, 0, movedUrl);
+            images[fromCategory] = fromList.length ? fromList : [];
+            images[toCategory] = toList;
+        }
+        try {
+            const res = await configurationAPI.updateTemplate(template.id, { meta_json: { ...meta, images } });
+            updateTemplateInState(res.data as TemplateRegistry);
+            setSuccess(fromCategory === toCategory ? 'Image order updated' : 'Image moved to category');
+        } catch (err: any) {
+            setError(formatApiErrorDetail(err.response?.data?.detail) || 'Failed to update');
         }
     };
 
@@ -1389,7 +1464,18 @@ export default function ConfigurationPage() {
                             {renderStatusChip('templates_default')}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <label style={{ fontSize: '13px', color: '#64748b' }}>Default</label>
+                            <label style={{ fontSize: '13px', color: '#64748b' }}>Preset Category</label>
+                            <select
+                                value={templateListFilters.category || ''}
+                                onChange={(e) => setTemplateListFilters(f => ({ ...f, category: e.target.value || undefined }))}
+                                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
+                            >
+                                <option value="">All</option>
+                                <option value="Residential Modern">Residential Modern</option>
+                                <option value="Corporate Trust">Corporate Trust</option>
+                                <option value="Luxury Lifestyle">Luxury Lifestyle</option>
+                            </select>
+                            <label style={{ fontSize: '13px', color: '#64748b', marginLeft: '8px' }}>Default</label>
                             <select
                                 value={defaultTemplateId}
                                 onChange={(e) => { const id = e.target.value; setDefaultTemplateId(id); saveDefaultTemplate(id); }}
@@ -1484,28 +1570,28 @@ export default function ConfigurationPage() {
                             ) : (
                                 <>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-                                        {(['overview', 'structure', 'blueprint', 'preview', 'validation', 'versions', 'performance', 'evolution'] as TemplateDetailSubTab[]).map((sub) => (
+                                        {(['overview', 'blueprint', 'preview', 'validation', 'versions', 'performance', 'evolution'] as TemplateDetailSubTab[]).map((sub) => (
                                             <button key={sub} type="button" onClick={() => setTemplateDetailSubTab(sub)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', background: templateDetailSubTab === sub ? '#2563eb' : 'white', color: templateDetailSubTab === sub ? 'white' : '#475569', fontSize: '12px', cursor: 'pointer' }}>{sub === 'blueprint' ? 'Blueprint' : sub === 'performance' ? 'Performance' : sub === 'evolution' ? 'Evolution' : sub.charAt(0).toUpperCase() + sub.slice(1)}</button>
                                         ))}
                                     </div>
                                     <div style={{ marginBottom: '12px' }}>
                                         <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', fontWeight: 600 }}>Workflow</div>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                                            <button type="button" onClick={() => { setTemplateDetailSubTab('preview'); handleGeneratePreview(selectedTemplate); }} disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling} title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : 'Build preview and switch to Preview tab'} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 3l14 9-14 9V3z"/></svg>
-                                            Generate Preview
-                                            </button>
                                             <button type="button" onClick={() => handleValidateTemplate(selectedTemplate)} disabled={!canEditTemplates} title="Run validation" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', color: '#475569', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
                                             Validate
                                             </button>
-                                            <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires ready preview and passed validation' : 'Publish template'} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                                            Publish
+                                            <button type="button" onClick={() => { setTemplateDetailSubTab('preview'); handleGeneratePreview(selectedTemplate); }} disabled={!canEditTemplates || selectedTemplate.source_type === 'git' || !selectedTemplate.blueprint_json || selectedTemplate.preview_status === 'generating' || previewPolling} title={!selectedTemplate.blueprint_json ? 'Generate blueprint first' : 'Build preview and switch to Preview tab'} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && selectedTemplate.source_type !== 'git' && selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 3l14 9-14 9V3z"/></svg>
+                                            Generate Preview
                                             </button>
                                             <button type="button" onClick={() => handleOpenPreview(selectedTemplate)} title="Open preview in new window" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', color: '#475569', cursor: 'pointer' }}>
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M21 3l-7 7-4-4"/></svg>
                                             Open Preview
+                                            </button>
+                                            <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires ready preview and passed validation' : 'Publish template'} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                                            Publish
                                             </button>
                                             {!canPublishTemplate(selectedTemplate) && canEditTemplates && (
                                                 <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '4px' }}>{selectedTemplate.preview_status !== 'ready' ? 'Generate preview first' : (selectedTemplate.validation_status || 'not_run') !== 'passed' ? 'Run validation first' : ''}</span>
@@ -1538,7 +1624,14 @@ export default function ConfigurationPage() {
                                     {templateDetailSubTab === 'overview' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
                                             <h4 style={{ margin: '0 0 8px' }}>{selectedTemplate.name}</h4>
-                                            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>{selectedTemplate.description || 'No description'}</p>
+                                            {canEditTemplates ? (
+                                                <div style={{ marginBottom: '8px' }}>
+                                                    <label style={{ fontSize: '12px', color: '#64748b', display: 'block', marginBottom: '4px' }}>Description</label>
+                                                    <OverviewDescriptionEditor key={selectedTemplate.id} template={selectedTemplate} onSaved={updateTemplateInState} />
+                                                </div>
+                                            ) : (
+                                                <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>{selectedTemplate.description || 'No description'}</p>
+                                            )}
                                             <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#94a3b8' }}>Status: {selectedTemplate.status || 'draft'} · Preview: {getPreviewStatusLabel(selectedTemplate)} · Validation: {(selectedTemplate.validation_status || 'not_run').replace('_', ' ')}{selectedTemplate.validation_last_run_at ? ` (${new Date(selectedTemplate.validation_last_run_at).toLocaleString()})` : ''}</p>
                                             <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                                 {!selectedTemplate.blueprint_json ? (
@@ -1549,126 +1642,6 @@ export default function ConfigurationPage() {
                                                     <span style={{ background: '#10b981', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>Validated</span>
                                                 ) : null}
                                             </div>
-                                        </div>
-                                    )}
-                                    {templateDetailSubTab === 'structure' && (
-                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
-                                            {(() => {
-                                                const bp = selectedTemplate.blueprint_json as Record<string, unknown> | undefined;
-                                                const pages = (bp?.pages as Array<{ slug?: string; title?: string; seo?: { meta_title?: string; meta_description?: string; h1?: string }; sections?: unknown[] }>) ?? selectedTemplate.pages_json ?? [];
-                                                const pageList = Array.isArray(pages) ? pages : [];
-                                                const selectedPage = selectedStructurePageIndex != null && pageList[selectedStructurePageIndex] ? pageList[selectedStructurePageIndex] : pageList[0] ?? null;
-                                                return (
-                                                    <>
-                                                        <h5 style={{ margin: '0 0 12px' }}>Pages (click to view)</h5>
-                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-                                                            {pageList.map((p, idx) => (
-                                                                <button
-                                                                    key={idx}
-                                                                    type="button"
-                                                                    onClick={() => setSelectedStructurePageIndex(idx)}
-                                                                    style={{
-                                                                        padding: '8px 14px',
-                                                                        borderRadius: '8px',
-                                                                        border: '1px solid',
-                                                                        borderColor: selectedStructurePageIndex === idx ? '#2563eb' : '#e2e8f0',
-                                                                        background: selectedStructurePageIndex === idx ? '#eff6ff' : 'white',
-                                                                        color: selectedStructurePageIndex === idx ? '#1d4ed8' : '#475569',
-                                                                        fontWeight: 500,
-                                                                        cursor: 'pointer',
-                                                                        fontSize: '13px',
-                                                                    }}
-                                                                >
-                                                                    {(p as { title?: string }).title || (p as { slug?: string }).slug || `Page ${idx + 1}`}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                        {selectedPage && (
-                                                            <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', marginBottom: '16px', background: 'white' }}>
-                                                                <h6 style={{ margin: '0 0 12px', fontSize: '14px' }}>SEO (page content)</h6>
-                                                                <dl style={{ margin: 0, display: 'grid', gap: '8px', fontSize: '12px' }}>
-                                                                    <div><dt style={{ color: '#64748b', marginBottom: '2px' }}>Meta title</dt><dd style={{ margin: 0 }}>{(selectedPage as { seo?: { meta_title?: string } }).seo?.meta_title || '—'}</dd></div>
-                                                                    <div><dt style={{ color: '#64748b', marginBottom: '2px' }}>Meta description</dt><dd style={{ margin: 0 }}>{(selectedPage as { seo?: { meta_description?: string } }).seo?.meta_description || '—'}</dd></div>
-                                                                    <div><dt style={{ color: '#64748b', marginBottom: '2px' }}>H1</dt><dd style={{ margin: 0 }}>{(selectedPage as { seo?: { h1?: string } }).seo?.h1 || '—'}</dd></div>
-                                                                </dl>
-                                                                <h6 style={{ margin: '12px 0 8px', fontSize: '14px' }}>Sections</h6>
-                                                                <ul style={{ margin: 0, paddingLeft: '20px' }}>{((selectedPage as { sections?: unknown[] }).sections || []).map((s: any, i: number) => <li key={i}>{s?.type ?? s ?? `Section ${i + 1}`}</li>)}</ul>
-                                                            </div>
-                                                        )}
-                                                        <h5 style={{ margin: '0 0 8px' }}>Template images</h5>
-                                                        <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '12px' }}>Upload images per category. You can add many per category; the preview uses them by the blueprint&apos;s section <code style={{ fontSize: '11px', background: '#f1f5f9', padding: '1px 4px' }}>image_prompt_category</code>. Choose a category below, then choose files (multiple allowed). To change which section uses which category, edit the blueprint (Blueprint tab) and set <code style={{ fontSize: '11px', background: '#f1f5f9', padding: '1px 4px' }}>image_prompt_category</code> on each section.</p>
-                                                        {(() => {
-                                                            const bp = selectedTemplate.blueprint_json as { pages?: Array<{ slug?: string; title?: string; sections?: Array<{ type?: string; variant?: string; image_prompt_category?: string }> }> } | undefined;
-                                                            const sectionCategoryRows: Array<{ page: string; sectionType: string; variant?: string; category: string }> = [];
-                                                            if (bp?.pages) {
-                                                                for (const page of bp.pages) {
-                                                                    const pageLabel = (page.title || page.slug || '') || 'Page';
-                                                                    for (const sec of page.sections || []) {
-                                                                        const cat = (sec.image_prompt_category || '').trim();
-                                                                        if (cat) sectionCategoryRows.push({ page: pageLabel, sectionType: sec.type || 'section', variant: sec.variant, category: cat });
-                                                                    }
-                                                                }
-                                                            }
-                                                            return sectionCategoryRows.length > 0 ? (
-                                                                <div style={{ marginBottom: '12px', padding: '10px 12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '12px' }}>
-                                                                    <div style={{ fontWeight: 600, marginBottom: '6px', color: '#475569' }}>How sections use these images</div>
-                                                                    <p style={{ margin: '0 0 8px', color: '#64748b', fontSize: '11px' }}>Each section in the blueprint can specify an <code>image_prompt_category</code>. Images you upload for that category are used there (hero/gallery use first + list; feature_split uses first).</p>
-                                                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
-                                                                        <thead><tr style={{ borderBottom: '1px solid #e2e8f0' }}><th style={{ textAlign: 'left', padding: '4px 8px 4px 0' }}>Page</th><th style={{ textAlign: 'left', padding: '4px 8px' }}>Section</th><th style={{ textAlign: 'left', padding: '4px 8px' }}>Image category</th></tr></thead>
-                                                                        <tbody>
-                                                                            {sectionCategoryRows.map((row, i) => (
-                                                                                <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                                                                    <td style={{ padding: '4px 8px 4px 0' }}>{row.page}</td>
-                                                                                    <td style={{ padding: '4px 8px' }}>{row.sectionType}{row.variant ? ` (${row.variant})` : ''}</td>
-                                                                                    <td style={{ padding: '4px 8px' }}><strong>{row.category}</strong></td>
-                                                                                </tr>
-                                                                            ))}
-                                                                        </tbody>
-                                                                    </table>
-                                                                </div>
-                                                            ) : (
-                                                                <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#94a3b8' }}>Generate a blueprint first to see which sections use which image category. Then upload images for those categories above.</p>
-                                                            );
-                                                        })()}
-                                                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                                                            <select value={imageUploadSectionKey} onChange={e => setImageUploadSectionKey(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
-                                                                {['exterior', 'interior', 'lifestyle', 'people', 'neighborhood'].map(k => <option key={k} value={k}>{k.charAt(0).toUpperCase() + k.slice(1)}</option>)}
-                                                            </select>
-                                                            <input type="file" accept="image/*" multiple onChange={e => { const files = e.target.files; if (files?.length) handleUploadTemplateImages(selectedTemplate, Array.from(files), imageUploadSectionKey); e.target.value = ''; }} disabled={!canEditTemplates || imageUploading} style={{ fontSize: '12px' }} />
-                                                            {imageUploading && <span style={{ color: '#64748b', fontSize: '12px' }}>Uploading…</span>}
-                                                        </div>
-                                                        {(() => {
-                                                            const metaImages = (selectedTemplate.meta_json as Record<string, unknown>)?.images;
-                                                            if (!metaImages || typeof metaImages !== 'object') return null;
-                                                            const entries = Object.entries(metaImages as Record<string, unknown>).filter(([, v]) => v !== undefined && v !== null);
-                                                            if (entries.length === 0) return null;
-                                                            return (
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                                                    {entries.map(([key, urls]) => {
-                                                                        const list = Array.isArray(urls) ? urls as string[] : [urls as string];
-                                                                        const valid = list.filter((u): u is string => typeof u === 'string' && u.length > 0);
-                                                                        if (valid.length === 0) return null;
-                                                                        return (
-                                                                            <div key={key} style={{ marginBottom: '4px' }}>
-                                                                                <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>{key} ({valid.length} image{valid.length !== 1 ? 's' : ''})</div>
-                                                                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                                                                    {valid.slice(0, 20).map((url, i) => (
-                                                                                        <a key={i} href={url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
-                                                                                            <img src={url} alt="" style={{ width: '80px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                                                                                        </a>
-                                                                                    ))}
-                                                                                    {valid.length > 20 && <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>+{valid.length - 20} more</span>}
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                        {!pageList.length && <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '11px' }}>{JSON.stringify(selectedTemplate.pages_json || [], null, 2)}</pre>}
-                                                    </>
-                                                );
-                                            })()}
                                         </div>
                                     )}
                                     {templateDetailSubTab === 'blueprint' && (
@@ -1695,7 +1668,6 @@ export default function ConfigurationPage() {
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
                                                             <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 500, background: runStatus === 'ready' ? '#dcfce7' : runStatus === 'failed' ? '#fee2e2' : isInProgress ? '#fef3c7' : '#f1f5f9', color: runStatus === 'ready' ? '#166534' : runStatus === 'failed' ? '#991b1b' : isInProgress ? '#92400e' : '#475569' }}>{statusBadge}</span>
                                                             <button type="button" onClick={() => handleGenerateBlueprint(selectedTemplate, !!hasBlueprint)} disabled={!canEditTemplates || jobRunning} style={{ padding: '8px 16px', background: jobRunning ? '#94a3b8' : '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: canEditTemplates && !jobRunning ? 'pointer' : 'not-allowed' }}>{jobRunning ? 'Running…' : hasBlueprint ? 'Regenerate Blueprint' : 'Generate Blueprint'}</button>
-                                                            {selectedTemplate.blueprint_schema_version != null && <span style={{ color: '#64748b' }}>Schema v{selectedTemplate.blueprint_schema_version}</span>}
                                                             {selectedTemplate.blueprint_hash && <code style={{ fontSize: '11px', background: '#e2e8f0', padding: '2px 6px', borderRadius: '4px' }}>{String(selectedTemplate.blueprint_hash).slice(0, 12)}…</code>}
                                                             {status === 'pass' && <span style={{ background: '#10b981', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>Validated</span>}
                                                             {status === 'fail' && <span style={{ background: '#f59e0b', color: 'white', padding: '2px 8px', borderRadius: '4px', fontSize: '12px' }}>Below threshold</span>}
@@ -1717,14 +1689,117 @@ export default function ConfigurationPage() {
                                                         )}
                                                         {!hasBlueprint && !jobRunning && <p style={{ margin: 0, color: '#64748b' }}>No blueprint yet. Click Generate Blueprint to create one.</p>}
                                                         {hasBlueprint && bp && (
-                                                            <div style={{ marginBottom: '16px' }}>
-                                                                <h5 style={{ margin: '0 0 8px' }}>Summary</h5>
-                                                                <ul style={{ margin: 0, paddingLeft: '20px', color: '#475569' }}>
-                                                                    {bp.pages && Array.isArray(bp.pages) ? <li>Pages: {(bp.pages as unknown[]).length}</li> : null}
-                                                                    {bp.tokens && typeof bp.tokens === 'object' ? <li>Tokens: colors, typography, spacing</li> : null}
-                                                                    {bp.navigation && typeof bp.navigation === 'object' ? <li>Navigation: {(bp.navigation as Record<string, unknown>).items && Array.isArray((bp.navigation as Record<string, unknown>).items) ? ((bp.navigation as Record<string, unknown>).items as unknown[]).length : 0} items</li> : null}
-                                                                </ul>
-                                                            </div>
+                                                            <>
+                                                                <div style={{ marginBottom: '16px' }}>
+                                                                    <h5 style={{ margin: '0 0 8px' }}>Summary</h5>
+                                                                    <ul style={{ margin: 0, paddingLeft: '20px', color: '#475569' }}>
+                                                                        {bp.pages && Array.isArray(bp.pages) ? <li>Pages: {(bp.pages as unknown[]).length}</li> : null}
+                                                                        {bp.tokens && typeof bp.tokens === 'object' ? <li>Tokens: colors, typography, spacing</li> : null}
+                                                                        {bp.navigation && typeof bp.navigation === 'object' ? <li>Navigation: {(bp.navigation as Record<string, unknown>).items && Array.isArray((bp.navigation as Record<string, unknown>).items) ? ((bp.navigation as Record<string, unknown>).items as unknown[]).length : 0} items</li> : null}
+                                                                    </ul>
+                                                                </div>
+                                                                {(() => {
+                                                                    const pages = (bp?.pages as Array<{ slug?: string; title?: string; seo?: { meta_title?: string; meta_description?: string; h1?: string }; sections?: unknown[] }>) ?? selectedTemplate.pages_json ?? [];
+                                                                    const pageList = Array.isArray(pages) ? pages : [];
+                                                                    const selectedPage = selectedStructurePageIndex != null && pageList[selectedStructurePageIndex] ? pageList[selectedStructurePageIndex] : pageList[0] ?? null;
+                                                                    return (
+                                                                        <div style={{ marginBottom: '16px', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white' }}>
+                                                                            <h5 style={{ margin: '0 0 12px' }}>Pages (click to view)</h5>
+                                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                                                                                {pageList.map((p, idx) => (
+                                                                                    <button key={idx} type="button" onClick={() => setSelectedStructurePageIndex(idx)} style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid', borderColor: selectedStructurePageIndex === idx ? '#2563eb' : '#e2e8f0', background: selectedStructurePageIndex === idx ? '#eff6ff' : 'white', color: selectedStructurePageIndex === idx ? '#1d4ed8' : '#475569', fontWeight: 500, cursor: 'pointer', fontSize: '13px' }}>
+                                                                                        {(p as { title?: string }).title || (p as { slug?: string }).slug || `Page ${idx + 1}`}
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                            {selectedPage && (
+                                                                                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', marginBottom: '16px', background: '#f8fafc' }}>
+                                                                                    <h6 style={{ margin: '0 0 12px', fontSize: '14px' }}>SEO (page content)</h6>
+                                                                                    <dl style={{ margin: 0, display: 'grid', gap: '8px', fontSize: '12px' }}>
+                                                                                        <div><dt style={{ color: '#64748b', marginBottom: '2px' }}>Meta title</dt><dd style={{ margin: 0 }}>{(selectedPage as { seo?: { meta_title?: string } }).seo?.meta_title || '—'}</dd></div>
+                                                                                        <div><dt style={{ color: '#64748b', marginBottom: '2px' }}>Meta description</dt><dd style={{ margin: 0 }}>{(selectedPage as { seo?: { meta_description?: string } }).seo?.meta_description || '—'}</dd></div>
+                                                                                        <div><dt style={{ color: '#64748b', marginBottom: '2px' }}>H1</dt><dd style={{ margin: 0 }}>{(selectedPage as { seo?: { h1?: string } }).seo?.h1 || '—'}</dd></div>
+                                                                                    </dl>
+                                                                                    <h6 style={{ margin: '12px 0 8px', fontSize: '14px' }}>Sections</h6>
+                                                                                    <ul style={{ margin: 0, paddingLeft: '20px' }}>{((selectedPage as { sections?: unknown[] }).sections || []).map((s: any, i: number) => <li key={i}>{s?.type ?? s ?? `Section ${i + 1}`}</li>)}</ul>
+                                                                                </div>
+                                                                            )}
+                                                                            <h5 style={{ margin: '0 0 8px' }}>Template images</h5>
+                                                                            <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '12px' }}>Upload images per category. You can add many per category; the preview uses them by the blueprint&apos;s section <code style={{ fontSize: '11px', background: '#f1f5f9', padding: '1px 4px' }}>image_prompt_category</code>. Choose a category below, then choose files (multiple allowed).</p>
+                                                                            {(() => {
+                                                                                const bpPages = selectedTemplate.blueprint_json as { pages?: Array<{ slug?: string; title?: string; sections?: Array<{ type?: string; variant?: string; image_prompt_category?: string }> }> } | undefined;
+                                                                                const sectionCategoryRows: Array<{ page: string; sectionType: string; variant?: string; category: string }> = [];
+                                                                                if (bpPages?.pages) {
+                                                                                    for (const page of bpPages.pages) {
+                                                                                        const pageLabel = (page.title || page.slug || '') || 'Page';
+                                                                                        for (const sec of page.sections || []) {
+                                                                                            const cat = (sec.image_prompt_category || '').trim();
+                                                                                            if (cat) sectionCategoryRows.push({ page: pageLabel, sectionType: sec.type || 'section', variant: sec.variant, category: cat });
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                                return sectionCategoryRows.length > 0 ? (
+                                                                                    <div style={{ marginBottom: '12px', padding: '10px 12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '12px' }}>
+                                                                                        <div style={{ fontWeight: 600, marginBottom: '6px', color: '#475569' }}>How sections use these images</div>
+                                                                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
+                                                                                            <thead><tr style={{ borderBottom: '1px solid #e2e8f0' }}><th style={{ textAlign: 'left', padding: '4px 8px 4px 0' }}>Page</th><th style={{ textAlign: 'left', padding: '4px 8px' }}>Section</th><th style={{ textAlign: 'left', padding: '4px 8px' }}>Image category</th></tr></thead>
+                                                                                            <tbody>
+                                                                                                {sectionCategoryRows.map((row, i) => (
+                                                                                                    <tr key={i} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                                                                                        <td style={{ padding: '4px 8px 4px 0' }}>{row.page}</td>
+                                                                                                        <td style={{ padding: '4px 8px' }}>{row.sectionType}{row.variant ? ` (${row.variant})` : ''}</td>
+                                                                                                        <td style={{ padding: '4px 8px' }}><strong>{row.category}</strong></td>
+                                                                                                    </tr>
+                                                                                                ))}
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#94a3b8' }}>Blueprint sections can specify <code>image_prompt_category</code>. Upload images for those categories below.</p>
+                                                                                );
+                                                                            })()}
+                                                                            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                                                                                <select value={imageUploadSectionKey} onChange={e => setImageUploadSectionKey(e.target.value)} style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}>
+                                                                                    {['exterior', 'interior', 'lifestyle', 'people', 'neighborhood'].map(k => <option key={k} value={k}>{k.charAt(0).toUpperCase() + k.slice(1)}</option>)}
+                                                                                </select>
+                                                                                <input type="file" accept="image/*" multiple onChange={e => { const files = e.target.files; if (files?.length) handleUploadTemplateImages(selectedTemplate, Array.from(files), imageUploadSectionKey); e.target.value = ''; }} disabled={!canEditTemplates || imageUploading} style={{ fontSize: '12px' }} />
+                                                                                {imageUploading && <span style={{ color: '#64748b', fontSize: '12px' }}>Uploading…</span>}
+                                                                            </div>
+                                                                            {(() => {
+                                                                                const metaImages = (selectedTemplate.meta_json as Record<string, unknown>)?.images;
+                                                                                if (!metaImages || typeof metaImages !== 'object') return null;
+                                                                                const entries = Object.entries(metaImages as Record<string, unknown>).filter(([, v]) => v !== undefined && v !== null);
+                                                                                if (entries.length === 0) return null;
+                                                                                return (
+                                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                                                        {entries.map(([key, urls]) => {
+                                                                                            const list = Array.isArray(urls) ? urls as string[] : [urls as string];
+                                                                                            const valid = list.filter((u): u is string => typeof u === 'string' && u.length > 0);
+                                                                                            if (valid.length === 0) return null;
+                                                                                            return (
+                                                                                                <div key={key} style={{ marginBottom: '4px' }}>
+                                                                                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>{key} ({valid.length} image{valid.length !== 1 ? 's' : ''}){canEditTemplates ? ' — drag to reorder or drop on another category' : ''}</div>
+                                                                                                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                                                                                        {valid.slice(0, 20).map((url, i) => (
+                                                                                                            <div key={i} draggable={canEditTemplates} onDragStart={(e) => { e.dataTransfer.setData('application/json', JSON.stringify({ category: key, index: i })); e.dataTransfer.effectAllowed = 'move'; }} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }} onDrop={(e) => { e.preventDefault(); try { const d = JSON.parse(e.dataTransfer.getData('application/json') || '{}'); if (d.category != null && typeof d.index === 'number' && (d.category !== key || d.index !== i)) handleReorderTemplateImages(selectedTemplate, d.category, d.index, key, i); } catch { /* ignore */ } }} style={{ display: 'block', cursor: canEditTemplates ? 'grab' : 'default' }}>
+                                                                                                                <a href={url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+                                                                                                                    <img src={url} alt="" style={{ width: '80px', height: '56px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e2e8f0' }} draggable={false} />
+                                                                                                                </a>
+                                                                                                            </div>
+                                                                                                        ))}
+                                                                                                        {valid.length > 20 && <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>+{valid.length - 20} more</span>}
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            );
+                                                                                        })}
+                                                                                    </div>
+                                                                                );
+                                                                            })()}
+                                                                            {!pageList.length && <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '11px' }}>{JSON.stringify(selectedTemplate.pages_json || [], null, 2)}</pre>}
+                                                                        </div>
+                                                                    );
+                                                                })()}
+                                                            </>
                                                         )}
                                                         {(scorecard || hardChecks) && (
                                                             <div style={{ marginBottom: '16px' }}>
@@ -1761,8 +1836,8 @@ export default function ConfigurationPage() {
                                                     <span style={{ fontSize: '12px', padding: '4px 8px', borderRadius: '4px', background: selectedTemplate.preview_status === 'ready' ? '#dcfce7' : selectedTemplate.preview_status === 'failed' ? '#fee2e2' : '#fef3c7', color: selectedTemplate.preview_status === 'ready' ? '#166534' : selectedTemplate.preview_status === 'failed' ? '#991b1b' : '#92400e' }}>
                                                         {getPreviewStatusLabel(selectedTemplate)}
                                                     </span>
-                                                    {selectedTemplate.preview_url && (
-                                                        <a href={selectedTemplate.preview_url} target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: '6px', fontSize: '13px', color: '#2563eb' }}>Open preview in new tab</a>
+                                                    {selectedTemplate.preview_status === 'ready' && (selectedTemplate.preview_url || getPreviewIframeUrl(selectedTemplate)) && (
+                                                        <a href={getPreviewIframeUrl(selectedTemplate) || selectedTemplate.preview_url!} target="_blank" rel="noreferrer" style={{ display: 'block', marginTop: '6px', fontSize: '13px', color: '#2563eb' }}>Open preview in new tab</a>
                                                     )}
                                                 </div>
                                                 <button
@@ -1781,8 +1856,18 @@ export default function ConfigurationPage() {
                                             {!selectedTemplate.blueprint_json && (
                                                 <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>Generate a blueprint first in the Blueprint tab, then generate the preview.</p>
                                             )}
-                                            {selectedTemplate.preview_status === 'ready' && selectedTemplate.preview_url ? (
-                                                <iframe title="Preview" src={selectedTemplate.preview_url} style={{ width: '100%', height: '400px', border: '1px solid #e2e8f0', borderRadius: '8px' }} />
+                                            {selectedTemplate.preview_status === 'ready' && (selectedTemplate.preview_url || getPreviewIframeUrl(selectedTemplate)) ? (
+                                                <>
+                                                    <div style={{ display: 'flex', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                                                        <span style={{ fontSize: '12px', color: '#64748b', alignSelf: 'center' }}>Viewport:</span>
+                                                        {(['desktop', 'tablet', 'mobile'] as const).map(v => (
+                                                            <button key={v} type="button" onClick={() => setPreviewViewport(v)} style={{ padding: '6px 12px', borderRadius: '6px', border: '1px solid', fontSize: '12px', cursor: 'pointer', background: previewViewport === v ? '#2563eb' : 'white', color: previewViewport === v ? 'white' : '#475569', borderColor: previewViewport === v ? '#2563eb' : '#e2e8f0' }}>{v.charAt(0).toUpperCase() + v.slice(1)}</button>
+                                                        ))}
+                                                    </div>
+                                                    <div style={{ maxWidth: previewViewport === 'desktop' ? '100%' : previewViewport === 'tablet' ? '768px' : '375px', margin: '0 auto', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', boxShadow: previewViewport !== 'desktop' ? '0 4px 12px rgba(0,0,0,0.1)' : 'none' }}>
+                                                        <iframe title="Preview" src={getPreviewIframeUrl(selectedTemplate) || selectedTemplate.preview_url!} style={{ width: '100%', height: previewViewport === 'mobile' ? '600px' : '400px', border: 'none', display: 'block' }} />
+                                                    </div>
+                                                </>
                                             ) : selectedTemplate.blueprint_json && selectedTemplate.preview_status !== 'failed' && (
                                                 <p style={{ margin: 0, color: '#64748b' }}>Status: {getPreviewStatusLabel(selectedTemplate)}. Click Generate Preview to build the static site.</p>
                                             )}
@@ -1790,6 +1875,14 @@ export default function ConfigurationPage() {
                                     )}
                                     {templateDetailSubTab === 'validation' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+                                            {validationToast && (
+                                                <div role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '16px', padding: '12px 16px', background: '#dbeafe', border: '1px solid #93c5fd', borderRadius: '8px', color: '#1e40af', fontSize: '13px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                                                    <span>{validationToast}</span>
+                                                    <button type="button" onClick={() => setValidationToast(null)} aria-label="Close" style={{ flexShrink: 0, padding: '4px', border: 'none', background: 'transparent', color: '#1e40af', cursor: 'pointer', borderRadius: '4px', lineHeight: 1 }} title="Close">
+                                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                                    </button>
+                                                </div>
+                                            )}
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
                                                 <button type="button" onClick={() => handleRunValidation(selectedTemplate, selectedTemplate.validation_status === 'passed')} disabled={!canEditTemplates || validationJobPolling || selectedTemplate.preview_status !== 'ready'} title={selectedTemplate.preview_status !== 'ready' ? 'Generate preview first' : ''} style={{ padding: '8px 16px', background: validationJobPolling ? '#94a3b8' : '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: (canEditTemplates && !validationJobPolling && selectedTemplate.preview_status === 'ready') ? 'pointer' : 'not-allowed' }}>{validationJobPolling ? 'Running…' : 'Run Validation'}</button>
                                                 <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', background: (selectedTemplate.validation_status || '') === 'passed' ? '#dcfce7' : (selectedTemplate.validation_status || '') === 'failed' ? '#fee2e2' : (selectedTemplate.validation_status || '') === 'running' ? '#fef3c7' : '#f1f5f9', color: (selectedTemplate.validation_status || '') === 'passed' ? '#166534' : (selectedTemplate.validation_status || '') === 'failed' ? '#991b1b' : '#475569' }}>{(selectedTemplate.validation_status || 'not_run').replace('_', ' ')}</span>
@@ -1872,7 +1965,7 @@ export default function ConfigurationPage() {
                                                             <div style={{ marginBottom: '12px' }}>
                                                                 <h5 style={{ margin: '0 0 6px' }}>Failed reasons</h5>
                                                                 <ul style={{ margin: 0, paddingLeft: '20px', color: '#991b1b' }}>{failed.map((r, i) => <li key={i}>{r}</li>)}</ul>
-                                                                <button type="button" onClick={() => setTemplateDetailSubTab('blueprint')} style={{ marginTop: '8px', padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Fix Blueprint</button>
+                                                                <button type="button" onClick={() => { setFixBlueprintModalOpen(true); setFixBlueprintSuggestions(null); setFixBlueprintShowTechnical(false); setFixBlueprintLoading(true); configurationAPI.getFixBlueprintSuggestions(selectedTemplate.id).then(r => { setFixBlueprintSuggestions(r.data); setFixBlueprintLoading(false); }).catch(() => { setFixBlueprintSuggestions({ plain_language_summary: 'Could not load suggestions. Please check the failed reasons above and share them with your technical team.', technical_details: null, code_snippets: [], interim_actions: [] }); setFixBlueprintLoading(false); }); }} style={{ marginTop: '8px', padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Fix Blueprint</button>
                                                             </div>
                                                         )}
                                                         <details style={{ marginTop: '12px' }}>
@@ -2049,7 +2142,7 @@ export default function ConfigurationPage() {
                 {showCreateWizard && (
                 <Dialog
                     open={showCreateWizard}
-                    onOpenChange={(open) => { if (!open) { setShowCreateWizard(false); setWizardStep(1); setWizardForm({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true }); } }}
+                    onOpenChange={(open) => { if (!open) { setShowCreateWizard(false); setWizardStep(1); setWizardForm({ source: 'ai', name: '', description: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true }); } }}
                     title="Create Template"
                 >
                     <div style={{ padding: '16px', minWidth: '400px' }}>
@@ -2065,6 +2158,7 @@ export default function ConfigurationPage() {
                         {wizardStep === 2 && (
                             <div style={{ display: 'grid', gap: '12px' }}>
                                 <label style={{ fontSize: '13px' }}>Name <input type="text" value={wizardForm.name} onChange={e => setWizardForm(f => ({ ...f, name: e.target.value }))} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required /></label>
+                                <label style={{ fontSize: '13px' }}>Description <textarea value={wizardForm.description} onChange={e => setWizardForm(f => ({ ...f, description: e.target.value }))} rows={2} placeholder="Short description shown in template list and overview" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', resize: 'vertical' }} /></label>
                                 <label style={{ fontSize: '13px' }}>Category <input type="text" value={wizardForm.category} onChange={e => setWizardForm(f => ({ ...f, category: e.target.value }))} placeholder="e.g. Residential" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
                                 <label style={{ fontSize: '13px' }}>Style <input type="text" value={wizardForm.style} onChange={e => setWizardForm(f => ({ ...f, style: e.target.value }))} placeholder="e.g. Modern" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} /></label>
                                 <label style={{ fontSize: '13px' }}>Industry
@@ -2099,12 +2193,13 @@ export default function ConfigurationPage() {
                         )}
                         {wizardStep === 4 && (
                             <div>
-                                <p style={{ marginBottom: '12px', fontSize: '13px' }}>Preset pack (optional)</p>
+                                <p style={{ marginBottom: '12px', fontSize: '13px' }}>Preset Category <span style={{ color: '#dc2626' }}>*</span></p>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
                                     {['Residential Modern', 'Corporate Trust', 'Luxury Lifestyle'].map(p => (
                                         <button key={p} type="button" onClick={() => setWizardForm(f => ({ ...f, preset: p }))} style={{ padding: '10px', border: '1px solid', borderColor: wizardForm.preset === p ? '#2563eb' : '#e2e8f0', background: wizardForm.preset === p ? '#eff6ff' : 'white', borderRadius: '8px', cursor: 'pointer', textAlign: 'left' }}>{p}</button>
                                     ))}
                                 </div>
+                                {!wizardForm.preset && <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#dc2626' }}>Select a Preset Category to continue.</p>}
                                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer' }}>
                                     <input type="checkbox" checked={wizardForm.validate_responsiveness} onChange={e => setWizardForm(f => ({ ...f, validate_responsiveness: e.target.checked }))} />
                                     Validate responsiveness after creating (run viewport/mobile check when template is ready)
@@ -2118,6 +2213,7 @@ export default function ConfigurationPage() {
                             ) : (
                                 <button
                                     type="button"
+                                    disabled={wizardStep === 4 && !wizardForm.preset}
                                     onClick={async () => {
                                         const tags = wizardForm.feature_tags.split(',').map(x => x.trim()).filter(Boolean);
                                         const presetPayload: Record<string, unknown> = {};
@@ -2140,7 +2236,7 @@ export default function ConfigurationPage() {
                                             presetPayload.default_config_json = { colors: { primary: '#78350f', secondary: '#92400e', accent: '#f59e0b' } };
                                             presetPayload.rules_json = [];
                                         }
-                                        const payload: any = { name: wizardForm.name, description: '', intent: wizardForm.intent || null, source_type: wizardForm.source, feature_tags_json: tags.length ? tags : undefined, category: wizardForm.category || null, style: wizardForm.style || null, ...presetPayload };
+                                        const payload: any = { name: wizardForm.name, description: (wizardForm.description || '').trim() || null, intent: wizardForm.intent || null, source_type: wizardForm.source, feature_tags_json: tags.length ? tags : undefined, category: wizardForm.preset || wizardForm.category || null, style: wizardForm.style || null, ...presetPayload };
                                         const imagePromptsFiltered: Record<string, string> = {};
                                         Object.entries(wizardForm.image_prompts || {}).forEach(([k, v]) => { if (v && String(v).trim()) imagePromptsFiltered[k] = String(v).trim(); });
                                         payload.meta_json = { industry: wizardForm.industry || 'real_estate', image_prompts: Object.keys(imagePromptsFiltered).length ? imagePromptsFiltered : undefined };
@@ -2154,7 +2250,7 @@ export default function ConfigurationPage() {
                                             setSuccess('Template created. Generate blueprint for homepage (hero + 3–5 features + CTA) and 5+ internal pages with SEO content.');
                                             setShowCreateWizard(false);
                                             setWizardStep(1);
-                                            setWizardForm({ source: 'ai', name: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true });
+                                            setWizardForm({ source: 'ai', name: '', description: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true });
                                             loadData();
                                         } catch (err: any) {
                                             setError(err.response?.data?.detail || 'Failed to create template');
@@ -2169,6 +2265,44 @@ export default function ConfigurationPage() {
                     </div>
                 </Dialog>
                 )}
+
+                <Dialog open={fixBlueprintModalOpen} onOpenChange={setFixBlueprintModalOpen} title="Fix Blueprint – Suggestions">
+                    <div style={{ padding: '16px', maxWidth: '560px' }}>
+                        {fixBlueprintLoading && (
+                            <p style={{ margin: 0, color: '#64748b' }}>Getting AI suggestions…</p>
+                        )}
+                        {!fixBlueprintLoading && fixBlueprintSuggestions && (
+                            <>
+                                <p style={{ margin: '0 0 16px', fontSize: '14px', lineHeight: 1.5 }}>{fixBlueprintSuggestions.plain_language_summary}</p>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', fontSize: '13px', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={fixBlueprintShowTechnical} onChange={e => setFixBlueprintShowTechnical(e.target.checked)} />
+                                    Show technical details
+                                </label>
+                                {fixBlueprintShowTechnical && fixBlueprintSuggestions.technical_details && (
+                                    <div style={{ marginBottom: '12px', padding: '12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '12px', whiteSpace: 'pre-wrap' }}>{fixBlueprintSuggestions.technical_details}</div>
+                                )}
+                                {(fixBlueprintSuggestions.code_snippets?.length ?? 0) > 0 && (
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '8px', color: '#475569' }}>Suggested commands / code</div>
+                                        {fixBlueprintSuggestions.code_snippets!.map((s, i) => (
+                                            <div key={i} style={{ marginBottom: '8px', padding: '12px', background: '#1e293b', color: '#e2e8f0', borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', overflow: 'auto' }}>
+                                                <div style={{ marginBottom: '4px', color: '#94a3b8' }}>{s.title}</div>
+                                                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{s.code}</pre>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {(fixBlueprintSuggestions.interim_actions?.length ?? 0) > 0 && (
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: '#475569' }}>In the meantime</div>
+                                        <ul style={{ margin: 0, paddingLeft: '20px' }}>{fixBlueprintSuggestions.interim_actions!.map((a, i) => <li key={i} style={{ marginBottom: '4px' }}>{a}</li>)}</ul>
+                                    </div>
+                                )}
+                                <button type="button" onClick={() => { setTemplateDetailSubTab('blueprint'); setFixBlueprintModalOpen(false); }} style={{ marginTop: '8px', padding: '8px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', cursor: 'pointer' }}>Go to Blueprint</button>
+                            </>
+                        )}
+                    </div>
+                </Dialog>
 
                 <Dialog
                     open={previewModalOpen}
@@ -2232,9 +2366,9 @@ export default function ConfigurationPage() {
                                         {previewTemplate.preview_status === 'ready' ? 'Regenerate Preview' : 'Generate Preview'}
                                     </button>
                                 )}
-                                {getTemplatePreviewUrl(previewTemplate) && (
+                                {(getPreviewIframeUrl(previewTemplate) || getTemplatePreviewUrl(previewTemplate)) && (
                                     <a
-                                        href={getTemplatePreviewUrl(previewTemplate)}
+                                        href={getPreviewIframeUrl(previewTemplate) || getTemplatePreviewUrl(previewTemplate)!}
                                         target="_blank"
                                         rel="noreferrer"
                                         style={{ padding: '8px 16px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', textDecoration: 'none' }}
@@ -2251,10 +2385,10 @@ export default function ConfigurationPage() {
                                 <div style={{ fontSize: '12px', color: '#64748b' }}>Generating preview… polling for updates.</div>
                             )}
 
-                            {previewTemplate.preview_status === 'ready' && previewTemplate.preview_url && (
+                            {previewTemplate.preview_status === 'ready' && (getPreviewIframeUrl(previewTemplate) || previewTemplate.preview_url) && (
                                 <iframe
                                     title="Template Preview"
-                                    src={previewTemplate.preview_url}
+                                    src={getPreviewIframeUrl(previewTemplate) || previewTemplate.preview_url!}
                                     style={{ width: '100%', height: '420px', border: '1px solid #e2e8f0', borderRadius: '8px' }}
                                 />
                             )}

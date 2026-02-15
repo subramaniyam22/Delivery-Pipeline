@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query, UploadFile, File, Form
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, cast
 from sqlalchemy.dialects.postgresql import JSONB
@@ -493,6 +494,52 @@ def delete_template(
         raise
 
 
+def _template_preview_prefix(template: TemplateRegistry) -> str:
+    """Same logic as template_preview._template_prefix for proxy consistency."""
+    slug = (getattr(template, "slug", None) or "template")
+    if isinstance(slug, str):
+        slug = slug.replace(" ", "-").lower()[:64]
+    else:
+        slug = "template"
+    version = getattr(template, "version", None) or 1
+    return f"templates/{slug}/v{version}"
+
+
+@router.get("/api/templates/{template_id}/preview")
+@router.get("/api/templates/{template_id}/preview/{path:path}")
+def serve_template_preview(
+    template_id: str,
+    path: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Serve preview assets from storage so in-iframe navigation works (avoids 403 on presigned S3)."""
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if (template.preview_status or "") != "ready":
+        raise HTTPException(status_code=404, detail="Preview not ready")
+    file_path = (path or "").strip().lstrip("/") or "index.html"
+    if ".." in file_path or any(seg.startswith(".") for seg in file_path.split("/")):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not file_path.endswith((".html", ".css", ".js")):
+        file_path = file_path + ".html" if file_path and not file_path.endswith("/") else "index.html"
+    prefix = _template_preview_prefix(template)
+    key = f"{prefix.rstrip('/')}/{file_path}"
+    try:
+        backend = get_preview_storage_backend()
+        body = backend.read_bytes(key)
+    except Exception as e:
+        logging.warning("Preview proxy read failed key=%s: %s", key, e)
+        raise HTTPException(status_code=404, detail="Preview file not found")
+    media_type = "text/html"
+    if key.endswith(".css"):
+        media_type = "text/css"
+    elif key.endswith(".js"):
+        media_type = "application/javascript"
+    return Response(content=body, media_type=media_type)
+
+
 @router.post("/api/templates/{template_id}/generate-preview")
 def generate_template_preview(
     template_id: str,
@@ -718,6 +765,75 @@ def validate_template_seo(
     return result
 
 
+FIX_BLUEPRINT_SYSTEM = """You are an expert at diagnosing template validation and build failures. You will receive a list of validation "failed_reasons" (error messages from Lighthouse, Axe, Playwright, or other tools). Your job is to respond in JSON with these keys:
+- plain_language_summary: 2-4 sentences for a non-technical person explaining what went wrong and what they can do next (e.g. "The validation failed because the preview environment is missing some tools. Your template content is fine. Ask your technical team to install the tools below, or you can continue editing the blueprint and re-run validation after the environment is fixed.")
+- technical_details: Optional. A short technical explanation (for developers).
+- code_snippets: Optional. List of objects with "title" and "code" (string). Only include if the fix involves running a command or changing config (e.g. npm install -g lighthouse, playwright install). Use markdown code blocks in "code" if helpful.
+- interim_actions: Optional. List of short bullet strings (what to do in the meantime).
+
+Respond only with valid JSON, no markdown wrapper."""
+
+
+@router.get("/api/templates/{template_id}/fix-blueprint-suggestions", response_model=dict)
+def get_fix_blueprint_suggestions(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Use AI to suggest how to fix validation/blueprint errors. Returns plain-language summary, optional technical details and code snippets."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    vr = getattr(template, "validation_results_json", None) or {}
+    failed = vr.get("failed_reasons")
+    if not failed or not isinstance(failed, list):
+        return {
+            "plain_language_summary": "No validation failures were found for this template. If you are seeing errors in the UI, try running validation again.",
+            "technical_details": None,
+            "code_snippets": [],
+            "interim_actions": [],
+        }
+    errors_text = "\n".join(f"- {r}" for r in failed[:20])
+    user_prompt = f"Validation failed with these reasons:\n{errors_text}\n\nProvide the JSON response as specified."
+    try:
+        from app.agents.prompts import get_llm
+        from app.utils.llm import invoke_llm
+        import json
+        llm = get_llm(task="analysis")
+        raw = invoke_llm(llm, FIX_BLUEPRINT_SYSTEM + "\n\n" + user_prompt)
+        content = raw.content if hasattr(raw, "content") else str(raw)
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:].strip()
+        out = json.loads(content)
+        return {
+            "plain_language_summary": out.get("plain_language_summary") or "We couldn't generate a summary. Please share the failed reasons with your technical team.",
+            "technical_details": out.get("technical_details"),
+            "code_snippets": out.get("code_snippets") if isinstance(out.get("code_snippets"), list) else [],
+            "interim_actions": out.get("interim_actions") if isinstance(out.get("interim_actions"), list) else [],
+        }
+    except Exception as e:
+        logging.warning("Fix blueprint suggestions LLM failed: %s", e)
+        fallback = []
+        for r in failed:
+            r_lower = (r or "").lower()
+            if "lighthouse" in r_lower and "not found" in r_lower:
+                fallback.append({"title": "Install Lighthouse", "code": "npm install -g lighthouse"})
+            elif "playwright" in r_lower and "install" in r_lower:
+                fallback.append({"title": "Install Playwright browsers", "code": "playwright install"})
+            elif "executable" in r_lower and "chromium" in r_lower:
+                fallback.append({"title": "Install Playwright browsers", "code": "playwright install"})
+        return {
+            "plain_language_summary": "Validation failed due to missing or misconfigured tools in the build environment (e.g. Lighthouse or browser drivers). Your template content may be fine. Ask your technical team to install the required tools in the deployment environment; see technical details below.",
+            "technical_details": "\n".join(failed[:10]),
+            "code_snippets": fallback[:5],
+            "interim_actions": ["Re-run validation after the environment is updated.", "You can continue editing the blueprint in the meantime."],
+        }
+
+
 IMAGE_PROMPT_CATEGORIES = {"exterior", "interior", "lifestyle", "people", "neighborhood"}
 
 
@@ -770,6 +886,61 @@ async def upload_template_image(
     db.commit()
     db.refresh(template)
     return {"url": url, "section_key": key_label, "stored_in": "meta_json.images"}
+
+
+@router.post("/api/templates/{template_id}/images/batch", response_model=dict)
+async def upload_template_images_batch(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    files: List[UploadFile] = File(...),
+    section_key: str = Form("general"),
+):
+    """Upload multiple images for one category in one request (atomic). Avoids race when adding many per category."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    key_label = (section_key or "general").strip().lower().replace(" ", "_") or "general"
+    meta = dict(template.meta_json or {})
+    images = dict(meta.get("images") or {})
+    if key_label not in images:
+        images[key_label] = []
+    if not isinstance(images[key_label], list):
+        images[key_label] = [images[key_label]] if images[key_label] else []
+    added: List[str] = []
+    for file in files:
+        if not file.filename and not file.content_type:
+            continue
+        content_type = file.content_type or "image/png"
+        if not content_type.startswith("image/"):
+            continue
+        ext = "png"
+        if "jpeg" in content_type or "jpg" in content_type:
+            ext = "jpg"
+        elif "webp" in content_type:
+            ext = "webp"
+        elif "gif" in content_type:
+            ext = "gif"
+        storage_key = f"templates/{template_id}/images/{key_label}/{uuid.uuid4().hex}.{ext}"
+        try:
+            backend = get_preview_storage_backend()
+            body = await file.read()
+            if len(body) > 10 * 1024 * 1024:
+                continue
+            backend.save_bytes(storage_key, body, content_type=content_type)
+            url = backend.get_url(storage_key, expires_seconds=7 * 24 * 3600)
+            if not url:
+                url = getattr(backend, "public_base_url", "") and f"{backend.public_base_url.rstrip('/')}/{storage_key}" or ""
+            images[key_label].append(url)
+            added.append(url)
+        except Exception as e:
+            logging.getLogger(__name__).exception("Template image upload in batch failed: %s", e)
+    meta["images"] = images
+    template.meta_json = meta
+    db.commit()
+    db.refresh(template)
+    return {"section_key": key_label, "added": len(added), "urls": added, "stored_in": "meta_json.images"}
 
 
 @router.post("/api/templates/{template_id}/publish", response_model=TemplateResponse)
