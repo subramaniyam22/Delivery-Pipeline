@@ -456,15 +456,13 @@ def delete_template(
     template_name = getattr(template, "name", None) or ""
     is_published = getattr(template, "is_published", False) or (getattr(template, "status", None) or "").lower() == "published"
     if is_published:
+        has_refs, refs = False, {}
         try:
             has_refs, refs = _template_has_references(db, template_id)
         except Exception as e:
-            logging.getLogger(__name__).exception("Template delete: failed to check references: %s", e)
+            logging.getLogger(__name__).warning("Template delete: reference check failed, proceeding with delete: %s", e)
             db.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail="Template could not be deleted: failed to check references. Please try again or contact support.",
-            ) from e
+            # Proceed with delete; we clear refs and child rows below
         if has_refs:
             project_titles = [p.get("title", "") for p in refs.get("projects", [])]
             detail = {

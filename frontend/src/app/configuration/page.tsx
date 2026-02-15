@@ -1038,22 +1038,7 @@ export default function ConfigurationPage() {
         }
         setTemplateDetailSubTab('preview');
         try {
-            await configurationAPI.generateTemplatePreview(template.id, { force: template.preview_status === 'ready' });
-            updateTemplateInState({ ...template, preview_status: 'generating', preview_error: null });
-            setSuccess('Preview generation started');
-            pollTemplatePreview(template.id);
-        } catch (err: any) {
-            const detail = err.response?.data?.detail;
-            const msg = typeof detail === 'string' ? detail : (Array.isArray(detail) ? detail.map((d: any) => d.msg || d).join(', ') : 'Failed to start preview generation');
-            if (err.response?.status === 409) setSuccess('Preview already up-to-date');
-            else setError(msg);
-        }
-    };
-
-    const handleGeneratePreviewSync = async (template: TemplateRegistry) => {
-        if (!canEditTemplates || template.source_type === 'git' || !template.blueprint_json) return;
-        setTemplateDetailSubTab('preview');
-        try {
+            // Use sync by default so preview completes or fails clearly (avoids stuck "Generating" on free tier)
             const res = await configurationAPI.generateTemplatePreview(template.id, {
                 force: template.preview_status === 'ready',
                 sync: true,
@@ -1062,16 +1047,22 @@ export default function ConfigurationPage() {
             const updated = await configurationAPI.getTemplate(template.id);
             updateTemplateInState(updated.data as TemplateRegistry);
             if (previewTemplate?.id === template.id) setPreviewTemplate(updated.data as TemplateRegistry);
-            if ((data.preview_status || updated.data?.preview_status) === 'ready') {
+            if ((data.preview_status || (updated.data as any)?.preview_status) === 'ready') {
                 setSuccess('Preview generated successfully');
             } else {
                 setError(data.error || (updated.data as any)?.preview_error || 'Preview generation failed');
             }
         } catch (err: any) {
             const detail = err.response?.data?.detail;
-            const msg = typeof detail === 'string' ? detail : (err.response?.data?.error) || 'Preview generation failed';
-            setError(msg);
+            const msg = typeof detail === 'string' ? detail : (err.response?.data?.error) || 'Failed to start preview generation';
+            if (err.response?.status === 409) setSuccess('Preview already up-to-date');
+            else setError(msg);
         }
+    };
+
+    const handleGeneratePreviewSync = async (template: TemplateRegistry) => {
+        if (!canEditTemplates || template.source_type === 'git' || !template.blueprint_json) return;
+        await handleGeneratePreview(template);
     };
 
     const handleResetPreview = async (template: TemplateRegistry) => {
