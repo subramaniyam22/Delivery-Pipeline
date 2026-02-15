@@ -42,6 +42,14 @@ def _find_chrome_path() -> Optional[str]:
         for m in matches:
             if os.path.isfile(m) and os.access(m, os.X_OK):
                 return m
+    # Fallback: scan known browser cache root for any chrome executable (e.g. nested under chromium-*)
+    for root in ["/app/.cache/ms-playwright", os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "").rstrip("/")]:
+        if not root or not os.path.isdir(root):
+            continue
+        for pattern in [os.path.join(root, "chromium-*", "chrome-linux", "chrome"), os.path.join(root, "*", "chrome-linux", "chrome")]:
+            for m in glob.glob(pattern):
+                if os.path.isfile(m) and os.access(m, os.X_OK):
+                    return m
     return None
 
 
@@ -99,12 +107,21 @@ def run_lighthouse(preview_url: str, timeouts: Optional[Dict[str, int]] = None) 
     if not lighthouse_cmd:
         result["error"] = "Lighthouse CLI not found. Install in Docker/build: npm install -g lighthouse"
         return result
+    # Ensure Playwright browser path is set so _find_chrome_path() can locate Chromium
+    if os.path.isdir("/app/.cache/ms-playwright"):
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/app/.cache/ms-playwright"
     workdir = tempfile.mkdtemp(prefix="lighthouse_")
     report_path = os.path.join(workdir, "lighthouse-report.json")
     env = dict(os.environ)
     chrome_path = _find_chrome_path()
     if chrome_path:
         env["CHROME_PATH"] = chrome_path
+    else:
+        result["error"] = (
+            "Chrome/Chromium not found for Lighthouse. Set CHROME_PATH to a Chrome executable, "
+            "or ensure Playwright chromium is installed in Docker: python -m playwright install --with-deps chromium"
+        )
+        return result
     try:
         proc = subprocess.run(
             [

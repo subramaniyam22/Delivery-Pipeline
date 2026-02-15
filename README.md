@@ -583,7 +583,7 @@ Full list and optional vars (SMTP, webhooks): see **[docs/RENDER_ENV.md](docs/RE
 
 ## 📄 License
 
-MIT License
+Not Licensed
 
 ## 🤝 Contributing
 
@@ -595,4 +595,4 @@ MIT License
 
 ## 📞 Support
 
-For issues and questions, please create a GitHub issue.
+TBD
