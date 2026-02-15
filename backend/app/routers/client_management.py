@@ -78,39 +78,37 @@ def check_consultant_or_above(current_user: User):
 def get_pending_requirements(project: Project, db: Session) -> List[PendingRequirement]:
     """Get pending requirements for a project"""
     pending = []
-    
-    # Check onboarding data
+
     onboarding = db.query(OnboardingData).filter(
         OnboardingData.project_id == project.id
     ).first()
-    
+
     if onboarding:
-        # Check for missing required fields
-        if not onboarding.requirements_text:
+        if not (onboarding.requirements_json and onboarding.requirements_json != {}):
             pending.append(PendingRequirement(
-                requirement_type="Requirements Document",
-                description="Client needs to provide detailed requirements",
-                status="PENDING"
+                requirement_type="Requirements",
+                description="Client needs to provide project requirements",
+                status="PENDING",
             ))
-        if not onboarding.pricing_confirmed:
+        if onboarding.custom_copy_notes is None and onboarding.use_custom_copy and onboarding.custom_copy_final_price is None:
             pending.append(PendingRequirement(
-                requirement_type="Pricing Confirmation",
-                description="Client needs to confirm pricing",
-                status="PENDING"
+                requirement_type="Pricing",
+                description="Client needs to confirm copy/pricing if using custom copy",
+                status="PENDING",
             ))
-        if not onboarding.access_details_json or onboarding.access_details_json == {}:
+        if not (onboarding.contacts_json and len(onboarding.contacts_json) > 0):
             pending.append(PendingRequirement(
-                requirement_type="Access Details",
-                description="Client needs to provide system access details",
-                status="PENDING"
+                requirement_type="Contacts",
+                description="Client needs to provide contact details",
+                status="PENDING",
             ))
     else:
         pending.append(PendingRequirement(
-            requirement_type="Onboarding Form",
-            description="Client needs to complete onboarding form",
-            status="PENDING"
+            requirement_type="Onboarding",
+            description="Client needs to complete onboarding",
+            status="PENDING",
         ))
-    
+
     return pending
 
 

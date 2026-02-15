@@ -511,9 +511,9 @@ def serve_template_preview(
     template_id: str,
     path: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_for_preview),
+    current_user: Optional[User] = Depends(get_current_user_for_preview),
 ):
-    """Serve preview assets from storage. Auth via Bearer or ?access_token= for iframe (no cookies in cross-origin)."""
+    """Serve preview assets from storage. Auth via Bearer or ?access_token= for iframe; subresources (e.g. about.html) allowed when Referer is trusted."""
     template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")

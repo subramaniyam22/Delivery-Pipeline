@@ -193,6 +193,7 @@ export default function ConfigurationPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [infoBannerDismissed, setInfoBannerDismissed] = useState(false);
     const [globalStageGates, setGlobalStageGates] = useState({
         onboarding: false,
         assignment: false,
@@ -1422,12 +1423,25 @@ export default function ConfigurationPage() {
                         variant="page"
                     />
                 </header>
-                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
-                    Client feedback in Sentiments can be used to refine templates, SLAs, and quality thresholds.
-                </div>
+                {!infoBannerDismissed && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', padding: '12px 16px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
+                        <span>Client feedback in Sentiments can be used to refine templates, SLAs, and quality thresholds.</span>
+                        <button type="button" onClick={() => setInfoBannerDismissed(true)} aria-label="Close" style={{ flexShrink: 0, padding: '4px 8px', border: '1px solid #1d4ed8', background: 'white', color: '#1d4ed8', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>Close</button>
+                    </div>
+                )}
 
-                {error && <div className="alert alert-error">{typeof error === 'string' ? error : formatApiErrorDetail(error)}</div>}
-                {success && <div className="alert alert-success">{success}</div>}
+                {error && (
+                    <div className="alert alert-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                        <span>{typeof error === 'string' ? error : formatApiErrorDetail(error)}</span>
+                        <button type="button" onClick={() => setError('')} aria-label="Close" style={{ flexShrink: 0, padding: '4px 8px', border: '1px solid currentColor', background: 'transparent', color: 'inherit', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>Close</button>
+                    </div>
+                )}
+                {success && (
+                    <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                        <span>{success}</span>
+                        <button type="button" onClick={() => setSuccess('')} aria-label="Close" style={{ flexShrink: 0, padding: '4px 8px', border: '1px solid currentColor', background: 'transparent', color: 'inherit', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>Close</button>
+                    </div>
+                )}
 
                 <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', flexWrap: 'wrap' }}>
                     {(['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates', 'learning'] as ConfigTab[]).map((tab) => (

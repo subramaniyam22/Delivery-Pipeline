@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.auth import decode_access_token
 from app.models import User
+from app.config import settings
 from typing import Optional
 
 security = HTTPBearer(auto_error=False)
@@ -80,16 +81,34 @@ def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
     return db.query(User).filter(User.email == email).first()
 
 
+def _is_trusted_preview_referer(referer: Optional[str]) -> bool:
+    """Allow subresource requests (e.g. about.html) when opened from our frontend or from preview index."""
+    if not referer:
+        return False
+    referer = referer.strip()
+    if settings.FRONTEND_URL and referer.startswith(settings.FRONTEND_URL.rstrip("/")):
+        return True
+    for origin in settings.cors_origins_list:
+        if origin and referer.startswith(origin.rstrip("/")):
+            return True
+    if "/api/templates/" in referer and "/preview" in referer:
+        return True
+    return False
+
+
 def get_current_user_for_preview(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
-) -> User:
-    """Auth for preview proxy: accept token from query (for iframe) or header/cookie."""
+) -> Optional[User]:
+    """Auth for preview proxy: token in query (iframe), or header/cookie, or allow if Referer is trusted (subresources like about.html)."""
     token = request.query_params.get("access_token")
     if token:
         user = get_current_user_from_token(token, db)
         if user:
             return user
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    referer = request.headers.get("referer") or request.headers.get("Referer")
+    if _is_trusted_preview_referer(referer):
+        return None
     return get_current_user(request, credentials, db)
