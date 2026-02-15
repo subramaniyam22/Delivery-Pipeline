@@ -1110,7 +1110,12 @@ export default function ProjectDetailPage() {
                 label: 'Custom Graphics',
                 filled: req.custom_graphic_notes_enabled === true ? hasValue(req.custom_graphic_notes) : req.custom_graphic_notes_enabled === false
             },
-            { label: 'Navigation', filled: hasValue(req.navigation_notes) },
+            {
+                label: 'Navigation',
+                filled: req.navigation_notes_option
+                    ? (req.navigation_notes_option === 'Custom' ? hasValue(req.navigation_notes) : true)
+                    : false
+            },
             { label: 'Stock Images', filled: hasValue(req.stock_images_reference) },
             { label: 'Floor Plans', filled: hasValue(req.floor_plan_images) },
             { label: 'Sitemap', filled: hasValue(req.sitemap) },
@@ -1120,7 +1125,10 @@ export default function ProjectDetailPage() {
                 label: 'Specials',
                 filled: req.specials_enabled === true ? hasValue(req.specials_details) : req.specials_enabled === false
             },
-            { label: 'Copy Scope', filled: hasValue(req.copy_scope_notes) },
+            {
+                label: 'Copy Scope',
+                filled: onboardingData?.use_custom_copy === false || hasValue(req.copy_scope_notes)
+            },
             { label: 'Pages', filled: hasValue(req.pages) },
             { label: 'Domain Type', filled: hasValue(req.domain_type) },
             { label: 'Vanity Domains', filled: hasValue(req.vanity_domains) },
