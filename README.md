@@ -4,35 +4,41 @@ Production-ready MVP with **FastAPI + LangGraph** backend, **Next.js (App Router
 
 ## 🎯 Overview
 
-A multi-agent workflow system with 6 stages plus AI template management:
-1. **Project Onboarding** - Initial project setup and documentation
-2. **Project Assignment** - Task assignment and resource allocation
-3. **Build** - Development work (Human-in-the-loop optional)
-4. **Test** - Quality assurance and testing
-5. **Defect Validation** - Defect analysis and validation
-6. **Complete** - Project closure and summary
+A multi-agent workflow system with **7 stages** plus AI template management:
+
+1. **Sales Handover** - Project creation, drafts, and handover to delivery
+2. **Onboarding** - Initial project setup, client data, and documentation (auto-reminder optional)
+3. **Assignment** - Task assignment and resource allocation
+4. **Build** - Development work (Human-in-the-loop optional)
+5. **Test** - Quality assurance and testing
+6. **Defect Validation** - Defect analysis and validation
+7. **Complete** - Project closure and summary
 
 Key capabilities:
+- **Reports** (Insights): Executive dashboard with **Projects Delivered** (count of projects in Complete status only; not active pipeline count), cycle time, SLA breaches, client sentiment; Insights with delivery health, client insights, quality & defects; filters by date range, client, stage, template; Export CSV/PDF
+- **Client Management** (Consultant+): Track client contacts, project context, pending requirements, last reminder; update client emails; send reminder emails
+- **Template Registry**: AI and Git templates; blueprint generation; **preview** (Static = fast/cached, Live = accurate/dynamic); **validation** (Lighthouse + Axe for responsiveness and accessibility); Performance and Evolution tabs; WCAG 2 AA–friendly preview renderer (contrast, main landmark, unique section labels)
+- **Preview Strategy** (Admin): Choose Static Preview (fast, cached) or Live Preview (accurate, dynamic). **Image prompts** (optional) in Create Template guide AI for exterior/interior/lifestyle/people/neighborhood imagery
 - AI-driven workflow orchestration with optional human approval gates (global and per-project)
-- AI template registry with preview generation and publish/unpublish controls
-- SLA configuration, quality thresholds, and preview strategy management in admin UI
-- Operations dashboard for job queue health, retries, and stuck runs
+- SLA configuration, quality thresholds, HITL gates, and Learning Proposals in admin UI
+- Operations dashboard for job queue health, retries, and stuck runs; **Dashboard** template performance (top / needs improvement) with threshold note and deduplication by template name
 - Quality dashboard and client sentiment tracking
-- Auto-advance from Sales to Onboarding when all required fields are complete (Drafts stay in Sales until activated)
+- Auto-advance from Sales to Onboarding when required fields are complete; **onboarding auto-reminder** toggle persists when navigating away
 - Multi-location support (`location_names`) and stage timeline history (`stage_history`)
-- Notifications, audit logs, and admin configuration UI
+- Notifications, audit logs, and admin configuration UI; **toasts and info banner** have close buttons
 - Chat log webhooks for external systems and training pipelines
 - JWT-secured notification WebSocket connections
-- Debug endpoints gated in production
+- Template preview iframe: auth via `?access_token=` or trusted Referer; **CHROME_PATH** / **PLAYWRIGHT_BROWSERS_PATH** for validation (see Render and Validation sections)
+- Debug endpoints gated in production; **GET /api/debug/chrome-path** (Admin/Manager) returns Chrome path for Render env
 
 ## 🔐 Roles & Permissions
 
 | Role | Permissions |
 |------|-------------|
-| **Admin** | Full access to all endpoints and UI pages |
-| **Manager** | Full access + can edit workflow config values |
-| **Consultant** | Create projects, update onboarding, view status |
-| **PC (Project Coordinator)** | Task assignment access, manage assignment stage |
+| **Admin** | Full access to all endpoints and UI; System Configuration (templates, SLA, thresholds, Preview Strategy, HITL, Learning); debug/chrome-path |
+| **Manager** | Same as Admin for workflow and config; Client Management; template publish/recommend |
+| **Consultant** | Create projects, update onboarding, view status; **Client Management** (all projects for Admin/Manager; Consultant/PC see only assigned projects) |
+| **PC (Project Coordinator)** | Task assignment access, manage assignment stage; Client Management for assigned projects |
 | **Builder** | Build stage access only (start/progress/complete, upload artifacts) |
 | **Tester** | Test stage access only (start/progress/complete, upload reports, create defects) |
 | **Sales** | Create projects, manage sales-stage data, save drafts |
@@ -223,38 +229,23 @@ If your Render dashboard shows only `delivery-backend`, `delivery-frontend`, `de
 1. **Option A – Deploy from blueprint (recommended)**  
    - In Render dashboard: **Projects** → your project (or **+ New** → **Blueprint**).  
    - Connect the repo if needed, then use **Apply** / **Deploy** from the blueprint that includes `render.yaml`.  
-   - That will create/update all services in `render.yaml`, including **delivery-worker**.  
-   - After deploy, in **Overview** you should see **delivery-worker** with status **Available** (or **Running**).
+   - That will create/update all services, including **delivery-worker** (Docker) and **delivery-backend** (Docker).  
+   - After deploy, **delivery-worker** should show status **Available** (or **Running**).
 
-2. **Option B – Create the worker service by hand**  
+2. **Option B – Create the worker by hand (use Docker)**  
    - **+ New** → **Background Worker**.  
-   - **Connect repository**: same repo as backend (e.g. `subramaniyam22/Delivery-Pipeline`), branch `main`.  
-   - **Name**: `delivery-worker` (so it matches the rest of the stack).  
-   - **Region**: same as backend (e.g. Oregon).  
-   - **Root Directory**: `backend`.  
-   - **Runtime**: Python.  
-   - **Build Command**:  
-     `apt-get update && apt-get install -y nodejs npm git && npm install -g lighthouse && pip install -r requirements.txt && python -m playwright install --with-deps chromium`  
-   - **Start Command**:  
-     `python -m app.jobs.worker`  
-   - **Environment**: Add the same env vars as the backend (required):  
-     - `DATABASE_URL` → from **delivery-db** → **connectionString**  
-     - `REDIS_URL` → from **delivery-redis** → **connectionString**  
-     - `SECRET_KEY` → copy the value from **delivery-backend** (same secret so tokens match)  
-     - `FRONTEND_URL` → your frontend URL (e.g. `https://delivery-frontend-liwm.onrender.com`)  
-     - `AI_MODE` → `full`  
-   - **Plan**: Starter (or same as backend if you prefer).  
-   - **Create Background Worker**.  
-   - After the first deploy, the worker will process enqueued jobs; Job Queue status should move from Queued to Running/Success.
+   - **Connect repository**: same repo, branch `main`.  
+   - **Name**: `delivery-worker`. **Region**: same as backend.  
+   - **Runtime**: **Docker**. **Dockerfile path**: `worker/Dockerfile`. **Docker build context**: `.` (root).  
+   - **Build command** / **Start command**: leave empty (Dockerfile defines them).  
+   - **Environment**: Same as backend (DATABASE_URL, REDIS_URL, SECRET_KEY, FRONTEND_URL, BACKEND_URL, AI_MODE, etc.). Copy from **delivery-backend**; set **SECRET_KEY** to the same value as the backend so JWT matches.  
+   - **Create Background Worker**.
 
-   **Note:** The blueprint gives the worker its own generated `SECRET_KEY` (Render does not support copying env vars from another service). If your app requires the worker to use the same secret as the backend (e.g. for JWT), set `SECRET_KEY` on the **delivery-worker** service in the Render dashboard to the same value as **delivery-backend**.
+   **Note:** If you create the backend or worker as **native Python** instead of Docker, Lighthouse and Playwright will not be available and template validation will fail. Use **Docker** for both.
 
-3. **Backend/worker build failed (read-only file system)**  
-   - Render's build environment does not allow `apt-get` or other system installs. The blueprint uses only `pip install -r requirements.txt` and `playwright install chromium`. Node/npm and Lighthouse are not installed on Render; QA features that need them may be limited unless you use a Docker-based deploy.
-
-4. **Frontend deploy failed**  
+3. **Frontend deploy failed**  
    - Fix any build errors (e.g. TypeScript) and push to `main`; Render will redeploy the frontend.  
-   - If the frontend service uses a different URL (e.g. `delivery-frontend-39z8.onrender.com`), set **NEXT_PUBLIC_API_URL** on the frontend to your backend URL. The backend blueprint sets **CORS_ORIGIN_REGEX** so any `https://*.onrender.com` origin is allowed; if you still see a login "Network Error" or CORS block, ensure the backend env has **CORS_ORIGIN_REGEX** = `^https://[a-zA-Z0-9-]+\.onrender\.com$` (or add your frontend URL to **CORS_ORIGINS**).
+   - Set **NEXT_PUBLIC_API_URL** on the frontend to your backend URL. The backend sets **CORS_ORIGIN_REGEX** so `https://*.onrender.com` is allowed; if you see a login "Network Error" or CORS block, add your frontend URL to **CORS_ORIGINS** or ensure **CORS_ORIGIN_REGEX** matches.
 
 ### Stop services
 
@@ -318,7 +309,15 @@ Once running, visit:
 - `GET /api/templates/{id}` - Template detail
 - `PUT /api/templates/{id}` - Update template (publish/unpublish)
 - `POST /api/templates/{id}/generate-preview` - Generate AI preview
-- `GET /previews/{template_id}/index.html` - Generated preview asset
+- `GET /api/templates/{id}/preview`, `GET /api/templates/{id}/preview/{path}` - Preview proxy (auth: Bearer or `?access_token=` or trusted Referer)
+- `GET /api/debug/chrome-path` - Return Chrome path for Lighthouse (Admin/Manager only)
+
+**Client Management (Consultant+):**
+- `GET /client-management/projects` - List projects with client info, pending requirements, last reminder
+- `PUT /client-management/projects/{id}/client-emails` - Update client emails/contact
+- `POST /client-management/send-reminder` - Send reminder email to client
+- `GET /client-management/reminders/{project_id}` - Reminder history
+- `GET /client-management/pending-requirements/{project_id}` - Pending requirements for project
 
 ## 🔧 Local Development (without Docker)
 
@@ -360,34 +359,33 @@ npm run dev
 
 ## 🗄️ Database Schema
 
-**Users** - User accounts with roles
-**Projects** - Project metadata, locations (`location_names`), and current stage
-**Stage History** - Stage transition log (`stage_history`)
-**Tasks** - Task assignments per stage
-**StageOutputs** - Workflow stage execution results
-**Artifacts** - File uploads per stage
-**Defects** - Defect tracking
-**AdminConfig** - Configuration templates and prompts
-**AuditLogs** - Audit trail of all actions
+**Users** – User accounts with roles  
+**Projects** – Project metadata, locations (`location_names`), current stage, client fields (`client_name`, `client_company`, `client_primary_contact`, `client_emails`), client preview and stage history  
+**OnboardingData** – Per-project onboarding (contacts_json, requirements_json, copy_text, theme, auto_reminder_enabled, etc.)  
+**Stage History** – Stage transition log (`stage_history`)  
+**ClientReminderLog** – Sent reminders (project_id, reminder_type, sent_to, subject, message, sent_at)  
+**Tasks** – Task assignments per stage  
+**StageOutputs** – Workflow stage execution results  
+**Artifacts** – File uploads per stage  
+**Defects** – Defect tracking  
+**TemplateRegistry** – Templates with blueprint_json, preview_status, validation_status, validation_last_run_at, result_json, performance_metrics_json  
+**TemplateValidationJob** – Validation job queue and results  
+**AdminConfig** – Configuration (templates, SLA, thresholds, preview_strategy, HITL gates)  
+**AuditLogs** – Audit trail of all actions  
+**Executive / Reports** – Aggregates: `projects_delivered` (count of COMPLETED), total_projects, cycle time, SLA breaches, sentiment (from SLA/analytics endpoints)
 
-## 🤖 LangGraph Workflow
+## 🤖 LangGraph Workflow & Pipeline Stages
 
-The workflow uses LangGraph for orchestration with 6 nodes:
+The workflow uses LangGraph for orchestration. **Pipeline stages** (in order): Sales Handover → Onboarding → Assignment → Build → Test → Defect Validation → Complete.
 
-1. **onboarding_node** - Validates onboarding completeness
-2. **assignment_node** - Creates task assignment plan
-3. **build_hitl_node** - Human-in-the-loop for build approval
-4. **test_node** - Analyzes test results
-5. **defect_validation_node** - Validates defects and determines next action
-6. **complete_node** - Generates project summary
-
-Stage nodes delegate to dedicated agent classes in `backend/app/agents/` (onboarding, assignment, build, completion), with QA/Defect agents used in the Test/Defect Validation stages.
+**Nodes:** onboarding_node, assignment_node, build_hitl_node, test_node, defect_validation_node, complete_node. Stage nodes delegate to dedicated agent classes in `backend/app/agents/` (onboarding, assignment, build, completion), with QA/Defect agents used in Test and Defect Validation.
 
 ### Workflow Transitions
-- onboarding → assignment → build → test
-- test (with defects) → defect_validation
-- defect_validation → build (if valid defects) OR test (if retest) OR complete
-- human approval gates can be enabled per stage (HITL)
+- Sales Handover: drafts and handover; activate project to move to Onboarding
+- Onboarding → Assignment → Build → Test (with optional HITL at Build)
+- Test (with defects) → Defect Validation
+- Defect Validation → Build (valid defects) OR Test (retest) OR Complete
+- Human approval gates can be enabled per stage (HITL) via System Configuration → HITL Gates
 
 ### LLM Integration
 - Uses OpenAI (model from **OPENAI_MODEL**, default `gpt-4o`) if `OPENAI_API_KEY` is provided
@@ -432,19 +430,25 @@ Admin/Manager can edit workflow configurations via UI or API:
 
 ## 🧩 Template Registry (AI + Git)
 
-Templates now support two source types:
-- **AI**: intent-driven, no repo required, preview generated by the system.
+Templates support two source types:
+- **AI**: intent-driven, no repo required; preview and blueprint generated by the system.
 - **Git**: repo + branch with preview link fallback to GitHub.
 
-Template fields:
-- `source_type` (`ai` | `git`)
-- `intent`, `description`, `features_json`
-- `preview_status` (`not_generated` | `generating` | `ready` | `failed`)
-- `preview_url`, `preview_thumbnail_url`, `preview_last_generated_at`, `preview_error`
+**Template fields:** `source_type` (`ai` | `git`), `intent`, `description`, `features_json`, `preview_status` (`not_generated` | `generating` | `ready` | `failed`), `preview_url`, `preview_thumbnail_url`, `preview_last_generated_at`, `preview_error`, `validation_status`, `validation_last_run_at`, `performance_metrics_json`.
 
-Preview generation:
-- POST `/api/templates/{id}/generate-preview` generates a static HTML preview.
-- Served from `/previews/{template_id}/index.html`.
+**Create Template wizard:** Name, description, category, style, industry, feature tags; **Image prompts (optional)** for Exterior, Interior, Lifestyle, People, Neighborhood — short descriptions that guide AI when generating or selecting images for the template. Leave blank to skip.
+
+**Preview Strategy (Admin, System Configuration):**
+- **Static Preview (fast, cached)** – Pre-builds HTML and serves from cache; best for quick checks.
+- **Live Preview (accurate, dynamic)** – Builds in a production-like environment; slower but closer to final site.
+
+**Preview in UI:** Preview tab loads the template in an iframe. Auth: `?access_token=` in the URL or trusted Referer for subresources. Backend sets `Content-Security-Policy: frame-ancestors *` and omits `X-Frame-Options` for `/api/templates/.../preview` so the frontend can embed it.
+
+**Validation (Lighthouse + Axe):** Run Validation uses Lighthouse (mobile viewport, performance/accessibility/SEO) and Axe (accessibility). Requires **Chrome/Chromium** in the backend environment (see **Template validation on Render** below). Copy and SEO validation run separately. **Fix Blueprint** opens suggestions when validation fails (e.g. install Lighthouse/Playwright).
+
+**Preview renderer (WCAG 2 AA):** Generated preview HTML uses contrast-safe text on primary/accent/white, one `<main>` landmark, and unique `aria-label`s per section so Axe color-contrast and landmark rules pass.
+
+**Endpoints:** POST `/api/templates/{id}/generate-preview`, GET `/api/templates/{id}/preview` and `/api/templates/{id}/preview/{path}` (auth: Bearer or `?access_token=` or trusted Referer), GET `/api/debug/chrome-path` (Admin/Manager – returns `CHROME_PATH` for Render).
 
 ## 🧪 Testing
 
@@ -484,6 +488,14 @@ This repo can have multiple Alembic heads in development. Use `alembic upgrade h
 
 ## 🐛 Troubleshooting
 
+### Template validation: "Chrome/Chromium not found" or "CHROME_PATH must be set"
+- **Backend must use Docker** (not native Python). In Render, set the backend to **Runtime: Docker**, **Dockerfile path:** `backend/Dockerfile`, **Docker context:** `backend`; leave Build/Start command empty.
+- Get the Chrome path: as Admin, open `GET /api/debug/chrome-path`, or in Render Shell run `python scripts/print_chrome_path.py` from the backend directory.
+- Add **CHROME_PATH** in the backend Environment to that path; save and redeploy.
+
+### Client Management: "500" or "Unable to load projects"
+- The `/client-management/projects` endpoint reads onboarding data (e.g. `requirements_json`, `contacts_json`). If you see 500, ensure the backend is up to date (fixed in code to use correct OnboardingData fields). Redeploy the backend.
+
 ### Database Connection Issues
 ```bash
 # Check if PostgreSQL is running
@@ -521,30 +533,53 @@ Delivery-Pipeline/
 │   │   ├── schemas.py           # Pydantic schemas
 │   │   ├── auth.py              # JWT authentication
 │   │   ├── rbac.py              # Role-based access control
-│   │   ├── deps.py              # FastAPI dependencies
-│   │   ├── routers/             # API routers
-│   │   ├── services/            # Business logic
-│   │   └── agents/              # LangGraph workflow
+│   │   ├── deps.py              # FastAPI dependencies (incl. get_current_user_for_preview)
+│   │   ├── routers/             # API routers (auth, projects, configuration, client_management, etc.)
+│   │   ├── services/            # Business logic (preview_renderer, validation_runner, storage, etc.)
+│   │   ├── agents/              # LangGraph workflow
+│   │   └── middleware/          # Security headers (X-Frame-Options, CSP for preview)
 │   ├── alembic/                 # Database migrations
-│   ├── generated_previews/      # AI template preview artifacts
-│   ├── scripts/                 # Utility scripts
+│   ├── generated_previews/      # AI template preview artifacts (optional)
+│   ├── scripts/
+│   │   ├── print_chrome_path.py # Print CHROME_PATH for Render (run in Shell)
+│   │   ├── seed_admin.py
+│   │   └── seed_users.py
 │   ├── requirements.txt
-│   └── Dockerfile
+│   └── Dockerfile               # Node + Lighthouse + Playwright chromium/headless_shell
+├── worker/
+│   └── Dockerfile               # Background worker (Lighthouse, Playwright, Chromium)
 ├── frontend/
 │   ├── src/
-│   │   ├── app/                 # Next.js pages
+│   │   ├── app/                 # Next.js App Router pages
 │   │   ├── components/          # React components
-│   │   └── lib/                 # Utilities (API, auth, RBAC)
+│   │   └── lib/                # Utilities (API, auth, RBAC)
 │   ├── package.json
-│   └── Dockerfile
+│   └── (no Dockerfile; Render uses Node runtime)
+├── render.yaml                  # Render Blueprint (backend, frontend, worker, redis, db)
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
 ```
 
+## 🌐 Render Deployment
+
+**Blueprint (`render.yaml`):** Defines `delivery-backend` (Docker), `delivery-frontend` (Node), `delivery-worker` (Docker), `delivery-redis`, `delivery-db`. Use **Blueprint** → Apply so the backend uses **Docker** (required for template validation).
+
+**Backend (template validation):** The backend must run as **Docker** (not native Python) so Lighthouse and Playwright are installed in the image. When using Docker:
+- **Build command** and **Start command** in Render are left **empty** (Dockerfile defines build and CMD).
+- **Dockerfile path:** `backend/Dockerfile`; **Docker context:** `backend`.
+- Env **PLAYWRIGHT_BROWSERS_PATH** = `/app/.cache/ms-playwright` is set in the blueprint.
+
+If validation fails with "Chrome/Chromium not found" or "CHROME_PATH must be set":
+1. **Get the path:** Log in as Admin and open `GET /api/debug/chrome-path` (e.g. `https://<backend-url>/api/debug/chrome-path`), or in Render Shell run `python scripts/print_chrome_path.py` from the backend directory.
+2. **Set env:** Backend → Environment → Add **CHROME_PATH** = the value returned (e.g. `/app/.cache/ms-playwright/chromium-1208/chrome-linux/chrome`).
+3. Save and redeploy.
+
+**Worker:** Uses `worker/Dockerfile`; has Lighthouse, Playwright, and Chromium for jobs that need them. Same Redis and DB as backend.
+
 ## 🌐 Render Environment Variables
 
-The blueprint (`render.yaml`) sets DATABASE_URL, REDIS_URL, SECRET_KEY, CORS, FRONTEND_URL, and NEXT_PUBLIC_API_URL. After deploy, add or override in the **Render Dashboard** (each service → Environment):
+The blueprint sets DATABASE_URL, REDIS_URL, SECRET_KEY, CORS, FRONTEND_URL, BACKEND_URL, PLAYWRIGHT_BROWSERS_PATH (backend), and NEXT_PUBLIC_API_URL (frontend). After deploy, add or override in the **Render Dashboard** (each service → Environment):
 
 | Variable | Where to get it |
 |----------|------------------|
@@ -558,6 +593,8 @@ The blueprint (`render.yaml`) sets DATABASE_URL, REDIS_URL, SECRET_KEY, CORS, FR
 | **OPENAI_TIMEOUT_SECONDS** | Request timeout (default: `60`). |
 | **RESEND_API_KEY** | [Resend](https://resend.com) — for onboarding/completion emails |
 | **SENTRY_DSN** | [Sentry](https://sentry.io) — for error tracking |
+| **PLAYWRIGHT_BROWSERS_PATH** (Backend) | Set by blueprint to `/app/.cache/ms-playwright`. Do not override unless needed. |
+| **CHROME_PATH** (Backend, optional) | If template validation reports "Chrome/Chromium not found", set to the path from `GET /api/debug/chrome-path` or `python scripts/print_chrome_path.py`. |
 | **AWS S3** (optional) | Set **STORAGE_BACKEND=s3** and **S3_BUCKET**, **S3_ACCESS_KEY**, **S3_SECRET_KEY**, **S3_REGION** from [AWS IAM](https://console.aws.amazon.com/iam/) / S3 or Cloudflare R2. See [docs/RENDER_ENV.md](docs/RENDER_ENV.md#optional-aws-s3-or-s3-compatible-storage). |
 
 Full list and optional vars (SMTP, webhooks): see **[docs/RENDER_ENV.md](docs/RENDER_ENV.md)**.

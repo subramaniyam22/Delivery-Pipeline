@@ -38,7 +38,7 @@ python -m scripts.seed.seed_templates_prod
 - Preview URL: `https://example.com/previews/<slug>-v<version>`
 - Thumbnails: `https://placehold.co/600x400?text=<name>`
 
-Replace these with your real preview infrastructure (e.g. a preview service that renders templates with the demo dataset). The API `GET /api/templates/demo-dataset?key=pmc_default_v1` returns the JSON dataset so a future preview renderer can fetch it and render templates with “real” content.
+The app provides preview via **POST /api/templates/{id}/generate-preview** and **GET /api/templates/{id}/preview**. Replace placeholder URLs with your real preview infrastructure (e.g. a preview service that renders templates with the demo dataset). The API `GET /api/templates/demo-dataset?key=pmc_default_v1` returns the JSON dataset so a future preview renderer can fetch it and render templates with “real” content.
 
 ## Uniqueness and default
 
