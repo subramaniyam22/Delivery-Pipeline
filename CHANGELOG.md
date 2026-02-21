@@ -1,6 +1,6 @@
 # CHANGELOG
 
-All notable changes to the Delivery Automation Suite project.
+All notable changes to the Delivery Automation Intelligence System Yield project.
 
 ## [2.0.0] - 2026-02-04
 

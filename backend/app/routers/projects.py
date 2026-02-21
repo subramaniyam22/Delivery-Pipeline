@@ -40,6 +40,11 @@ class GenerateClientPreviewRequest(BaseModel):
     force: bool = False
 
 
+class ConfirmFallbackRequest(BaseModel):
+    """Confirm use of fallback template when selected template is missing."""
+    fallback_template_id: Optional[UUID] = None  # If omitted, default_template_id from config is used
+
+
 def _normalize_locations(value: Optional[str], names: Optional[List[str]]) -> List[str]:
     if names:
         return [item.strip() for item in names if isinstance(item, str) and item.strip()]
@@ -698,6 +703,37 @@ def update_onboarding(
             )
     # For MVP, we'll use the workflow context
     return {"success": True, "message": "Onboarding data updated"}
+
+
+@router.post("/{project_id}/confirm-fallback")
+def confirm_fallback_template(
+    project_id: UUID,
+    body: ConfirmFallbackRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Confirm use of fallback template when selected template is missing (Consultant/Admin/Manager)."""
+    check_full_access(current_user, project_id)
+    project = project_service.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    from app.services.template_instance_service import confirm_fallback
+    from app.models import AdminConfig
+    fallback_id = body.fallback_template_id
+    if not fallback_id:
+        cfg = db.query(AdminConfig).filter(AdminConfig.key == "default_template_id").first()
+        if cfg and cfg.value_json:
+            try:
+                fallback_id = UUID(str(cfg.value_json))
+            except (ValueError, TypeError):
+                pass
+    if fallback_id:
+        from app.models import TemplateRegistry
+        t = db.query(TemplateRegistry).filter(TemplateRegistry.id == fallback_id).first()
+        if not t:
+            raise HTTPException(status_code=400, detail="Fallback template not found")
+    instance = confirm_fallback(db, project_id, fallback_id)
+    return {"success": True, "message": "Fallback template confirmed", "template_instance_id": str(instance.id)}
 
 
 @router.post("/{project_id}/hitl-toggle")

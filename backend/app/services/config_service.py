@@ -114,7 +114,28 @@ DEFAULT_CONFIGS = {
     "default_template_id": None,
     "worker_concurrency_json": {
         "max_parallel_jobs": 2
-    }
+    },
+    "decision_policies_json": {
+        "reminder_cadence_hours": 24,
+        "max_reminders": 10,
+        "idle_minutes": 30,
+        "min_scope_percent": 80,
+        "build_autofix_retries": 3,
+        "defect_cycle_cap": 5,
+        "allow_defaults_when_missing": False,
+        "fallback_template_requires_confirmation": True,
+        "axe_block_severities": ["SERIOUS", "CRITICAL"],
+        "axe_callout_max": 5,
+        "lighthouse_floor": {"performance": 90, "accessibility": 95, "best_practices": 90, "seo": 90},
+        "lighthouse_target": {"performance": 95, "accessibility": 98, "best_practices": 95, "seo": 95},
+        "pass_threshold_overall": 98,
+        "requirements_rubric_weights": {"content_accuracy": 40, "layout_design": 30, "components_functionality": 30},
+        "qa_pass_rate_min": 98,
+        "qa_coverage_min": 95,
+        "qa_stability_flake_free_min": 99,
+        "qa_defect_density_critical_per_1k_loc_max": 0.5,
+        "idleness_counts_toward_reminders": False,
+    },
 }
 
 

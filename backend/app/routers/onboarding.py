@@ -132,6 +132,11 @@ PREDEFINED_TASKS = {
 
 DEFAULT_REQUIRED_FIELDS = ["logo", "images", "copy_text", "wcag", "privacy_policy", "theme", "contacts"]
 
+# Sentinels: client can mark a required field as not applicable or not needed; still counts as "provided"
+ONBOARDING_SENTINEL_NOT_APPLICABLE = "NOT_APPLICABLE"
+ONBOARDING_SENTINEL_NOT_NEEDED = "NOT_NEEDED"
+ONBOARDING_SENTINELS = (ONBOARDING_SENTINEL_NOT_APPLICABLE, ONBOARDING_SENTINEL_NOT_NEEDED)
+
 
 # S3 helper functions are now imported from app.services.storage_service
 
@@ -156,7 +161,10 @@ def resolve_required_fields(db: Session, project: Optional[Project]) -> List[str
     return required_fields
 
 def check_field_completion(onboarding_data: OnboardingData, field: str) -> bool:
-    """Check if a specific onboarding field is completed"""
+    """Check if a specific onboarding field is completed (value provided or marked NOT_APPLICABLE/NOT_NEEDED)."""
+    sentinels = getattr(onboarding_data, "field_sentinels_json", None) or {}
+    if sentinels.get(field) in ONBOARDING_SENTINELS:
+        return True
     if field == "logo":
         return bool(onboarding_data.logo_url or onboarding_data.logo_file_path)
     elif field == "images":
@@ -164,7 +172,6 @@ def check_field_completion(onboarding_data: OnboardingData, field: str) -> bool:
     elif field == "copy_text":
         return bool(onboarding_data.copy_text or onboarding_data.use_custom_copy)
     elif field == "wcag":
-        # User must explicitly confirm WCAG settings (not just default value)
         return bool(onboarding_data.wcag_confirmed)
     elif field == "privacy_policy":
         return bool(onboarding_data.privacy_policy_url or onboarding_data.privacy_policy_text)
@@ -278,7 +285,7 @@ Please visit the onboarding form to complete these details:
 This information is required to move your project to the next stage.
 
 Best regards,
-Delivery Automation Suite Team"""
+Delivery Automation Intelligence System Yield Team"""
     
     reminder = ClientReminder(
         project_id=project_id,
@@ -461,6 +468,13 @@ def update_onboarding_data(
             setattr(onboarding, field, update_data[field])
     if 'selected_template_id' in update_data and update_data.get('selected_template_id'):
         onboarding.theme_preference = update_data.get('selected_template_id')
+
+    if 'field_sentinels' in update_data and update_data['field_sentinels'] is not None:
+        raw = update_data['field_sentinels']
+        if isinstance(raw, dict):
+            sentinels = {k: v for k, v in raw.items() if v in ONBOARDING_SENTINELS}
+            onboarding.field_sentinels_json = sentinels
+    onboarding.last_content_update_at = datetime.utcnow()
     
     # Calculate completion percentage
     required_fields = resolve_required_fields(db, project)
@@ -584,7 +598,7 @@ def send_manual_reminder(
     try:
         # Use the module-level function imported at top of file
         # ensure allow fallbacks for sender name
-        sender = f"{current_user.full_name} (via Delivery Automation Suite)" if hasattr(current_user, 'full_name') and current_user.full_name else "Delivery Automation Suite Team"
+        sender = f"{current_user.full_name} (via Delivery Automation Intelligence System Yield)" if hasattr(current_user, 'full_name') and current_user.full_name else "Delivery Automation Intelligence System Yield Team"
         
         # Now returns (success, message/error)
         email_success, email_msg = send_client_reminder_email(
@@ -693,11 +707,18 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
             "status": getattr(project, "client_preview_status", "not_generated"),
         }
     client_wants_full_validation = _get_custom_field(onboarding, "client_wants_full_validation") if onboarding else None
+    cfg_tooltip = get_config(db, "onboarding_field_tooltip")
+    field_tooltip = None
+    if cfg_tooltip and cfg_tooltip.value_json is not None:
+        field_tooltip = cfg_tooltip.value_json if isinstance(cfg_tooltip.value_json, str) else (cfg_tooltip.value_json.get("value") if isinstance(cfg_tooltip.value_json, dict) else None)
+    field_tooltip = field_tooltip or "Each required field must have a value or be marked Not Applicable / Not Needed."
     return {
         "project_title": project.title if project else "Unknown Project",
         "project_id": str(onboarding.project_id),
         "completion_percentage": onboarding.completion_percentage,
         "missing_fields": missing_fields,
+        "field_tooltip": field_tooltip,
+        "field_sentinels": getattr(onboarding, "field_sentinels_json", None) or {},
         "submitted_at": onboarding.submitted_at,
         "missing_fields_eta_json": onboarding.missing_fields_eta_json,
         "client_preview": client_preview,
@@ -787,11 +808,11 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
     client_updatable_fields = [
         'logo_url', 'images', 'copy_text', 'use_custom_copy',
         'custom_copy_word_count', 'custom_copy_final_price', 'custom_copy_notes',
-        'wcag_compliance_required', 'wcag_level', 'wcag_confirmed', 'privacy_policy_url', 
+        'wcag_compliance_required', 'wcag_level', 'wcag_confirmed', 'privacy_policy_url',
         'privacy_policy_text', 'selected_template_id', 'theme_colors', 'contacts',
-        'requirements'
+        'requirements', 'field_sentinels'
     ]
-    
+
     for field in client_updatable_fields:
         if field in data:
             if field == 'images':
@@ -802,11 +823,16 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
                 onboarding.contacts_json = data[field]
             elif field == 'requirements':
                 onboarding.requirements_json = data[field] or {}
+            elif field == 'field_sentinels' and isinstance(data[field], dict):
+                onboarding.field_sentinels_json = {
+                    k: v for k, v in data[field].items() if v in ONBOARDING_SENTINELS
+                }
             else:
                 setattr(onboarding, field, data[field])
             if field == 'selected_template_id' and data.get(field):
                 onboarding.theme_preference = data.get(field)
-    
+    onboarding.last_content_update_at = datetime.utcnow()
+
     # Calculate completion
     project = db.query(Project).filter(Project.id == onboarding.project_id).first()
     required_fields = resolve_required_fields(db, project)
@@ -877,9 +903,8 @@ async def submit_client_onboarding_form(
             if project.require_manual_review:
                 onboarding.review_status = OnboardingReviewStatus.WAITING_FOR_CONSULTANT
             else:
-                # Auto-Approve!
+                # Auto-Approve! Stage transition done below via state machine.
                 onboarding.review_status = OnboardingReviewStatus.APPROVED
-                project.current_stage = Stage.ASSIGNMENT
         else:
             # AI flagged issues
             onboarding.review_status = OnboardingReviewStatus.NEEDS_CHANGES
@@ -909,10 +934,38 @@ async def submit_client_onboarding_form(
     except Exception as e:
         logger.warning("HITL invalidation after onboarding submit failed: %s", e)
     try:
-        from app.services.pipeline_orchestrator import auto_advance
+        from app.services.pipeline_orchestrator import ensure_stage_rows, auto_advance
+        from app.pipeline.state_machine import transition_project_stage
+        ensure_stage_rows(db, project.id)
+        # Only transition to ASSIGNMENT when onboarding is approved (auto or after review)
+        if onboarding.review_status == OnboardingReviewStatus.APPROVED:
+            transition_project_stage(
+                db, project.id,
+                from_stage=Stage.ONBOARDING,
+                to_stage=Stage.ASSIGNMENT,
+                reason="onboarding_submitted",
+                metadata={"source": "client_submit"},
+                actor_user_id=None,
+            )
         auto_advance(db, project.id, trigger_source="onboarding_saved")
     except Exception as e:
         logger.warning("Pipeline auto_advance after onboarding submit failed: %s", e)
+
+    # Lock template for build: create/update ProjectTemplateInstance when a registry template is selected
+    if onboarding.selected_template_id:
+        try:
+            tid_str = str(onboarding.selected_template_id).strip()
+            try:
+                tid = UUID(tid_str)
+            except (ValueError, TypeError):
+                tid = None
+            if tid:
+                t = db.query(TemplateRegistry).filter(TemplateRegistry.id == tid).first()
+                if t:
+                    from app.services.template_instance_service import ensure_template_instance
+                    ensure_template_instance(db, project.id, tid)
+        except Exception as e:
+            logger.warning("Template instance ensure after onboarding submit failed: %s", e)
 
     # When AI approved and client has selected a template, generate clickable website preview in background
     if ai_approved and (onboarding.selected_template_id or onboarding.theme_preference):
@@ -959,7 +1012,7 @@ async def submit_client_onboarding_form(
         #         subject=f"Client submitted onboarding: {project.title}",
         #         message=message,
         #         project_title=project.title,
-        #         sender_name="Delivery Automation Suite"
+        #         sender_name="Delivery Automation Intelligence System Yield"
         #     )
         
         # Send WS Notification

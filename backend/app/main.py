@@ -158,7 +158,7 @@ def seed_demo_users(db):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Delivery Automation Suite",
+    title="Delivery Automation Intelligence System Yield",
     description="Production-ready delivery management system with AI agents",
     version="1.0.0"
 )
@@ -199,7 +199,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 @app.on_event("startup")
 async def startup_event():
     """Initialize application on startup"""
-    logger.info("Starting Delivery Automation Suite...")
+    logger.info("Starting Delivery Automation Intelligence System Yield...")
     logger.info("AI_MODE=%s OPENAI_MODEL=%s", settings.AI_MODE, settings.OPENAI_MODEL)
     if (settings.AI_MODE or "full").lower() != "disabled" and not settings.OPENAI_API_KEY:
         logger.warning(
@@ -364,7 +364,7 @@ def debug_schema(db: Session = Depends(get_db)):
 def read_root():
     """Root endpoint"""
     return {
-        "message": "Delivery Automation Suite API",
+        "message": "Delivery Automation Intelligence System Yield API",
         "version": "1.0.0",
         "status": "running"
     }

@@ -9,7 +9,7 @@ import RequireCapability from '@/components/RequireCapability';
 import { Dialog } from '@/components/ui/dialog';
 import PageHeader from '@/components/PageHeader';
 
-type ConfigTab = 'template_registry' | 'sla' | 'thresholds' | 'preview_strategy' | 'hitl_gates' | 'learning';
+type ConfigTab = 'template_registry' | 'sla' | 'thresholds' | 'preview_strategy' | 'hitl_gates' | 'decision_policies' | 'learning';
 type TemplateDetailSubTab = 'overview' | 'preview' | 'validation' | 'versions' | 'blueprint' | 'performance' | 'evolution';
 
 interface TemplateRegistry {
@@ -184,6 +184,30 @@ interface SLAConfig {
     is_active: boolean;
 }
 
+function defaultDecisionPolicies() {
+    return {
+        reminder_cadence_hours: 24,
+        max_reminders: 10,
+        idle_minutes: 30,
+        min_scope_percent: 80,
+        build_autofix_retries: 3,
+        defect_cycle_cap: 5,
+        allow_defaults_when_missing: false,
+        fallback_template_requires_confirmation: true,
+        axe_block_severities: ['SERIOUS', 'CRITICAL'],
+        axe_callout_max: 5,
+        lighthouse_floor: { performance: 90, accessibility: 95, best_practices: 90, seo: 90 },
+        lighthouse_target: { performance: 95, accessibility: 98, best_practices: 95, seo: 95 },
+        pass_threshold_overall: 98,
+        requirements_rubric_weights: { content_accuracy: 40, layout_design: 30, components_functionality: 30 },
+        qa_pass_rate_min: 98,
+        qa_coverage_min: 95,
+        qa_stability_flake_free_min: 99,
+        qa_defect_density_critical_per_1k_loc_max: 0.5,
+        idleness_counts_toward_reminders: false,
+    };
+}
+
 export default function ConfigurationPage() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
@@ -219,11 +243,14 @@ export default function ConfigurationPage() {
     const [previewStrategy, setPreviewStrategy] = useState('zip_only');
     const [savingPreview, setSavingPreview] = useState(false);
     const [savingDefaultTemplate, setSavingDefaultTemplate] = useState(false);
+    const [decisionPolicies, setDecisionPolicies] = useState<Record<string, any>>(defaultDecisionPolicies());
+    const [savingDecisionPolicies, setSavingDecisionPolicies] = useState(false);
     const [configVersions, setConfigVersions] = useState<Record<string, number | null>>({
         default_template_id: null,
         global_stage_gates_json: null,
         global_thresholds_json: null,
         preview_strategy: null,
+        decision_policies_json: null,
     });
     const [showAddForm, setShowAddForm] = useState(false);
     const [templateSource, setTemplateSource] = useState<'ai' | 'git'>('ai');
@@ -293,7 +320,7 @@ export default function ConfigurationPage() {
         validate_responsiveness: true,
     });
 
-    type SectionKey = 'templates_default' | 'sla_config' | 'thresholds' | 'preview_strategy' | 'hitl_gates';
+    type SectionKey = 'templates_default' | 'sla_config' | 'thresholds' | 'preview_strategy' | 'hitl_gates' | 'decision_policies';
     type SectionState = {
         initialValue: any;
         currentValue: any;
@@ -307,6 +334,7 @@ export default function ConfigurationPage() {
         thresholds: { initialValue: null, currentValue: null, isDirty: false, initialized: false },
         preview_strategy: { initialValue: null, currentValue: null, isDirty: false, initialized: false },
         hitl_gates: { initialValue: null, currentValue: null, isDirty: false, initialized: false },
+        decision_policies: { initialValue: null, currentValue: null, isDirty: false, initialized: false },
     });
 
     const isDeepEqual = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
@@ -369,6 +397,9 @@ export default function ConfigurationPage() {
                 }
             );
         }
+        if (section === 'decision_policies') {
+            setDecisionPolicies(initialValue || defaultDecisionPolicies());
+        }
         setSectionState(prev => ({
             ...prev,
             [section]: {
@@ -407,7 +438,8 @@ export default function ConfigurationPage() {
             (section === 'templates_default' && savingDefaultTemplate) ||
             (section === 'sla_config' && savingSla) ||
             (section === 'thresholds' && savingThresholds) ||
-            (section === 'hitl_gates' && savingGates);
+            (section === 'hitl_gates' && savingGates) ||
+            (section === 'decision_policies' && savingDecisionPolicies);
         if (error) {
             return (
                 <button
@@ -472,6 +504,7 @@ export default function ConfigurationPage() {
         thresholds: 'Thresholds',
         preview_strategy: 'Preview Strategy',
         hitl_gates: 'HITL Gates',
+        decision_policies: 'Decision Policies',
     };
 
     const handleDiscardAll = () => {
@@ -604,6 +637,15 @@ export default function ConfigurationPage() {
         setSectionInitial('hitl_gates', globalStageGates);
     };
 
+    const saveDecisionPolicies = async () => {
+        if (!canEditDecisionPolicies) throw new Error('Only Admin/Manager can change this setting.');
+        const response = await configAPI.update('decision_policies_json', decisionPolicies, configVersions.decision_policies_json);
+        if (typeof response.data?.config_version === 'number') {
+            setConfigVersions(prev => ({ ...prev, decision_policies_json: response.data.config_version }));
+        }
+        setSectionInitial('decision_policies', decisionPolicies);
+    };
+
     const handleSaveAll = async () => {
         setError('');
         setSuccess('');
@@ -614,6 +656,7 @@ export default function ConfigurationPage() {
             'sla_config',
             'thresholds',
             'hitl_gates',
+            'decision_policies',
         ];
         for (const section of ordered) {
             if (!dirty.includes(section)) continue;
@@ -623,6 +666,7 @@ export default function ConfigurationPage() {
             if (section === 'sla_config') validationError = validateSla();
             if (section === 'thresholds') validationError = validateThresholds();
             if (section === 'hitl_gates') validationError = validateGates();
+            if (section === 'decision_policies') validationError = '';
             if (validationError) {
                 setValidationErrors(section, [validationError]);
                 setError(`Failed to save ${sectionLabels[section]}: ${validationError}`);
@@ -634,6 +678,7 @@ export default function ConfigurationPage() {
                 if (section === 'sla_config') await saveSlaConfigs();
                 if (section === 'thresholds') await saveThresholds();
                 if (section === 'hitl_gates') await saveGates();
+                if (section === 'decision_policies') await saveDecisionPolicies();
             } catch (err: any) {
                 if (isConflictError(err)) {
                     setValidationErrors(section, [conflictMessage]);
@@ -657,6 +702,7 @@ export default function ConfigurationPage() {
     const canEditThresholds = isAdmin;
     const canEditPreviewStrategy = isAdmin;
     const canEditGates = isAdmin || isManager;
+    const canEditDecisionPolicies = isAdmin || isManager;
 
     useEffect(() => {
         const currentUser = getCurrentUser();
@@ -756,14 +802,28 @@ export default function ConfigurationPage() {
             } catch {
                 // ignore missing config
             }
+            let decisionPoliciesValue = defaultDecisionPolicies();
+            try {
+                const dpRes = await configAPI.get('decision_policies_json');
+                if (dpRes.data?.value_json && typeof dpRes.data.value_json === 'object') {
+                    decisionPoliciesValue = { ...defaultDecisionPolicies(), ...dpRes.data.value_json };
+                }
+                if (typeof dpRes.data?.config_version === 'number') {
+                    setConfigVersions(prev => ({ ...prev, decision_policies_json: dpRes.data.config_version }));
+                }
+            } catch {
+                // ignore missing config
+            }
             setGlobalStageGates(gatesValue);
             setGlobalThresholds(thresholdsValue);
             setPreviewStrategy(previewValue);
+            setDecisionPolicies(decisionPoliciesValue);
             setSectionInitial('templates_default', defaultTemplateValue);
             setSectionInitial('sla_config', slaData);
             setSectionInitial('hitl_gates', gatesValue);
             setSectionInitial('thresholds', thresholdsValue);
             setSectionInitial('preview_strategy', previewValue);
+            setSectionInitial('decision_policies', decisionPoliciesValue);
         } finally {
             setLoading(false);
         }
@@ -788,6 +848,10 @@ export default function ConfigurationPage() {
     useEffect(() => {
         setSectionCurrent('hitl_gates', globalStageGates);
     }, [globalStageGates]);
+
+    useEffect(() => {
+        setSectionCurrent('decision_policies', decisionPolicies);
+    }, [decisionPolicies]);
 
     const handleAddTemplate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -1418,6 +1482,29 @@ export default function ConfigurationPage() {
         }
     };
 
+    const handleSaveDecisionPolicies = async () => {
+        setError('');
+        setSuccess('');
+        if (!canEditDecisionPolicies) {
+            setError('Only Admin/Manager can change this setting.');
+            return;
+        }
+        setSavingDecisionPolicies(true);
+        try {
+            await saveDecisionPolicies();
+            setSuccess('Decision policies updated');
+            setValidationErrors('decision_policies', []);
+        } catch (err: any) {
+            const message = isConflictError(err)
+                ? conflictMessage
+                : (err.response?.data?.detail || 'Failed to update decision policies');
+            setError(message);
+            setValidationErrors('decision_policies', [message]);
+        } finally {
+            setSavingDecisionPolicies(false);
+        }
+    };
+
     const handleSavePreviewStrategy = async () => {
         setError('');
         setSuccess('');
@@ -1477,7 +1564,7 @@ export default function ConfigurationPage() {
                 )}
 
                 <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                    {(['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates', 'learning'] as ConfigTab[]).map((tab) => (
+                    {(['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates', 'decision_policies', 'learning'] as ConfigTab[]).map((tab) => (
                         <button
                             key={tab}
                             type="button"
@@ -1498,6 +1585,7 @@ export default function ConfigurationPage() {
                             {tab === 'thresholds' && 'Quality Thresholds'}
                             {tab === 'preview_strategy' && 'Preview Strategy'}
                             {tab === 'hitl_gates' && 'HITL Gates'}
+                            {tab === 'decision_policies' && 'Decision Policies'}
                             {tab === 'learning' && 'Learning Proposals'}
                         </button>
                     ))}
@@ -2831,6 +2919,53 @@ export default function ConfigurationPage() {
                             </>
                         );
                     })()}
+                </section>
+                )}
+
+                {activeConfigTab === 'decision_policies' && (
+                <section style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '24px' }}>
+                    <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <PageHeader
+                            title="Decision Policies"
+                            purpose="Autonomous pipeline: reminders, scope, build/defect caps, quality thresholds. Applied to new jobs with versioning."
+                            affects="Reminders, HOLD after max reminders, build auto-fix retries, defect cycle cap, Lighthouse/Axe/QA gating."
+                            variant="section"
+                        />
+                        {renderDirtyDot('decision_policies')}
+                        {renderStatusChip('decision_policies')}
+                    </div>
+                    {!canEditDecisionPolicies && (
+                        <p style={{ marginTop: 0, marginBottom: '12px', color: '#64748b', fontSize: '12px' }}>
+                            Only Admin or Manager can change these settings.
+                        </p>
+                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Reminder cadence (hours)<input type="number" min={1} value={decisionPolicies.reminder_cadence_hours ?? 24} onChange={(e) => setDecisionPolicies(p => ({ ...p, reminder_cadence_hours: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Max reminders (then HOLD)<input type="number" min={1} value={decisionPolicies.max_reminders ?? 10} onChange={(e) => setDecisionPolicies(p => ({ ...p, max_reminders: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Idle minutes (nudge)<input type="number" min={1} value={decisionPolicies.idle_minutes ?? 30} onChange={(e) => setDecisionPolicies(p => ({ ...p, idle_minutes: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Min scope %<input type="number" min={0} max={100} value={decisionPolicies.min_scope_percent ?? 80} onChange={(e) => setDecisionPolicies(p => ({ ...p, min_scope_percent: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Build auto-fix retries<input type="number" min={0} value={decisionPolicies.build_autofix_retries ?? 3} onChange={(e) => setDecisionPolicies(p => ({ ...p, build_autofix_retries: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Defect cycle cap<input type="number" min={1} value={decisionPolicies.defect_cycle_cap ?? 5} onChange={(e) => setDecisionPolicies(p => ({ ...p, defect_cycle_cap: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Pass threshold overall %<input type="number" min={0} max={100} value={decisionPolicies.pass_threshold_overall ?? 98} onChange={(e) => setDecisionPolicies(p => ({ ...p, pass_threshold_overall: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Axe callout max<input type="number" min={0} value={decisionPolicies.axe_callout_max ?? 5} onChange={(e) => setDecisionPolicies(p => ({ ...p, axe_callout_max: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }}>
+                            <input type="checkbox" checked={!!decisionPolicies.fallback_template_requires_confirmation} onChange={(e) => setDecisionPolicies(p => ({ ...p, fallback_template_requires_confirmation: e.target.checked }))} disabled={!canEditDecisionPolicies} />
+                            Fallback template requires client confirmation
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }}>
+                            <input type="checkbox" checked={!!decisionPolicies.allow_defaults_when_missing} onChange={(e) => setDecisionPolicies(p => ({ ...p, allow_defaults_when_missing: e.target.checked }))} disabled={!canEditDecisionPolicies} />
+                            Allow defaults when missing
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }} title="If enabled, in-app idle nudge counts toward the 10 reminder cap.">
+                            <input type="checkbox" checked={!!decisionPolicies.idleness_counts_toward_reminders} onChange={(e) => setDecisionPolicies(p => ({ ...p, idleness_counts_toward_reminders: e.target.checked }))} disabled={!canEditDecisionPolicies} />
+                            Idle nudge counts toward max reminders
+                        </label>
+                    </div>
+                    <div style={{ marginTop: '16px' }}>
+                        <button onClick={handleSaveDecisionPolicies} disabled={savingDecisionPolicies || !canEditDecisionPolicies} style={{ padding: '8px 24px', background: '#2563eb', color: 'white', borderRadius: '6px', border: 'none', cursor: canEditDecisionPolicies ? 'pointer' : 'not-allowed', fontWeight: 600, fontSize: '13px', opacity: savingDecisionPolicies || !canEditDecisionPolicies ? 0.7 : 1 }}>
+                            {savingDecisionPolicies ? 'Saving...' : 'Save Decision Policies'}
+                        </button>
+                    </div>
                 </section>
                 )}
 

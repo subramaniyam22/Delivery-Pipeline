@@ -185,6 +185,12 @@ class ProjectResponse(BaseModel):
     sales_rep: Optional[UserBrief] = None
     manager_chk: Optional[UserBrief] = None
 
+    # Autonomous pipeline: hold/review/blockers/defect loop
+    hold_reason: Optional[str] = None
+    needs_review_reason: Optional[str] = None
+    blockers_json: Optional[List[str]] = None
+    defect_cycle_count: Optional[int] = 0
+
 
 class OnboardingUpdateRequest(BaseModel):
     data: Dict[str, Any]
@@ -630,6 +636,8 @@ class OnboardingDataUpdate(BaseModel):
     custom_fields: Optional[List[Dict[str, Any]]] = None
     auto_reminder_enabled: Optional[bool] = None
     requirements: Optional[Dict[str, Any]] = None
+    # Per-field sentinels: NOT_APPLICABLE | NOT_NEEDED (counts as provided)
+    field_sentinels: Optional[Dict[str, str]] = None
 
 
 class OnboardingDataResponse(BaseModel):
@@ -659,6 +667,8 @@ class OnboardingDataResponse(BaseModel):
     custom_fields_json: List[Dict[str, Any]]
     requirements_json: Dict[str, Any]
     completion_percentage: int
+    field_sentinels_json: Dict[str, str] = {}
+    field_tooltip: Optional[str] = "Each required field must have a value or be marked Not Applicable / Not Needed."
     last_reminder_sent: Optional[datetime]
     next_reminder_at: Optional[datetime]
     reminder_count: int
@@ -666,6 +676,7 @@ class OnboardingDataResponse(BaseModel):
     reminder_interval_hours: Optional[int] = 24
     submitted_at: Optional[datetime] = None
     missing_fields_eta_json: Optional[Dict[str, str]] = None
+    last_content_update_at: Optional[datetime] = None
     
     review_status: OnboardingReviewStatus = OnboardingReviewStatus.PENDING
     ai_review_notes: Optional[str] = None

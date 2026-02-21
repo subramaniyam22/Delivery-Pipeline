@@ -17,6 +17,7 @@ from app.jobs.queue import (
     mark_success,
 )
 from app.models import StageStatus, AdminConfig, AuditLog, JobRunStatus, JobRun, Project
+from app.error_codes import ErrorCode
 from app.services.workflow_runner import run_stage
 from app.services.pipeline_orchestrator import on_job_success, on_job_failure
 from app.services.job_queue import (
@@ -106,10 +107,39 @@ def _run_generic_job(job, db) -> bool:
     return True
 
 
+SWEEPER_INTERVAL_SECONDS = 90  # Run autopilot sweeper every 90s
+_last_sweeper_run = 0.0
+
+
+def _run_autopilot_sweeper() -> None:
+    """Periodic backstop: enqueue ready stages; apply onboarding reminders and HOLD."""
+    global _last_sweeper_run
+    now = time.time()
+    if now - _last_sweeper_run < SWEEPER_INTERVAL_SECONDS:
+        return
+    _last_sweeper_run = now
+    try:
+        from app.services.pipeline_orchestrator import (
+            run_autopilot_sweeper,
+            run_onboarding_reminders_and_hold,
+            run_onboarding_idle_nudge,
+        )
+        db = SessionLocal()
+        try:
+            run_onboarding_reminders_and_hold(db, max_projects=30)
+            run_onboarding_idle_nudge(db, max_projects=20)
+            run_autopilot_sweeper(db, max_projects=50)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning("Autopilot sweeper failed: %s", e)
+
+
 def _run_once(worker_id: str) -> bool:
     db = SessionLocal()
     try:
         _mark_stuck_jobs(db)
+        _run_autopilot_sweeper()
         generic_job = claim_next_generic_job(worker_id, lease_seconds=LEASE_SECONDS, db=db)
         if generic_job:
             return _run_generic_job(generic_job, db)
@@ -161,7 +191,11 @@ def _run_once(worker_id: str) -> bool:
             if status == StageStatus.NEEDS_HUMAN:
                 mark_needs_human(job.id, report_json=result, db=db)
             elif status == StageStatus.FAILED:
-                mark_failed(job.id, error_json=result, retryable=True, db=db)
+                err_code = (result or {}).get("error_code") or ErrorCode.JOB_EXECUTION_ERROR.value
+                payload = dict(result) if isinstance(result, dict) else {"error": str(result)}
+                if "error_code" not in payload:
+                    payload["error_code"] = err_code
+                mark_failed(job.id, error_json=payload, retryable=True, db=db)
                 try:
                     err_msg = str(result) if result else None
                     on_job_failure(db, job.project_id, job.stage, job.id, error_message=err_msg)
@@ -170,7 +204,7 @@ def _run_once(worker_id: str) -> bool:
             else:
                 mark_success(job.id, db=db)
                 try:
-                    on_job_success(db, job.project_id, job.stage, job.id)
+                    on_job_success(db, job.project_id, job.stage, job.id, result=result)
                 except Exception as hook_err:
                     logger.warning("Pipeline on_job_success hook failed: %s", hook_err)
             logger.info(
@@ -202,7 +236,7 @@ def _run_once(worker_id: str) -> bool:
             logger.error("Job timed out: %s", exc)
             mark_failed(
                 job.id,
-                error_json={"error": "Job execution timed out"},
+                error_json={"error_code": ErrorCode.TIMEOUT_STUCK_RUN.value, "error": "Job execution timed out"},
                 retryable=False,
                 db=db,
             )
@@ -226,7 +260,12 @@ def _run_once(worker_id: str) -> bool:
                 db.commit()
         except Exception as exc:
             logger.exception("Job execution failed")
-            mark_failed(job.id, error_json={"error": str(exc)}, retryable=True, db=db)
+            mark_failed(
+                job.id,
+                error_json={"error_code": ErrorCode.JOB_EXECUTION_ERROR.value, "error": str(exc)},
+                retryable=True,
+                db=db,
+            )
             try:
                 on_job_failure(db, job.project_id, job.stage, job.id, error_message=str(exc))
             except Exception as hook_err:
@@ -250,7 +289,7 @@ def _mark_stuck_jobs(db):
         if job.started_at and (now - job.started_at.timestamp()) > timeout_seconds:
             mark_failed(
                 job.id,
-                error_json={"error": "Job exceeded max runtime"},
+                error_json={"error_code": ErrorCode.TIMEOUT_STUCK_RUN.value, "error": "Job exceeded max runtime"},
                 retryable=False,
                 db=db,
             )

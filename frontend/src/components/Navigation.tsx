@@ -102,11 +102,11 @@ export default function Navigation() {
                     aria-label="Go to dashboard"
                 >
                     <div className="brand-logo" aria-hidden="true">
-                        <img src="/logo.svg" alt="Delivery Automation Suite logo" />
+                        <img src="/logo.png" alt="DAISY logo" />
                     </div>
                     <div className="brand-text">
-                        <span className="brand-name">Delivery</span>
-                        <span className="brand-tagline">Automation Suite</span>
+                        <span className="brand-name">DAISY</span>
+                        <span className="brand-tagline">Delivery Automation Intelligence System Yield</span>
                     </div>
                 </div>
 

@@ -30,6 +30,8 @@ class ProjectStatus(str, enum.Enum):
     ARCHIVED = "ARCHIVED"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
+    HOLD = "HOLD"  # e.g. awaiting client after max reminders
+    NEEDS_REVIEW = "NEEDS_REVIEW"  # e.g. defect cycle cap or build retry cap
 
 
 class OnboardingReviewStatus(str, enum.Enum):
@@ -212,6 +214,12 @@ class Project(Base):
     autopilot_lock_until = Column(DateTime, nullable=True)
     contract_build_error = Column(Text, nullable=True)  # set when contract build fails; cleared on success
 
+    # Autonomous pipeline: hold/review reasons and defect loop cap
+    hold_reason = Column(Text, nullable=True)  # e.g. "Awaiting client response. We attempted to contact you 10 times."
+    needs_review_reason = Column(Text, nullable=True)  # e.g. "Defect cycle cap (5) reached"
+    blockers_json = Column(JSONB, default=list, nullable=True)  # list of blocker strings
+    defect_cycle_count = Column(Integer, default=0, nullable=False)  # Build <-> Defect Validation cycles
+
     # Team Assignments
     manager_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     pc_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -245,6 +253,7 @@ class Project(Base):
     stage_approvals = relationship("StageApproval", back_populates="project", cascade="all, delete-orphan")
     project_contract = relationship("ProjectContract", back_populates="project", uselist=False, cascade="all, delete-orphan")
     delivery_outcomes = relationship("DeliveryOutcome", back_populates="project", cascade="all, delete-orphan")
+    template_instance = relationship("ProjectTemplateInstance", back_populates="project", uselist=False, cascade="all, delete-orphan")
 
 
 class Task(Base):
@@ -287,6 +296,7 @@ class JobRun(Base):
     correlation_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     requested_by = Column(String(50), nullable=True)  # "system" | "manual"
     requested_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    config_version = Column(Integer, nullable=True)  # AdminConfig.config_version at enqueue time
 
     project = relationship("Project", back_populates="job_runs")
     stage_outputs = relationship("StageOutput", back_populates="job_run", cascade="all, delete-orphan")
@@ -466,8 +476,30 @@ class TemplateRegistry(Base):
     # Template performance metrics (Prompt 9, aggregated from sentiment + delivery_outcomes)
     performance_metrics_json = Column(JSONB, default=dict)  # usage_count, avg_sentiment, avg_cycle_time_days, avg_defects, conversion_proxy, last_updated_at
     is_deprecated = Column(Boolean, default=False)
+    # Versioned build source for clone: immutable ref for build (S3 key or git ref)
+    build_source_type = Column(String(20), nullable=True)  # s3 | git
+    build_source_ref = Column(String(1000), nullable=True)  # S3 object key or git commit/tag ref
 
     __table_args__ = (UniqueConstraint("slug", "version", name="uq_templates_slug_version"),)
+
+
+class ProjectTemplateInstance(Base):
+    """Client-specific template lock for a project (clone template: which template version to build). One per project."""
+    __tablename__ = "project_template_instances"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    # When selected template is missing: fallback only after client confirmation
+    fallback_template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    fallback_confirmed_at = Column(DateTime, nullable=True)
+    use_fallback_callout = Column(Boolean, default=False, nullable=False)  # Show "A safe fallback template was used with your approval"
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", back_populates="template_instance")
+    template = relationship("TemplateRegistry", foreign_keys=[template_id])
+    fallback_template = relationship("TemplateRegistry", foreign_keys=[fallback_template_id])
 
 
 class TemplateEvolutionProposal(Base):
@@ -678,6 +710,10 @@ class OnboardingData(Base):
     reminder_count = Column(Integer, default=0)
     auto_reminder_enabled = Column(Boolean, default=True)
     reminder_interval_hours = Column(Integer, default=24)  # 6, 12, or 24 hours
+
+    # Per-field sentinels: NOT_APPLICABLE | NOT_NEEDED (counts as provided for completion)
+    field_sentinels_json = Column(JSONB, default=dict)  # {"logo": "NOT_APPLICABLE", "images": "NOT_NEEDED"}
+    last_content_update_at = Column(DateTime, nullable=True)  # For idle nudge
 
     # Client submission tracking
     submitted_at = Column(DateTime, nullable=True)

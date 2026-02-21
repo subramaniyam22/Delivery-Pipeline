@@ -28,9 +28,9 @@ export default function HomePage() {
         }}>
             <div style={{ textAlign: 'center' }}>
                 <div style={{ marginBottom: '16px' }}>
-                    <img src="/logo.svg" alt="Delivery Automation Suite logo" style={{ width: '56px', height: '56px' }} />
+                    <img src="/logo.png" alt="DAISY logo" style={{ width: '56px', height: '56px' }} />
                 </div>
-                <h1 style={{ margin: '0 0 8px 0' }}>Delivery Automation Suite</h1>
+                <h1 style={{ margin: '0 0 8px 0' }}>Delivery Automation Intelligence System Yield</h1>
                 <p style={{ opacity: 0.7 }}>Redirecting...</p>
             </div>
         </div>

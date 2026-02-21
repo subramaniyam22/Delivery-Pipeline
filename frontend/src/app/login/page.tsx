@@ -112,9 +112,9 @@ export default function LoginPage() {
         <div className="login-card">
           <header className="login-header">
             <div className="logo" aria-hidden="true">
-              <img src="/logo.svg" alt="Delivery Automation Suite logo" style={{ width: '48px', height: '48px' }} />
+              <img src="/logo.png" alt="DAISY logo" style={{ width: '48px', height: '48px' }} />
             </div>
-            <h1>Delivery Automation Suite</h1>
+            <h1>Delivery Automation Intelligence System Yield</h1>
           </header>
 
           <form onSubmit={handleSubmit} aria-label="Login form">

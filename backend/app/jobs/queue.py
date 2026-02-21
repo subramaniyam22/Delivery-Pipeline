@@ -51,6 +51,7 @@ def enqueue_job(
     correlation_id: Optional[UUID] = None,
     requested_by: Optional[str] = None,
     requested_by_user_id: Optional[UUID] = None,
+    config_version: Optional[int] = None,
 ) -> UUID:
     session = _get_db(db)
     close_session = db is None
@@ -69,6 +70,7 @@ def enqueue_job(
             correlation_id=correlation_id,
             requested_by=requested_by,
             requested_by_user_id=requested_by_user_id,
+            config_version=config_version,
         )
         session.add(job)
         session.commit()
@@ -80,6 +82,7 @@ def enqueue_job(
 
 
 def claim_next_job(worker_id: str, db: Optional[Session] = None) -> Optional[JobRun]:
+    """Claim one QUEUED job. Uses row-level lock (skip_locked) for safe concurrency."""
     session = _get_db(db)
     close_session = db is None
     try:

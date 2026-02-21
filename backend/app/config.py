@@ -62,8 +62,8 @@ class Settings(BaseSettings):
     
     # Email (Resend)
     RESEND_API_KEY: Optional[str] = None
-    EMAIL_FROM: str = "Delivery Automation Suite <noreply@resend.dev>"
-    APP_NAME: str = "Delivery Automation Suite"
+    EMAIL_FROM: str = "Delivery Automation Intelligence System Yield <noreply@resend.dev>"
+    APP_NAME: str = "Delivery Automation Intelligence System Yield"
 
     # SMTP (Completion emails)
     SMTP_HOST: Optional[str] = None

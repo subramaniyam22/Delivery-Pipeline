@@ -1,13 +1,14 @@
 """
 Test configuration and fixtures.
+Importing app.main is deferred to the client fixture so tests that only need
+db_session/admin_user (e.g. test_autopilot_integration) do not trigger
+heavy app imports (e.g. langchain) and avoid pydantic/langsmith compatibility issues.
 """
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.main import app
 from app.db import Base, get_db
 from app.models import User, Role, Region
 from app.auth import get_password_hash
@@ -41,12 +42,15 @@ def db_session():
 @pytest.fixture(scope="function")
 def client(db_session):
     """Create a test client with database session override."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
     def override_get_db():
         try:
             yield db_session
         finally:
             pass
-    
+
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
         yield test_client

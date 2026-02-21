@@ -719,15 +719,10 @@ export default function ProjectDetailPage() {
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const canRunAutoAssign = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const isExecutiveAdmin = user?.role === 'ADMIN';
+    // Enqueue is Recovery-only: only Admin/Manager (normal flow is zero-HITL autopilot)
     const canEnqueueStage = (stage: string) => {
         if (!user?.role) return false;
-        if (user.role === 'ADMIN' || user.role === 'MANAGER') return true;
-        if (user.role === 'BUILDER') return stage === 'BUILD';
-        if (user.role === 'TESTER') return stage === 'TEST';
-        if (user.role === 'PC') return stage === 'ASSIGNMENT';
-        if (user.role === 'CONSULTANT') return stage === 'ONBOARDING';
-        if (user.role === 'SALES') return stage === 'SALES';
-        return false;
+        return user.role === 'ADMIN' || user.role === 'MANAGER';
     };
 
     // Check if current user is assigned to this project (check both teamAssignments and project direct fields)
@@ -2326,7 +2321,24 @@ export default function ProjectDetailPage() {
                     </div>
                 )}
 
-                {/* Job Queue */}
+                {/* Autopilot status (zero-HITL: no manual Enqueue needed in normal flow) */}
+                <div style={{ marginBottom: '16px', padding: '12px 16px', borderRadius: '8px', background: project.status === 'HOLD' ? '#fef3c7' : project.status === 'NEEDS_REVIEW' ? '#fee2e2' : '#f0fdf4', border: '1px solid', borderColor: project.status === 'HOLD' ? '#f59e0b' : project.status === 'NEEDS_REVIEW' ? '#ef4444' : '#22c55e' }}>
+                    <strong>Autopilot status:</strong>{' '}
+                    {project.status === 'HOLD' && (
+                        <>On Hold — {project.hold_reason || 'Awaiting client response.'}</>
+                    )}
+                    {project.status === 'NEEDS_REVIEW' && (
+                        <>Needs Review — {project.needs_review_reason || 'Requires admin attention.'}</>
+                    )}
+                    {project.status !== 'HOLD' && project.status !== 'NEEDS_REVIEW' && (
+                        <>Running — Stages advance automatically. No manual Enqueue needed.</>
+                    )}
+                    {typeof project.defect_cycle_count === 'number' && project.defect_cycle_count > 0 && (
+                        <span style={{ marginLeft: '12px' }}>(Defect cycles: {project.defect_cycle_count})</span>
+                    )}
+                </div>
+
+                {/* Job Queue (Recovery: Admin/Manager can force re-run) */}
                 <div className="job-queue-section">
                     <div className="section-header">
                         <h2>Job Queue</h2>
@@ -2337,6 +2349,7 @@ export default function ProjectDetailPage() {
                                     className="btn-action enqueue"
                                     onClick={() => handleEnqueueStage(project.current_stage)}
                                     disabled={enqueueing}
+                                    title="Recovery only: force re-run this stage"
                                 >
                                     {enqueueing ? 'Enqueuing...' : `Enqueue ${project.current_stage}`}
                                 </button>

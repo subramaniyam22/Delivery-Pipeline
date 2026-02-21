@@ -57,11 +57,15 @@ interface RequirementsData {
     call_tracking_plan?: string;
 }
 
+type FieldSentinelValue = 'NOT_APPLICABLE' | 'NOT_NEEDED';
+
 interface OnboardingFormData {
     project_title: string;
     project_id: string;
     completion_percentage: number;
     missing_fields: string[];
+    field_tooltip?: string;
+    field_sentinels?: Record<string, FieldSentinelValue>;
     submitted_at?: string | null;
     missing_fields_eta_json?: Record<string, string>;
     client_preview?: { preview_url?: string; thumbnail_url?: string; status?: string } | null;
@@ -574,7 +578,7 @@ export default function ClientOnboardingPage() {
             setFormData(prev => prev ? {
                 ...prev,
                 completion_percentage: res.data.completion_percentage,
-                missing_fields: res.data.missing_fields || prev.missing_fields,
+                missing_fields: res.data.missing_fields ?? prev.missing_fields,
                 data: { ...prev.data, ...updates }
             } : null);
         } catch (err: any) {
@@ -584,6 +588,25 @@ export default function ClientOnboardingPage() {
         }
     };
 
+    const updateFieldSentinel = async (fieldKey: string, value: FieldSentinelValue) => {
+        if (!formData) return;
+        const next = { ...(formData.field_sentinels || {}), [fieldKey]: value };
+        setSaving(true);
+        setError('');
+        try {
+            const res = await clientAPI.updateOnboardingForm(token, { field_sentinels: next });
+            setFormData(prev => prev ? {
+                ...prev,
+                completion_percentage: res.data.completion_percentage,
+                missing_fields: res.data.missing_fields ?? prev.missing_fields,
+                field_sentinels: next,
+            } : null);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to update');
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const [activePhase, setActivePhase] = useState<string | null>('phase-1');
 
@@ -1046,6 +1069,11 @@ export default function ClientOnboardingPage() {
                     </div>
                 </div>
             </header>
+            {formData.field_tooltip && (
+                <p className="field-tooltip" style={{ margin: '8px 24px 0', fontSize: '13px', color: '#64748b', maxWidth: '560px' }}>
+                    {formData.field_tooltip}
+                </p>
+            )}
 
             {/* Alerts */}
             {error && (
@@ -1058,6 +1086,30 @@ export default function ClientOnboardingPage() {
                 <div className="alert alert-success" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>{success}</span>
                     <button onClick={() => setSuccess('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '0 4px' }}>×</button>
+                </div>
+            )}
+
+            {/* Mark fields as Not Applicable / Not Needed */}
+            {!formData.submitted_at && formData.missing_fields?.length > 0 && (
+                <div style={{ margin: '12px 24px', padding: '12px 16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase' }}>Mark as not required</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                        {formData.missing_fields.map((fieldKey) => (
+                            <div key={fieldKey} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '13px', color: '#334155' }}>{fieldKey.replace(/_/g, ' ')}:</span>
+                                {(formData.field_sentinels || {})[fieldKey] === 'NOT_APPLICABLE' ? (
+                                    <span style={{ fontSize: '12px', color: '#64748b' }}>Not Applicable</span>
+                                ) : (formData.field_sentinels || {})[fieldKey] === 'NOT_NEEDED' ? (
+                                    <span style={{ fontSize: '12px', color: '#64748b' }}>Not Needed</span>
+                                ) : (
+                                    <>
+                                        <button type="button" onClick={() => updateFieldSentinel(fieldKey, 'NOT_APPLICABLE')} disabled={saving} style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: saving ? 'not-allowed' : 'pointer', color: '#475569' }}>Not Applicable</button>
+                                        <button type="button" onClick={() => updateFieldSentinel(fieldKey, 'NOT_NEEDED')} disabled={saving} style={{ padding: '4px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: saving ? 'not-allowed' : 'pointer', color: '#475569' }}>Not Needed</button>
+                                    </>
+                                )}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 

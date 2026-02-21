@@ -1,4 +1,4 @@
-# Delivery Automation Suite MVP
+# Delivery Automation Intelligence System Yield MVP
 
 Production-ready MVP with **FastAPI + LangGraph** backend, **Next.js (App Router)** frontend, and strict **role-based access control (RBAC)**.
 
@@ -218,7 +218,7 @@ Stage work (Build, Test, Onboarding, etc.) runs via a **job queue** and a **back
 
 5. **Optional – watch worker logs**: `docker-compose logs -f backend-worker`
 
-**Summary:** Use **Enqueue** to trigger the AI/agent workflow for a stage. The **backend-worker** must be running for jobs to execute. Manual actions (e.g. Advance, status updates) do not go through the agent.
+**Summary:** The pipeline is **autonomous (zero-HITL)** in normal operation: after Sales handover, no manual "Enqueue" or "Run learning" clicks are required. Use **Enqueue** only for **recovery** (Admin/Manager). The **backend-worker** must be running for jobs to execute and for the **autopilot sweeper** (every ~90s) to enqueue ready stages and run onboarding reminders.
 
 **On Render:** Jobs will stay **Queued** until the **worker** service is running. In `render.yaml` the worker is `delivery-worker` (type: worker). Ensure it is deployed and running in your Render dashboard (same Redis and DB as the backend). If you only deploy the web backend and frontend, enqueued jobs will never run.
 
@@ -318,6 +318,30 @@ Once running, visit:
 - `POST /client-management/send-reminder` - Send reminder email to client
 - `GET /client-management/reminders/{project_id}` - Reminder history
 - `GET /client-management/pending-requirements/{project_id}` - Pending requirements for project
+
+## 🤖 Autonomous pipeline (zero-HITL)
+
+The pipeline runs **end-to-end without manual Enqueue** after Sales handover:
+
+- **Stages (order):** Sales Handover → Onboarding → Assignment → Build → Test → Defect Validation → Complete.
+- **Event-driven:** Sales handover sets ONBOARDING and sends onboarding email; onboarding submit (when approved) transitions to ASSIGNMENT and enqueues ASSIGNMENT; each stage job on success transitions to the next and enqueues it. **Complete** stage success marks the project **COMPLETED** and sends the final email with preview/sentiment link.
+- **Backstop:** A **sweeper** (inside the worker, every ~90s) finds ACTIVE projects with a ready stage and no running job and enqueues one; it also runs **onboarding reminders** (cadence and max count from Decision Policies) and applies **HOLD** after max reminders.
+- **Stop conditions:**
+  - **HOLD:** After **max onboarding reminders** (default 10); message: *"Awaiting client response. We attempted to contact you 10 times."* Autopilot skips HOLD projects.
+  - **NEEDS_REVIEW:** When **defect cycle cap** (default 5) is reached (Build ↔ Defect Validation rework loops). Autopilot stops; Admin/Manager can resume after review.
+- **Config (Admin/Manager):** **Configuration → Decision Policies** tab: reminder cadence, max reminders, idle minutes, min scope %, build auto-fix retries, defect cycle cap, pass thresholds, Lighthouse/Axe/QA thresholds. **HITL Gates** default to "No HITL"; can be enabled per stage for approval gates.
+- **Recovery:** On the project detail page, **Enqueue** is in the Job Queue section (Admin/Manager only). Use it to force re-run a stage after a failure or to unstick a project. **Pipeline → Advance** and **Resume autopilot** are also Admin/Manager only.
+- **Observability:** Audit logs record stage transitions, reminders, HOLD/NEEDS_REVIEW, job enqueue/fail. Job `error_json` includes a standard **error_code** (e.g. `TIMEOUT_STUCK_RUN`, `JOB_EXECUTION_ERROR`, `DEFECT_CYCLE_CAP_REACHED`). See `backend/app/error_codes.py`.
+
+**E2E simulation script (optional):** From repo root with backend running and auth token:
+```bash
+cd backend
+export AUTH_HEADER="Bearer <your-jwt>"
+python scripts/e2e_pipeline_simulation.py --base-url http://localhost:8000 --create-only
+# Or run sweeper a few times: --sweeps 5
+```
+
+**Environment variables (autonomous pipeline):** See `.env.example` and **Render Environment Variables** below. Required: `DATABASE_URL`, `REDIS_URL`, `SECRET_KEY` (same on backend and worker), `BACKEND_URL`, `FRONTEND_URL`, `OPENAI_API_KEY`; `RESEND_API_KEY` for onboarding and completion emails; optional S3 (`STORAGE_BACKEND=s3`, `S3_*`) for thumbnails/artifacts.
 
 ## 🔧 Local Development (without Docker)
 
@@ -450,6 +474,32 @@ Templates support two source types:
 
 **Endpoints:** POST `/api/templates/{id}/generate-preview`, GET `/api/templates/{id}/preview` and `/api/templates/{id}/preview/{path}` (auth: Bearer or `?access_token=` or trusted Referer), GET `/api/debug/chrome-path` (Admin/Manager – returns `CHROME_PATH` for Render).
 
+**Versioned template storage (clone template):** Templates can reference an immutable build source for reproducible builds. Each template row may set `build_source_type` (`s3` | `git`) and `build_source_ref` (S3 object key or git commit/tag ref). When a client selects a template, a **ProjectTemplateInstance** is created for that project pointing to the template (and optional fallback). On BUILD stage start, the worker uses the template’s source ref to pull the versioned artifact (e.g. S3 zip or git ref), expand into the build workspace, apply client data, and run the build. Previews are hosted on Render (or configured preview URL); thumbnails and proof assets use **AWS S3** when `STORAGE_BACKEND=s3`. If the selected template is missing, the system can prompt for client confirmation to use a safe fallback and show the callout: *"A safe fallback template was used with your approval."*
+
+## 📋 Recovery runbook (zero-HITL)
+
+- **Project stuck in a stage:** Open project → Job Queue → **Enqueue** (current stage) or **Enqueue Build** (Admin/Manager). Ensure the worker is running so the job is picked up.
+- **Autopilot paused (circuit breaker / ambiguous stage):** Project detail → **Pipeline** → **Resume autopilot** (Admin/Manager). Fix any blocking condition (e.g. resolve ambiguous ready stages) then resume.
+- **HOLD (awaiting client):** After 10 reminders the project is on HOLD. Contact the client; when they complete onboarding, re-activate the project and run **Resume autopilot** or advance once to re-evaluate.
+- **NEEDS_REVIEW (defect cycle cap or build retries):** Review the stage output and defects; fix or approve. Then use **Resume autopilot** or **Enqueue** the appropriate stage to continue.
+- **Stuck RUNNING job:** Worker marks jobs RUNNING beyond the stage timeout as failed (see **stage_timeouts_minutes** in config). Re-enqueue the stage if needed.
+
+## 🔧 Environment variables checklist
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `REDIS_URL` | Yes | Redis for job queue (worker + backend) |
+| `SECRET_KEY` | Yes | JWT signing (same on backend and worker) |
+| `BACKEND_URL` | Yes | Backend base URL (e.g. `https://api.example.com`) |
+| `FRONTEND_URL` | Yes | Frontend base URL (e.g. `https://app.example.com`) |
+| `OPENAI_API_KEY` | Yes* | For AI agents; optional if using FakeLLM |
+| `RESEND_API_KEY` | Yes* | For onboarding and completion emails |
+| `STORAGE_BACKEND` | No | `s3` for S3; else local/simple |
+| `S3_BUCKET`, `S3_REGION`, etc. | If S3 | AWS S3 for thumbnails/artifacts |
+| `CHROME_PATH` | No | Override Chrome/Chromium path (Lighthouse); set on Render if needed |
+| `PLAYWRIGHT_BROWSERS_PATH` | No | Override Playwright browsers path |
+
 ## 🧪 Testing
 
 ### Test Authentication
@@ -515,6 +565,10 @@ docker compose up --build
 docker compose exec backend alembic downgrade base
 docker compose exec backend alembic upgrade heads
 ```
+
+### Testing
+- **Unit tests** (no DB): `cd backend && python -m pytest tests/test_state_machine.py tests/test_build_thresholds.py -v -o addopts="-v --strict-markers"` (avoids coverage if pytest-cov is missing).
+- **Integration tests** (`tests/test_autopilot_integration.py`) use an in-memory SQLite DB and expect UUID support; they may fail locally if SQLite does not support UUID. Run them inside Docker (e.g. `docker compose run --rm backend pytest tests/test_autopilot_integration.py`) for a Postgres-compatible environment.
 
 ### Frontend API Connection
 - Ensure `NEXT_PUBLIC_API_URL` points to backend
@@ -614,6 +668,7 @@ Full list and optional vars (SMTP, webhooks): see **[docs/RENDER_ENV.md](docs/RE
 - JWT tokens expire after 6 hours
 - Passwords hashed with bcrypt
 - RBAC enforced on every endpoint
+- **API permissions:** See [backend/docs/routes-permissions.md](backend/docs/routes-permissions.md) for which role(s) can access which routes (Admin/Manager-only, authenticated, public).
 - File upload size limited to 10MB
 - SQL injection protection via SQLAlchemy ORM
 - CORS configured for frontend origin only

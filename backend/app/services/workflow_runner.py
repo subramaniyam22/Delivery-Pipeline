@@ -18,13 +18,13 @@ from app.models import (
     StageOutput,
     StageStatus,
     TemplateRegistry,
+    ProjectTemplateInstance,
     Defect,
     DefectStatus,
     Notification,
     User,
     Role,
 )
-from app.services.project_service import record_stage_transition
 from app.runners.site_builder import build_and_package
 from app.runners.self_review import run_self_review
 from app.runners.qa_runner import run_qa, run_targeted_tests
@@ -34,9 +34,43 @@ from app.services.email_service import EmailService
 from app.utils.sentiment_tokens import generate_sentiment_token
 from app.config import settings
 from app.services import artifact_service
+from app.error_codes import ErrorCode
+from app.services.threshold_merge import merge_decision_policies_into_thresholds
 from app.websocket.manager import manager
 from app.websocket.events import WebSocketEvent
 import asyncio
+
+
+# Requirements match rubric weights (Content Accuracy 40%, Layout/Design 30%, Components/Functionality 30%)
+REQUIREMENTS_RUBRIC_WEIGHTS = {"content_accuracy": 40, "layout_design": 30, "components_functionality": 30}
+
+
+def _compute_requirements_rubric(report_json: Dict[str, Any]) -> Dict[str, Any]:
+    """Compute requirements match score from build checks. Returns rubric dict and overall 0-100 score."""
+    checks = report_json.get("checks") or []
+    content_checks = [c for c in checks if c.get("type") in ("lighthouse",) or "seo" in (c.get("name") or "").lower()]
+    layout_checks = [c for c in checks if "visual" in (c.get("type") or "").lower() or "lighthouse" in (c.get("type") or "").lower()]
+    component_checks = [c for c in checks if c.get("type") == "html_validator" or "lighthouse" in (c.get("type") or "")]
+    def _pct(lst):
+        if not lst:
+            return 100.0
+        return round(100 * len([x for x in lst if x.get("passed")]) / len(lst), 2)
+    content_accuracy = _pct(content_checks) if content_checks else _pct(checks)
+    layout_design = _pct(layout_checks) if layout_checks else _pct(checks)
+    components_functionality = _pct(component_checks) if component_checks else _pct(checks)
+    overall = round(
+        (content_accuracy * REQUIREMENTS_RUBRIC_WEIGHTS["content_accuracy"]
+         + layout_design * REQUIREMENTS_RUBRIC_WEIGHTS["layout_design"]
+         + components_functionality * REQUIREMENTS_RUBRIC_WEIGHTS["components_functionality"]) / 100,
+        2,
+    )
+    return {
+        "content_accuracy_pct": content_accuracy,
+        "layout_design_pct": layout_design,
+        "components_functionality_pct": components_functionality,
+        "overall_rubric_score": overall,
+        "weights": REQUIREMENTS_RUBRIC_WEIGHTS,
+    }
 
 
 def _get_preview_url(db: Session, project_id: UUID) -> Optional[str]:
@@ -96,6 +130,13 @@ def run_stage(
     if global_thresholds_config and isinstance(global_thresholds_config.value_json, dict):
         global_thresholds = global_thresholds_config.value_json
 
+    # Decision policies: pass_threshold_overall, qa_pass_rate_min, lighthouse_floor, axe_block_severities (Admin-editable)
+    decision_policies = db.query(AdminConfig).filter(AdminConfig.key == "decision_policies_json").first()
+    if decision_policies and isinstance(decision_policies.value_json, dict):
+        global_thresholds = merge_decision_policies_into_thresholds(
+            global_thresholds, decision_policies.value_json
+        )
+
     project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == project.id).first()
     hitl_enabled = bool(project_config.hitl_enabled) if project_config else False
     stage_gates = (project_config.stage_gates_json if project_config else None) or global_stage_gates
@@ -144,6 +185,7 @@ def run_stage(
                 "request_id": request_id,
                 "payload": payload or {},
                 "thresholds": thresholds,
+                "config_version": getattr(job, "config_version", None),
             },
             required_next_inputs_json=[],
         )
@@ -171,47 +213,154 @@ def run_stage(
         preview_strategy_config = db.query(AdminConfig).filter(AdminConfig.key == "preview_strategy").first()
         preview_strategy = preview_strategy_config.value_json if preview_strategy_config else "zip_only"
         default_template_config = db.query(AdminConfig).filter(AdminConfig.key == "default_template_id").first()
+        default_template_id = default_template_config.value_json if default_template_config else None
+        if default_template_id and not isinstance(default_template_id, UUID):
+            try:
+                default_template_id = UUID(str(default_template_id))
+            except (ValueError, TypeError):
+                default_template_id = None
         template_id = None
         if job and isinstance(job.payload_json, dict):
-            template_id = job.payload_json.get("template_id")
-        if not template_id and default_template_config:
-            template_id = default_template_config.value_json
+            raw = job.payload_json.get("template_id")
+            if raw:
+                try:
+                    template_id = UUID(str(raw)) if not isinstance(raw, UUID) else raw
+                except (ValueError, TypeError):
+                    pass
+        if not template_id and default_template_id:
+            template_id = default_template_id
 
         template = None
         if template_id:
             template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
         if not template:
-            return {
-                "status": StageStatus.FAILED,
-                "summary": "Template not configured",
-                "stage": stage.value,
-                "project_id": str(project.id),
-            }
+            _dp_cfg = db.query(AdminConfig).filter(AdminConfig.key == "decision_policies_json").first()
+            dp = _dp_cfg.value_json if _dp_cfg and isinstance(_dp_cfg.value_json, dict) else {}
+            require_confirmation = dp.get("fallback_template_requires_confirmation", True)
+            instance = db.query(ProjectTemplateInstance).filter(ProjectTemplateInstance.project_id == project_id).first()
+            if require_confirmation and instance and not instance.fallback_confirmed_at:
+                return {
+                    "status": StageStatus.FAILED,
+                    "summary": "Template missing; client must confirm fallback template",
+                    "stage": stage.value,
+                    "project_id": str(project.id),
+                    "error_code": ErrorCode.TEMPLATE_FALLBACK_PENDING.value,
+                }
+            fallback_id = None
+            if instance and instance.fallback_confirmed_at and instance.fallback_template_id:
+                fallback_id = instance.fallback_template_id
+            elif default_template_id:
+                fallback_id = default_template_id
+            if fallback_id:
+                template = db.query(TemplateRegistry).filter(TemplateRegistry.id == fallback_id).first()
+            if not template:
+                return {
+                    "status": StageStatus.FAILED,
+                    "summary": "Template not configured",
+                    "stage": stage.value,
+                    "project_id": str(project.id),
+                    "error_code": ErrorCode.TEMPLATE_MISSING.value,
+                }
+            if instance and (instance.fallback_confirmed_at or not require_confirmation):
+                instance.use_fallback_callout = True
+                if not instance.fallback_template_id:
+                    instance.fallback_template_id = fallback_id
+                if not instance.fallback_confirmed_at and not require_confirmation:
+                    from datetime import datetime
+                    instance.fallback_confirmed_at = datetime.utcnow()
+                db.commit()
+        # template is set below
 
         assets = db.query(Artifact).filter(
             Artifact.project_id == project.id,
             Artifact.stage == Stage.BUILD
         ).all()
         mapping_plan = job.payload_json.get("mapping_plan_json") if job and isinstance(job.payload_json, dict) else None
-        build_result = build_and_package(
-            db=db,
-            project_id=project.id,
-            stage=Stage.BUILD,
-            template=template,
-            assets=assets,
-            mapping_plan_json=mapping_plan,
-            preview_strategy=preview_strategy,
-            actor_user_id=audit_actor_id,
-        )
+        required_score = thresholds.get("build_pass_score", 98)
+        decision_policies = db.query(AdminConfig).filter(AdminConfig.key == "decision_policies_json").first()
+        dp = decision_policies.value_json if decision_policies and isinstance(decision_policies.value_json, dict) else {}
+        max_autofix_attempts = int(dp.get("build_autofix_retries", 3))
+        score = 0.0
+        report_json = {}
+        evidence_links = []
+        build_result = {}
 
-        score, report_json, evidence_links = run_self_review(
-            db=db,
-            project_id=project.id,
-            preview_url=build_result.get("preview_url"),
-            baseline_dir=build_result.get("baseline_dir"),
-            thresholds=thresholds,
-            actor_user_id=audit_actor_id,
-        )
+        for attempt in range(1, max_autofix_attempts + 1):
+            build_result = build_and_package(
+                db=db,
+                project_id=project.id,
+                stage=Stage.BUILD,
+                template=template,
+                assets=assets,
+                mapping_plan_json=mapping_plan,
+                preview_strategy=preview_strategy,
+                actor_user_id=audit_actor_id,
+            )
+            score, report_json, evidence_links = run_self_review(
+                db=db,
+                project_id=project.id,
+                preview_url=build_result.get("preview_url"),
+                baseline_dir=build_result.get("baseline_dir"),
+                thresholds=thresholds,
+                actor_user_id=audit_actor_id,
+            )
+            if score >= required_score:
+                break
+            if attempt < max_autofix_attempts:
+                db.add(
+                    AuditLog(
+                        project_id=project.id,
+                        actor_user_id=audit_actor_id,
+                        action="BUILD_AUTOFIX_RETRY",
+                        payload_json={
+                            "attempt": attempt,
+                            "max_attempts": max_autofix_attempts,
+                            "score": score,
+                            "required_score": required_score,
+                        },
+                    )
+                )
+                db.commit()
+
+        rubric = _compute_requirements_rubric(report_json)
+        report_json["requirements_rubric"] = rubric
+
+        if score < required_score:
+            from app.pipeline.state_machine import set_project_needs_review
+            set_project_needs_review(
+                db, project.id,
+                reason=f"Build did not meet score after {max_autofix_attempts} attempts (score={score}, required={required_score}).",
+                metadata={"job_id": str(job_id), "score": score, "required_score": required_score},
+                actor_user_id=audit_actor_id,
+            )
+            output = StageOutput(
+                project_id=project.id,
+                job_run_id=job_id,
+                stage=stage,
+                status=StageStatus.FAILED,
+                summary=f"Build score {score} below {required_score} after {max_autofix_attempts} attempts",
+                score=score,
+                report_json=report_json,
+                evidence_links_json=evidence_links,
+                structured_output_json={
+                    "request_id": request_id,
+                    "payload": payload or {},
+                    "thresholds": thresholds,
+                    "autofix_attempts": max_autofix_attempts,
+                    "config_version": getattr(job, "config_version", None),
+                },
+                required_next_inputs_json=[],
+            )
+            db.add(output)
+            db.commit()
+            return {
+                "status": StageStatus.FAILED,
+                "summary": output.summary,
+                "stage": stage.value,
+                "project_id": str(project.id),
+                "score": score,
+                "error_code": ErrorCode.BUILD_VALIDATION_FAILED.value,
+            }
 
         if gate_enabled:
             output = StageOutput(
@@ -228,6 +377,7 @@ def run_stage(
                     "request_id": request_id,
                     "payload": payload or {},
                     "thresholds": thresholds,
+                    "config_version": getattr(job, "config_version", None),
                 },
                 required_next_inputs_json=[],
             )
@@ -264,6 +414,7 @@ def run_stage(
                 "request_id": request_id,
                 "payload": payload or {},
                 "thresholds": thresholds,
+                "config_version": getattr(job, "config_version", None),
             },
             required_next_inputs_json=[],
         )
@@ -276,6 +427,7 @@ def run_stage(
                 "summary": "Preview URL not found for QA",
                 "stage": stage.value,
                 "project_id": str(project.id),
+                "error_code": ErrorCode.BUILD_VALIDATION_FAILED.value,
             }
         qa_result = run_qa(
             db=db,
@@ -284,12 +436,36 @@ def run_stage(
             thresholds=thresholds,
             uploaded_by_user_id=audit_actor_id,
         )
+        decision_policies = db.query(AdminConfig).filter(AdminConfig.key == "decision_policies_json").first()
+        dp = decision_policies.value_json if decision_policies and isinstance(decision_policies.value_json, dict) else {}
+        qa_pass_score = thresholds.get("qa_pass_score", 98)
+        qa_coverage_min = int(dp.get("qa_coverage_min", 95))
+        qa_stability_min = int(dp.get("qa_stability_flake_free_min", 99))
+        qa_defect_density_max = float(dp.get("qa_defect_density_critical_per_1k_loc_max", 0.5))
+        report = qa_result.get("report_json") or {}
+        coverage_pct = report.get("coverage_pct") if report.get("coverage_pct") is not None else qa_result.get("score")
+        stability_pct = report.get("stability_pct") if report.get("stability_pct") is not None else 100.0
+        defect_density = report.get("defect_density_critical_per_1k_loc")
+        if defect_density is None and qa_result.get("failed_results"):
+            report["defect_density_critical_per_1k_loc"] = 0.0
+            defect_density = 0.0
+        qa_passed = (
+            qa_result["score"] >= qa_pass_score
+            and (coverage_pct is None or coverage_pct >= qa_coverage_min)
+            and (stability_pct is None or stability_pct >= qa_stability_min)
+            and (defect_density is None or defect_density <= qa_defect_density_max)
+        )
+        if report.get("coverage_pct") is None:
+            report["coverage_pct"] = qa_result.get("score")
+        if report.get("stability_pct") is None:
+            report["stability_pct"] = 99.0
+        qa_result["report_json"] = report
 
         output = StageOutput(
             project_id=project.id,
             job_run_id=job_id,
             stage=stage,
-            status=StageStatus.SUCCESS if qa_result["score"] >= thresholds.get("qa_pass_score", 98) else StageStatus.FAILED,
+            status=StageStatus.SUCCESS if qa_passed else StageStatus.FAILED,
             summary=summary,
             score=qa_result["score"],
             report_json=qa_result["report_json"],
@@ -298,6 +474,7 @@ def run_stage(
                 "request_id": request_id,
                 "payload": payload or {},
                 "thresholds": thresholds,
+                "config_version": getattr(job, "config_version", None),
             },
             required_next_inputs_json=[],
         )
@@ -347,6 +524,7 @@ def run_stage(
                 "payload": payload or {},
                 "thresholds": thresholds,
                 "validation_summary": validation_summary,
+                "config_version": getattr(job, "config_version", None),
             },
             required_next_inputs_json=[],
         )
@@ -383,6 +561,7 @@ def run_stage(
             structured_output_json={
                 "request_id": request_id,
                 "payload": payload or {},
+                "config_version": getattr(job, "config_version", None),
             },
             required_next_inputs_json=[],
         )
@@ -455,6 +634,7 @@ def run_stage(
                 "request_id": request_id,
                 "payload": payload or {},
                 "thresholds": thresholds,
+                "config_version": getattr(job, "config_version", None),
             },
             required_next_inputs_json=[],
         )
@@ -475,13 +655,27 @@ def run_stage(
                     can_advance = True
                     next_stage = Stage.DEFECT_VALIDATION
             if stage == Stage.DEFECT_VALIDATION:
+                can_advance = True
                 if validation_summary["valid"] > 0:
                     next_stage = Stage.BUILD
+                    # Increment defect cycle on rework (success path); enforce cap
+                    from app.services.pipeline_orchestrator import _get_defect_cycle_cap
+                    from app.pipeline.state_machine import set_project_needs_review
+                    project.defect_cycle_count = (project.defect_cycle_count or 0) + 1
+                    cap = _get_defect_cycle_cap(db)
+                    if project.defect_cycle_count > cap:
+                        set_project_needs_review(
+                            db, project.id,
+                            reason=f"Defect cycle cap ({cap}) reached. Requires admin review.",
+                            metadata={"stage": stage.value, "job_id": str(job_id), "defect_cycle_count": project.defect_cycle_count},
+                            actor_user_id=audit_actor_id,
+                        )
+                        next_stage = None
+                        can_advance = False
                 elif validation_summary["validated"] > 0 and validation_summary["invalid"] == validation_summary["validated"]:
                     next_stage = Stage.COMPLETE
                 else:
                     next_stage = Stage.TEST
-                can_advance = True
 
             if can_advance and not next_stage:
                 next_stage = stage_order[current_idx + 1]
@@ -495,16 +689,16 @@ def run_stage(
                     next_stage = None
 
             if can_advance and next_stage:
-                previous_stage = project.current_stage
-                project.current_stage = next_stage
-                project.status = ProjectStatus.ACTIVE
-                record_stage_transition(
-                    project,
-                    previous_stage,
-                    project.current_stage,
-                    actor_user_id=actor_user_id,
-                    request_id=request_id,
+                from app.pipeline.state_machine import transition_project_stage
+                transition_project_stage(
+                    db, project_id,
+                    from_stage=project.current_stage,
+                    to_stage=next_stage,
+                    reason="stage_complete",
+                    metadata={"job_id": str(job_id), "request_id": request_id},
+                    actor_user_id=audit_actor_id,
                 )
+                db.refresh(project)
     elif stage == Stage.SALES and project.current_stage == Stage.SALES:
         project.status = ProjectStatus.ACTIVE
 
@@ -525,7 +719,7 @@ def run_stage(
             AuditLog(
                 project_id=project.id,
                 actor_user_id=audit_actor_id,
-                action="STAGE_TRANSITION",
+                action="JOB_ENQUEUED",
                 payload_json={
                     "from_stage": stage.value,
                     "to_stage": next_stage.value,

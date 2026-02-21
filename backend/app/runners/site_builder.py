@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import zipfile
 from app.utils.signed_tokens import generate_signed_token
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -14,9 +15,51 @@ from app.services import artifact_service
 
 
 def clone_template(template: TemplateRegistry, workdir: str) -> str:
+    """
+    Get template source into workdir/template. Uses build_source_type/build_source_ref when set
+    (versioned clone); otherwise falls back to repo_url + default_branch.
+    - git + build_source_ref: clone that branch/tag (immutable ref).
+    - s3 + build_source_ref: download zip from S3 key and expand.
+    """
     repo_dir = os.path.join(workdir, "template")
+    source_type = getattr(template, "build_source_type", None)
+    source_ref = getattr(template, "build_source_ref", None)
+
+    if source_type == "s3" and source_ref:
+        # Versioned artifact: download zip from S3 and expand
+        try:
+            from app.services.storage import get_storage_backend
+            storage = get_storage_backend()
+            os.makedirs(repo_dir, exist_ok=True)
+            zip_path = os.path.join(workdir, "template.zip")
+            if hasattr(storage, "download_file") and callable(getattr(storage, "download_file")):
+                storage.download_file(source_ref, zip_path)
+            else:
+                # S3Service style: download_file(object_name, file_path)
+                from app.services.s3_service import S3Service
+                s3 = S3Service()
+                if not s3.download_file(source_ref, zip_path):
+                    raise RuntimeError(f"Failed to download template from S3: {source_ref}")
+            with zipfile.ZipFile(zip_path, "r") as z:
+                z.extractall(repo_dir)
+            os.remove(zip_path)
+            return repo_dir
+        except Exception as e:
+            raise RuntimeError(f"Template S3 source failed ({source_ref}): {e}") from e
+
+    if source_type == "git" and source_ref:
+        # Versioned git ref (branch or tag)
+        branch_or_tag = source_ref
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "--branch", branch_or_tag, template.repo_url, repo_dir],
+            check=True,
+        )
+        return repo_dir
+
+    # Fallback: repo_url + default_branch
+    branch = (template.default_branch or "main").strip()
     subprocess.run(
-        ["git", "clone", "--depth", "1", "--branch", template.default_branch, template.repo_url, repo_dir],
+        ["git", "clone", "--depth", "1", "--branch", branch, template.repo_url, repo_dir],
         check=True,
     )
     return repo_dir

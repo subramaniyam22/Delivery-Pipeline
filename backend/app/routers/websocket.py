@@ -1,10 +1,14 @@
 """
 WebSocket router for real-time updates.
+Token must be provided (query param, cookie, or Bearer header); server validates JWT
+and ensures path user_id matches token so clients cannot subscribe as another user.
 """
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, Cookie
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Cookie, Depends, HTTPException
 from app.websocket.manager import manager
 from app.websocket.events import WebSocketEvent, EventType
-from app.deps import get_current_user_from_token
+from app.deps import get_current_user_from_token, get_current_user
+from app.db import SessionLocal
+from app.models import Role
 from typing import Optional
 import logging
 import json
@@ -19,30 +23,37 @@ async def websocket_endpoint(
     websocket: WebSocket,
     user_id: str,
     token: Optional[str] = Query(None),
-    access_token: Optional[str] = Cookie(None) # Auto-read 'access_token' cookie
+    access_token: Optional[str] = Cookie(None)  # Auto-read 'access_token' cookie
 ):
     """
     WebSocket endpoint for real-time notifications.
-    
-    Usage:
-        ws://localhost:8000/ws/notifications/{user_id}?token={jwt_token}
+    Auth: token in query (?token=), cookie (access_token), or Authorization: Bearer.
+    Path user_id must match the authenticated user (no 403 spam; validated server-side).
     """
-    # Verify authentication (Query Param OR Cookie)
     final_token = token or access_token
     if not final_token:
-        # Check Authorization header (WS handshake can have headers)
         auth_header = websocket.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             final_token = auth_header.split(" ")[1]
 
     if not final_token:
-        logger.warning(f"WS Connection rejected for {user_id}: No token provided")
+        logger.warning("WS connection rejected: no token")
         await websocket.close(code=1008, reason="Missing authentication token")
         return
-    
+
+    db = SessionLocal()
     try:
-        # Validate token (you can use get_current_user_from_token here)
-        # For now, we'll accept the connection
+        user = get_current_user_from_token(final_token, db)
+        if not user or not user.is_active:
+            await websocket.close(code=1008, reason="Invalid or inactive user")
+            return
+        if str(user.id) != user_id:
+            await websocket.close(code=1008, reason="Token user does not match path")
+            return
+    finally:
+        db.close()
+
+    try:
         await manager.connect(websocket, user_id)
         
         # Send welcome message
@@ -102,8 +113,10 @@ async def websocket_endpoint(
 
 
 @router.get("/stats")
-async def get_websocket_stats():
-    """Get WebSocket connection statistics."""
+async def get_websocket_stats(current_user=Depends(get_current_user)):
+    """Get WebSocket connection statistics (Admin/Manager only)."""
+    if current_user.role not in [Role.ADMIN, Role.MANAGER]:
+        raise HTTPException(status_code=403, detail="Admin or Manager required")
     return {
         "total_connections": manager.get_connection_count(),
         "connected_users": manager.get_user_count(),

@@ -1,0 +1,1 @@
+// Preview static bundle - no runtime required.

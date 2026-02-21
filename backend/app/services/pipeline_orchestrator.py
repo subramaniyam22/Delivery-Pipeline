@@ -15,16 +15,22 @@ from sqlalchemy.orm import Session
 
 from app.jobs.queue import enqueue_job
 from app.models import (
+    AuditLog,
+    ClientReminder,
     JobRun,
     JobRunStatus,
+    Notification,
     OnboardingData,
     PipelineEvent,
     Project,
     ProjectStageState,
+    ProjectStatus,
+    Role,
     Stage,
     StageApproval,
     StageOutput,
     TemplateRegistry,
+    User,
 )
 from app.pipeline.stages import (
     BLOCKED_REASON_NOT_IMPLEMENTED,
@@ -33,6 +39,13 @@ from app.pipeline.stages import (
     STAGE_KEY_TO_ORDER,
     STAGE_KEY_TO_STAGE,
     STAGE_TO_KEY,
+)
+from app.pipeline.state_machine import (
+    get_next_stage,
+    is_autopilot_eligible,
+    set_project_hold,
+    set_project_needs_review,
+    transition_project_stage,
 )
 from app.services.contract_service import get_contract
 from app.services.hitl_service import (
@@ -530,6 +543,8 @@ def auto_advance(db: Session, project_id: UUID, trigger_source: str) -> Pipeline
 
     if not project.autopilot_enabled or (project.autopilot_mode or "").lower() == "off":
         return status
+    if not is_autopilot_eligible(project):
+        return status
 
     now = datetime.utcnow()
     if project.autopilot_lock_until and project.autopilot_lock_until > now:
@@ -593,6 +608,19 @@ def auto_advance(db: Session, project_id: UUID, trigger_source: str) -> Pipeline
         "trigger_source": trigger_source,
         "idempotency_key": idempotency_key,
     }
+    if stage_enum == Stage.BUILD:
+        from app.services.template_instance_service import get_template_id_for_build
+        tid = get_template_id_for_build(db, project_id)
+        if tid:
+            payload["template_id"] = str(tid)
+    config_version = None
+    try:
+        from app.services.config_service import get_config
+        cfg = get_config(db, "decision_policies_json")
+        if cfg and getattr(cfg, "config_version", None) is not None:
+            config_version = cfg.config_version
+    except Exception:
+        pass
     try:
         job_id = enqueue_job(
             project_id=project_id,
@@ -604,6 +632,7 @@ def auto_advance(db: Session, project_id: UUID, trigger_source: str) -> Pipeline
             correlation_id=correlation_id,
             requested_by="system",
             requested_by_user_id=None,
+            config_version=config_version,
         )
         if row:
             row.last_job_id = job_id
@@ -633,8 +662,14 @@ def auto_advance(db: Session, project_id: UUID, trigger_source: str) -> Pipeline
         return evaluate_project(db, project_id)
 
 
-def on_job_success(db: Session, project_id: UUID, stage: Stage, job_id: UUID) -> None:
-    """Called by worker when a job completes successfully. Updates stage state, syncs contract, triggers auto_advance."""
+def on_job_success(
+    db: Session,
+    project_id: UUID,
+    stage: Stage,
+    job_id: UUID,
+    result: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Called by worker when a job completes successfully. Updates stage state, syncs project.current_stage via state machine, triggers auto_advance."""
     stage_key = STAGE_TO_KEY.get(stage)
     if not stage_key:
         return
@@ -654,6 +689,27 @@ def on_job_success(db: Session, project_id: UUID, stage: Stage, job_id: UUID) ->
     project = db.query(Project).filter(Project.id == project_id).first()
     if project:
         project.autopilot_failure_count = 0
+
+    # Transition project.current_stage to next stage (single source of truth)
+    next_stage = get_next_stage(stage, success=True, rework=False)
+    if next_stage:
+        transition_project_stage(
+            db, project_id,
+            from_stage=stage,
+            to_stage=next_stage,
+            reason="job_complete",
+            metadata={"job_id": str(job_id), "trigger": "on_job_success"},
+            actor_user_id=None,
+        )
+    # When Complete stage succeeds, mark project as COMPLETED (delivered)
+    if stage == Stage.COMPLETE and project:
+        project.status = ProjectStatus.COMPLETED
+        project.updated_at = datetime.utcnow()
+        _log_pipeline_event(
+            db, project_id, EVENT_JOB_COMPLETED,
+            stage_key=STAGE_TO_KEY.get(Stage.COMPLETE),
+            details={"job_id": str(job_id), "project_completed": True},
+        )
     db.commit()
     try:
         from app.services.contract_service import create_or_update_contract
@@ -668,6 +724,46 @@ def on_job_success(db: Session, project_id: UUID, stage: Stage, job_id: UUID) ->
     auto_advance(db, project_id, trigger_source="job_complete")
 
 
+def run_autopilot_sweeper(db: Session, max_projects: int = 50) -> int:
+    """
+    Backstop: find ACTIVE projects that are autopilot-eligible and have a ready stage
+    with no running job; enqueue one per project. Idempotent and concurrency-safe.
+    Returns number of projects that were evaluated for enqueue.
+    """
+    projects = (
+        db.query(Project)
+        .filter(
+            Project.status == ProjectStatus.ACTIVE,
+            Project.autopilot_enabled == True,
+        )
+        .limit(max_projects)
+        .all()
+    )
+    count = 0
+    for project in projects:
+        if not is_autopilot_eligible(project):
+            continue
+        try:
+            auto_advance(db, project.id, trigger_source="sweeper")
+            count += 1
+        except Exception as e:
+            logger.warning("Autopilot sweeper project %s: %s", project.id, e)
+            db.rollback()
+    return count
+
+
+def _get_defect_cycle_cap(db: Session) -> int:
+    """Read defect_cycle_cap from decision_policies_json (default 5)."""
+    from app.services.config_service import get_config
+    config = get_config(db, "decision_policies_json")
+    if config and isinstance(config.value_json, dict):
+        try:
+            return int(config.value_json.get("defect_cycle_cap", 5))
+        except (TypeError, ValueError):
+            pass
+    return 5
+
+
 def on_job_failure(
     db: Session,
     project_id: UUID,
@@ -675,7 +771,7 @@ def on_job_failure(
     job_id: UUID,
     error_message: Optional[str] = None,
 ) -> None:
-    """Called by worker when a job fails. Updates stage state, increments failure count, circuit breaker if needed."""
+    """Called by worker when a job fails. Updates stage state. For TEST/DEFECT_VALIDATION rework: transition to BUILD, increment defect_cycle_count; cap -> NEEDS_REVIEW."""
     stage_key = STAGE_TO_KEY.get(stage)
     if not stage_key:
         return
@@ -692,22 +788,272 @@ def on_job_failure(
         row.last_error = error_message or "Job failed"
         row.last_job_id = job_id
         row.updated_at = datetime.utcnow()
+
     project = db.query(Project).filter(Project.id == project_id).first()
-    if project:
-        project.autopilot_failure_count = (project.autopilot_failure_count or 0) + 1
-        if project.autopilot_failure_count >= CIRCUIT_BREAKER_FAILURE_THRESHOLD:
-            now = datetime.utcnow()
-            project.autopilot_enabled = False
-            project.autopilot_lock_until = now + timedelta(minutes=CIRCUIT_BREAKER_LOCK_MINUTES)
-            project.autopilot_paused_reason = "Circuit breaker: repeated failures"
-            _log_pipeline_event(
-                db, project_id, EVENT_CIRCUIT_BREAKER,
-                stage_key=stage_key,
-                details={"error": error_message or "repeated failures"},
+    if not project:
+        db.commit()
+        _log_pipeline_event(db, project_id, EVENT_JOB_FAILED, stage_key=stage_key, details={"job_id": str(job_id), "error": error_message})
+        return
+
+    project.autopilot_failure_count = (project.autopilot_failure_count or 0) + 1
+    if project.autopilot_failure_count >= CIRCUIT_BREAKER_FAILURE_THRESHOLD:
+        now = datetime.utcnow()
+        project.autopilot_enabled = False
+        project.autopilot_lock_until = now + timedelta(minutes=CIRCUIT_BREAKER_LOCK_MINUTES)
+        project.autopilot_paused_reason = "Circuit breaker: repeated failures"
+        _log_pipeline_event(
+            db, project_id, EVENT_CIRCUIT_BREAKER,
+            stage_key=stage_key,
+            details={"error": error_message or "repeated failures"},
+        )
+        db.commit()
+        _log_pipeline_event(db, project_id, EVENT_JOB_FAILED, stage_key=stage_key, details={"job_id": str(job_id), "error": error_message})
+        return
+
+    # Rework path: TEST or DEFECT_VALIDATION failed -> back to BUILD (defect cycle)
+    if stage in (Stage.TEST, Stage.DEFECT_VALIDATION):
+        cap = _get_defect_cycle_cap(db)
+        project.defect_cycle_count = (project.defect_cycle_count or 0) + 1
+        if project.defect_cycle_count > cap:
+            set_project_needs_review(
+                db, project_id,
+                reason=f"Defect cycle cap ({cap}) reached. Requires admin review.",
+                metadata={"stage": stage.value, "job_id": str(job_id), "defect_cycle_count": project.defect_cycle_count},
+                actor_user_id=None,
             )
+            db.commit()
+            _log_pipeline_event(
+                db, project_id, EVENT_JOB_FAILED,
+                stage_key=stage_key,
+                details={"job_id": str(job_id), "error": error_message, "defect_cycle_cap_reached": True},
+            )
+            return
+        # Mark this stage as complete (rework) so pipeline can proceed to BUILD
+        if row:
+            row.status = "complete"
+            row.last_error = None
+        transition_project_stage(
+            db, project_id,
+            from_stage=stage,
+            to_stage=Stage.BUILD,
+            reason="rework",
+            metadata={"job_id": str(job_id), "defect_cycle_count": project.defect_cycle_count},
+            actor_user_id=None,
+        )
+        db.commit()
+        _log_pipeline_event(
+            db, project_id, EVENT_JOB_FAILED,
+            stage_key=stage_key,
+            details={"job_id": str(job_id), "error": error_message, "rework_to_build": True, "defect_cycle_count": project.defect_cycle_count},
+        )
+        auto_advance(db, project_id, trigger_source="job_failure_rework")
+        return
+
     db.commit()
     _log_pipeline_event(
         db, project_id, EVENT_JOB_FAILED,
         stage_key=stage_key,
         details={"job_id": str(job_id), "error": error_message},
     )
+
+
+def _get_decision_policies(db: Session) -> Dict[str, Any]:
+    """Read decision_policies_json (defaults for reminder cadence, max_reminders, min_scope_percent)."""
+    from app.services.config_service import get_config
+    config = get_config(db, "decision_policies_json")
+    if config and isinstance(config.value_json, dict):
+        return config.value_json
+    return {
+        "reminder_cadence_hours": 24,
+        "max_reminders": 10,
+        "min_scope_percent": 80,
+    }
+
+
+def run_onboarding_reminders_and_hold(db: Session, max_projects: int = 30) -> int:
+    """
+    Send onboarding reminders every reminder_cadence_hours for incomplete onboarding.
+    After max_reminders, set project to HOLD with message.
+    Returns number of projects processed (reminder sent or hold applied).
+    """
+    policies = _get_decision_policies(db)
+    cadence_hours = int(policies.get("reminder_cadence_hours", 24))
+    max_reminders = int(policies.get("max_reminders", 10))
+    min_scope_percent = int(policies.get("min_scope_percent", 80))
+    cadence_delta = timedelta(hours=cadence_hours)
+    now = datetime.utcnow()
+
+    projects = (
+        db.query(Project)
+        .join(OnboardingData, OnboardingData.project_id == Project.id)
+        .filter(
+            Project.status == ProjectStatus.ACTIVE,
+            Project.current_stage == Stage.ONBOARDING,
+            OnboardingData.auto_reminder_enabled == True,
+            OnboardingData.reminder_count < max_reminders,
+        )
+        .limit(max_projects)
+        .all()
+    )
+    count = 0
+    for project in projects:
+        try:
+            ob = db.query(OnboardingData).filter(OnboardingData.project_id == project.id).first()
+            if not ob:
+                continue
+            # Incomplete: not submitted or completion below min_scope
+            if ob.submitted_at is not None:
+                continue
+            if (ob.completion_percentage or 0) >= min_scope_percent:
+                continue
+            # Cadence: last reminder sent at least cadence_hours ago (or never)
+            last_sent = ob.last_reminder_sent or ob.updated_at or ob.created_at
+            if last_sent and (now - last_sent) < cadence_delta:
+                continue
+
+            # Send reminder
+            to_emails = []
+            if getattr(project, "client_emails", None) and isinstance(project.client_emails, list):
+                to_emails = [e for e in project.client_emails if isinstance(e, str) and e.strip()]
+            if not to_emails and getattr(project, "client_email_ids", None):
+                to_emails = [e.strip() for e in str(project.client_email_ids).split(",") if e.strip()]
+            if not to_emails:
+                continue
+
+            from app.services.email_service import send_client_reminder_email
+            message = (
+                "Your project onboarding is incomplete. Please complete the required fields so we can proceed. "
+                f"We have sent you {ob.reminder_count + 1} reminder(s)."
+            )
+            subject = f"Reminder: Complete onboarding for {project.title}"
+            send_client_reminder_email(
+                to_emails, subject, message, project.title, "Delivery Pipeline", return_details=False
+            )
+            ob.reminder_count = (ob.reminder_count or 0) + 1
+            ob.last_reminder_sent = now
+            ob.next_reminder_at = now + cadence_delta
+            db.add(
+                ClientReminder(
+                    project_id=project.id,
+                    recipient_email=to_emails[0] if to_emails else "",
+                    reminder_type="onboarding_incomplete",
+                    message=message,
+                )
+            )
+            db.add(
+                AuditLog(
+                    project_id=project.id,
+                    actor_user_id=None,
+                    action="REMINDER_SENT",
+                    payload_json={
+                        "reminder_count": ob.reminder_count,
+                        "max_reminders": max_reminders,
+                        "stage": "onboarding",
+                    },
+                )
+            )
+            db.commit()
+            count += 1
+
+            if ob.reminder_count >= max_reminders:
+                hold_message = "Awaiting client response. We attempted to contact you 10 times."
+                if max_reminders != 10:
+                    hold_message = f"Awaiting client response. We attempted to contact you {max_reminders} times."
+                set_project_hold(
+                    db, project.id,
+                    reason=hold_message,
+                    metadata={"reminder_count": ob.reminder_count, "source": "onboarding_reminders"},
+                    actor_user_id=None,
+                )
+        except Exception as e:
+            logger.warning("Onboarding reminder project %s: %s", project.id, e)
+            db.rollback()
+    return count
+
+
+def run_onboarding_idle_nudge(db: Session, max_projects: int = 20) -> int:
+    """
+    In-app nudge when no onboarding update for idle_minutes and still incomplete.
+    If idleness_counts_toward_reminders is True, increment reminder_count (counts toward 10).
+    """
+    policies = _get_decision_policies(db)
+    idle_minutes = int(policies.get("idle_minutes", 30))
+    count_toward_reminders = bool(policies.get("idleness_counts_toward_reminders", False))
+    idle_delta = timedelta(minutes=idle_minutes)
+    now = datetime.utcnow()
+    cutoff = now - idle_delta
+
+    # Projects in ONBOARDING, incomplete, last content update older than idle_minutes
+    q = (
+        db.query(Project)
+        .join(OnboardingData, OnboardingData.project_id == Project.id)
+        .filter(
+            Project.status == ProjectStatus.ACTIVE,
+            Project.current_stage == Stage.ONBOARDING,
+            (OnboardingData.completion_percentage or 0) < 100,
+            OnboardingData.submitted_at.is_(None),
+        )
+        .limit(max_projects)
+    )
+    from sqlalchemy.sql import func
+    last_update = func.coalesce(OnboardingData.last_content_update_at, OnboardingData.updated_at)
+    q = q.filter(last_update < cutoff)
+    projects = q.all()
+
+    count = 0
+    for project in projects:
+        try:
+            ob = db.query(OnboardingData).filter(OnboardingData.project_id == project.id).first()
+            if not ob:
+                continue
+            last_update_val = getattr(ob, "last_content_update_at", None) or ob.updated_at or ob.created_at
+            if not last_update_val or (now - last_update_val) < idle_delta:
+                continue
+            # Avoid nudge spam: last ONBOARDING_IDLE_NUDGE for this project within idle_delta?
+            last_nudge = (
+                db.query(AuditLog)
+                .filter(
+                    AuditLog.project_id == project.id,
+                    AuditLog.action == "ONBOARDING_IDLE_NUDGE",
+                )
+                .order_by(AuditLog.created_at.desc())
+                .first()
+            )
+            if last_nudge and (now - last_nudge.created_at) < idle_delta:
+                continue
+
+            # Notify consultant or manager (in-app)
+            recipient_id = project.consultant_user_id
+            if not recipient_id:
+                manager = db.query(User).filter(User.role == Role.MANAGER).first()
+                recipient_id = manager.id if manager else None
+            if recipient_id:
+                db.add(
+                    Notification(
+                        user_id=recipient_id,
+                        project_id=project.id,
+                        type="ONBOARDING_IDLE_NUDGE",
+                        message=f"Client has not updated onboarding for {idle_minutes} minutes. Project: {project.title}.",
+                        is_read=False,
+                    )
+                )
+            db.add(
+                AuditLog(
+                    project_id=project.id,
+                    actor_user_id=None,
+                    action="ONBOARDING_IDLE_NUDGE",
+                    payload_json={
+                        "idle_minutes": idle_minutes,
+                        "counts_toward_reminders": count_toward_reminders,
+                    },
+                )
+            )
+            if count_toward_reminders:
+                ob.reminder_count = (ob.reminder_count or 0) + 1
+                ob.last_reminder_sent = now
+            db.commit()
+            count += 1
+        except Exception as e:
+            logger.warning("Onboarding idle nudge project %s: %s", project.id, e)
+            db.rollback()
+    return count

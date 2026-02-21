@@ -200,10 +200,21 @@ def update_project(db: Session, project_id: UUID, data: ProjectUpdate, user) -> 
         if "status" in update_data and update_data.get("status") == ProjectStatus.ACTIVE:
             should_auto_advance = True
         if should_auto_advance and (project.status != ProjectStatus.ACTIVE or project.current_stage == Stage.SALES):
+            from app.services.pipeline_orchestrator import ensure_stage_rows
+            from app.pipeline.state_machine import transition_project_stage
             project.status = ProjectStatus.ACTIVE
-            project.current_stage = Stage.ONBOARDING
+            ensure_stage_rows(db, project.id)
+            transition_project_stage(
+                db, project.id,
+                from_stage=Stage.SALES,
+                to_stage=Stage.ONBOARDING,
+                reason="sales_handover",
+                metadata={"actor_user_id": str(user.id)},
+                actor_user_id=user.id,
+            )
+            db.refresh(project)
             moved_to_onboarding = True
-    if previous_stage != project.current_stage:
+    if previous_stage != project.current_stage and not moved_to_onboarding:
         _record_stage_transition(project, previous_stage, project.current_stage, str(user.id))
         if previous_stage == Stage.SALES and project.current_stage == Stage.ONBOARDING:
             moved_to_onboarding = True
@@ -224,6 +235,19 @@ def update_project(db: Session, project_id: UUID, data: ProjectUpdate, user) -> 
             OnboarderAgentService(db).validate_initial_project_data(project.id)
         except Exception as e:
             print(f"[ONBOARDING_EMAIL] Failed to trigger onboarding email: {e}")
+        try:
+            from app.jobs.queue import enqueue_job
+            enqueue_job(
+                project_id=project.id,
+                stage=Stage.ONBOARDING,
+                payload_json={"trigger_source": "sales_handover"},
+                request_id=None,
+                actor_user_id=user.id,
+                db=db,
+            )
+            db.commit()
+        except Exception as e:
+            print(f"[ONBOARDING_ENQUEUE] Failed to enqueue ONBOARDING job: {e}")
     
     # Create audit log (convert Enums to strings for JSON)
     json_payload = data.model_dump(mode='json', exclude_unset=True)
@@ -258,10 +282,18 @@ def auto_advance_sales_if_complete(db: Session, project: Project) -> Project:
     ):
         return project
 
-    project.status = ProjectStatus.ACTIVE
-    project.current_stage = Stage.ONBOARDING
-    _record_stage_transition(project, Stage.SALES, Stage.ONBOARDING, None)
-    db.commit()
+    from app.services.pipeline_orchestrator import ensure_stage_rows
+    from app.pipeline.state_machine import transition_project_stage
+
+    ensure_stage_rows(db, project.id)
+    transition_project_stage(
+        db, project.id,
+        from_stage=Stage.SALES,
+        to_stage=Stage.ONBOARDING,
+        reason="sales_handover",
+        metadata={"source": "auto_advance_sales_if_complete"},
+        actor_user_id=None,
+    )
     db.refresh(project)
 
     try:
@@ -269,6 +301,20 @@ def auto_advance_sales_if_complete(db: Session, project: Project) -> Project:
         OnboarderAgentService(db).validate_initial_project_data(project.id)
     except Exception as e:
         print(f"[ONBOARDING_EMAIL] Failed to trigger onboarding email: {e}")
+
+    try:
+        from app.jobs.queue import enqueue_job
+        enqueue_job(
+            project_id=project.id,
+            stage=Stage.ONBOARDING,
+            payload_json={"trigger_source": "auto_advance_sales_if_complete"},
+            request_id=None,
+            actor_user_id=None,
+            db=db,
+        )
+        db.commit()
+    except Exception as e:
+        print(f"[ONBOARDING_ENQUEUE] Failed to enqueue ONBOARDING job: {e}")
 
     return project
 

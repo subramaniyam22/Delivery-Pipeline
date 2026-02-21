@@ -157,7 +157,7 @@ class EmailService:
                     <div class="message-box">{{ message }}</div>
                 </div>
                 <div class="footer">
-                    <p>Delivery Automation Suite</p>
+                    <p>Delivery Automation Intelligence System Yield</p>
                 </div>
             </div>
         </body>
@@ -223,7 +223,7 @@ class EmailService:
                     <a href="{{ app_url }}/projects/{{ project_id }}" class="button">View Project</a>
                 </div>
                 <div class="footer">
-                    <p>Delivery Automation Suite</p>
+                    <p>Delivery Automation Intelligence System Yield</p>
                 </div>
             </div>
         </body>
@@ -283,7 +283,7 @@ class EmailService:
                     <a href="{{ app_url }}/projects/{{ project_id }}" class="button">View Project</a>
                 </div>
                 <div class="footer">
-                    <p>Delivery Automation Suite</p>
+                    <p>Delivery Automation Intelligence System Yield</p>
                 </div>
             </div>
         </body>
@@ -348,7 +348,7 @@ class EmailService:
                     <a href="{{ app_url }}/projects/{{ project_id }}" class="button">View Task</a>
                 </div>
                 <div class="footer">
-                    <p>Delivery Automation Suite</p>
+                    <p>Delivery Automation Intelligence System Yield</p>
                 </div>
             </div>
         </body>
@@ -405,7 +405,7 @@ class EmailService:
                     <p>If you didn't request this, you can safely ignore this email.</p>
                 </div>
                 <div class="footer">
-                    <p>Delivery Automation Suite</p>
+                    <p>Delivery Automation Intelligence System Yield</p>
                 </div>
             </div>
         </body>

@@ -6,14 +6,19 @@ import QueryProvider from '@/components/QueryProvider';
 // SEO-optimized metadata
 export const metadata: Metadata = {
     title: {
-        default: 'Delivery Automation Suite - Project Management Platform',
-        template: '%s | Delivery Automation Suite',
+        default: 'Delivery Automation Intelligence System Yield - Project Management Platform',
+        template: '%s | Delivery Automation Intelligence System Yield',
     },
-    description: 'Enterprise-grade delivery automation suite. Track projects, manage teams, and optimize workflows with AI-powered insights across global regions.',
+    description: 'Delivery Automation Intelligence System Yield (DAISY): enterprise-grade project delivery orchestration with AI-powered insights across global regions.',
     keywords: ['project management', 'delivery automation', 'team management', 'workflow automation', 'enterprise software'],
-    authors: [{ name: 'Delivery Automation Suite Team' }],
-    creator: 'Delivery Automation Suite',
-    publisher: 'Delivery Automation Suite',
+    authors: [{ name: 'Delivery Automation Intelligence System Yield Team' }],
+    creator: 'Delivery Automation Intelligence System Yield',
+    publisher: 'Delivery Automation Intelligence System Yield',
+    icons: {
+        icon: '/favicon.png',
+        shortcut: '/favicon.png',
+        apple: '/favicon.png',
+    },
     robots: {
         index: true,
         follow: true,
@@ -29,14 +34,14 @@ export const metadata: Metadata = {
         type: 'website',
         locale: 'en_US',
         url: 'https://delivery-pipeline.com',
-        siteName: 'Delivery Automation Suite',
-        title: 'Delivery Automation Suite - Project Management Platform',
-        description: 'Enterprise-grade delivery automation suite with AI-powered insights.',
+        siteName: 'Delivery Automation Intelligence System Yield',
+        title: 'Delivery Automation Intelligence System Yield - Project Management Platform',
+        description: 'Delivery Automation Intelligence System Yield (DAISY) with AI-powered insights.',
     },
     twitter: {
         card: 'summary_large_image',
-        title: 'Delivery Automation Suite - Project Management Platform',
-        description: 'Enterprise-grade delivery automation suite with AI-powered insights.',
+        title: 'Delivery Automation Intelligence System Yield - Project Management Platform',
+        description: 'Delivery Automation Intelligence System Yield (DAISY) with AI-powered insights.',
     },
     // InfoSec: Prevent embedding in iframes (clickjacking protection)
     other: {

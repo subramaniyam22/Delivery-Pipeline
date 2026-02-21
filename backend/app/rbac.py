@@ -1,3 +1,9 @@
+"""
+RBAC: source of truth for roles and permissions.
+Routes should enforce: Admin/Manager full access; Sales creates projects/drafts;
+Consultant updates onboarding; PC manages assignment; Builder/Testers stage-specific.
+Dangerous/debug endpoints (enqueue, config, pipeline advance, stuck jobs, ws/stats): Admin/Manager only.
+"""
 from fastapi import HTTPException, status
 from app.models import Role, Stage
 from typing import List, Callable
