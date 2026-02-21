@@ -22,8 +22,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Lighthouse + LHCI CLI (global)
-RUN npm install -g lighthouse @lhci/cli
+# Lighthouse (global, pinned for predictable runs)
+RUN npm install -g lighthouse@11
+RUN lighthouse --version
+
+# Fonts (improves Lighthouse screenshots/layout accuracy)
+RUN apt-get update && apt-get install -y fonts-liberation fonts-noto-color-emoji && rm -rf /var/lib/apt/lists/*
 
 # Chromium (Debian package) for Lighthouse
 RUN apt-get update && apt-get install -y --no-install-recommends \
