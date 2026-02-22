@@ -17,7 +17,9 @@ A multi-agent workflow system with **7 stages** plus AI template management:
 Key capabilities:
 - **Reports** (Insights): Executive dashboard with **Projects Delivered** (count of projects in Complete status only; not active pipeline count), cycle time, SLA breaches, client sentiment; Insights with delivery health, client insights, quality & defects; filters by date range, client, stage, template; Export CSV/PDF
 - **Client Management** (Consultant+): Track client contacts, project context, pending requirements, last reminder; update client emails; send reminder emails
-- **Template Registry**: AI and Git templates; blueprint generation; **preview** (Static = fast/cached, Live = accurate/dynamic); **validation** (Lighthouse + Axe for responsiveness and accessibility); Performance and Evolution tabs; WCAG 2 AA–friendly preview renderer (contrast, main landmark, unique section labels)
+- **Template Registry**: AI and Git templates; **S3 template zips** as immutable artifacts (`templates/{template_id}/{version}/template.zip`); blueprint generation; **preview** (Static = fast/cached, Live = accurate/dynamic); **validation** (Lighthouse + Axe); Performance and Evolution tabs; WCAG 2 AA–friendly preview renderer
+- **S3 + CloudFront hosting**: Previews at `previews/{project_id}/{run_id}/site/` (30-day retention tag); deliveries at `deliveries/{project_id}/current/site/` and history at `deliveries/{project_id}/{run_id}/site/`; **proof packs** in `artifacts/` with 180-day retention; config validated on startup when `STORAGE_BACKEND=s3`
+- **Portal + confirmation flows**: Pending confirmation requests (fallback template, substitute artifact) block the pipeline; client portal shows pending confirmations; **POST /confirmations/{id}/approve** and **POST /confirmations/{id}/reject**; reminder email daily (max 10)
 - **Preview Strategy** (Admin): Choose Static Preview (fast, cached) or Live Preview (accurate, dynamic). **Image prompts** (optional) in Create Template guide AI for exterior/interior/lifestyle/people/neighborhood imagery
 - AI-driven workflow orchestration with optional human approval gates (global and per-project)
 - SLA configuration, quality thresholds, HITL gates, and Learning Proposals in admin UI
@@ -30,6 +32,7 @@ Key capabilities:
 - JWT-secured notification WebSocket connections
 - Template preview iframe: auth via `?access_token=` or trusted Referer; **CHROME_PATH** / **PLAYWRIGHT_BROWSERS_PATH** for validation (see Render and Validation sections)
 - Debug endpoints gated in production; **GET /api/debug/chrome-path** (Admin/Manager) returns Chrome path for Render env
+- **Structured logging**: S3 upload keys, CloudFront URLs, and confirmation decisions logged for observability
 
 ## 🔐 Roles & Permissions
 
@@ -50,9 +53,10 @@ Key capabilities:
 - **LangGraph** for multi-agent workflow orchestration
 - **PostgreSQL** for data persistence
 - **SQLAlchemy 2.0** + Alembic for database management
-- **JWT** authentication with 6-hour expiry
+- **JWT** authentication with 6-hour expiry (optional key rotation via SECRET_KEY_CURRENT / SECRET_KEY_PREVIOUS)
 - **RBAC** enforcement on all endpoints
-- **Structured logging** with request IDs
+- **Storage layer**: Local or **S3**; key builders (`build_template_key`, `build_preview_prefix`, `build_delivery_prefix`, `build_delivery_history_prefix`) and CloudFront URL helpers (`get_preview_url`, `get_delivery_url`); S3 config validated on startup when `STORAGE_BACKEND=s3`
+- **Structured logging** with request IDs, S3 keys, CloudFront URLs, and confirmation decisions
 - **Webhook** delivery for chat logs
 
 ### Frontend (Next.js)
@@ -288,6 +292,13 @@ Once running, visit:
 - `POST /projects/{id}/artifacts/upload` - Upload artifact (role-based)
 - `GET /projects/{id}/artifacts` - List artifacts
 
+**Confirmations (portal + fallback flows):**
+- `POST /projects/{project_id}/confirmations` - Create confirmation request (Admin/Manager)
+- `GET /projects/{project_id}/confirmations` - List confirmations (JWT or client_token)
+- `POST /projects/{project_id}/confirmations/{id}/decide` - Approve or reject with comment (JWT or client_token)
+- `POST /confirmations/{id}/approve` - Approve with comment (JWT or client_token)
+- `POST /confirmations/{id}/reject` - Reject with comment (JWT or client_token)
+
 **Tasks:**
 - `POST /projects/{id}/tasks` - Create task (PC/Admin/Manager)
 - `GET /projects/{id}/tasks` - List tasks
@@ -341,7 +352,7 @@ python scripts/e2e_pipeline_simulation.py --base-url http://localhost:8000 --cre
 # Or run sweeper a few times: --sweeps 5
 ```
 
-**Environment variables (autonomous pipeline):** See `.env.example` and **Render Environment Variables** below. Required: `DATABASE_URL`, `REDIS_URL`, `SECRET_KEY` (same on backend and worker), `BACKEND_URL`, `FRONTEND_URL`, `OPENAI_API_KEY`; `RESEND_API_KEY` for onboarding and completion emails; optional S3 (`STORAGE_BACKEND=s3`, `S3_*`) for thumbnails/artifacts.
+**Environment variables (autonomous pipeline):** See `.env.example` and **Render Environment Variables** below. Required: `DATABASE_URL`, `REDIS_URL`, `SECRET_KEY` (same on backend and worker), `BACKEND_URL`, `FRONTEND_URL`, `OPENAI_API_KEY`; `RESEND_API_KEY` for onboarding and completion emails. For S3/CloudFront: set `STORAGE_BACKEND=s3` and all of `TEMPLATE_S3_BUCKET`, prefixes, CloudFront domains, `S3_REGION`, and credentials (validated on startup).
 
 ## 🔧 Local Development (without Docker)
 
@@ -392,9 +403,14 @@ npm run dev
 **StageOutputs** – Workflow stage execution results  
 **Artifacts** – File uploads per stage  
 **Defects** – Defect tracking  
-**TemplateRegistry** – Templates with blueprint_json, preview_status, validation_status, validation_last_run_at, result_json, performance_metrics_json  
+**TemplateRegistry** – Templates with blueprint_json, preview_status, validation_status, build_source_type, build_source_ref (S3 key or git ref)  
+**TemplateArtifact** – Immutable S3 template zips per version (template_id, s3_key, version, checksum)  
+**ProofPack** – Proof packs in S3 with retention (project_id, stage, s3_prefix, size_mb)  
+**ConfirmationRequest** – Portal confirmation requests that block pipeline (fallback template, substitute artifact); status pending/approved/rejected; reminder_count, decided_at, decision_comment  
+**ProjectTemplateInstance** – Per-project template and optional fallback; fallback_confirmed_at, use_fallback_callout  
 **TemplateValidationJob** – Validation job queue and results  
 **AdminConfig** – Configuration (templates, SLA, thresholds, preview_strategy, HITL gates)  
+**PolicyConfig** – Decision policies (reminder cadence, max reminders, build retry cap, defect cycle cap, pass thresholds)  
 **AuditLogs** – Audit trail of all actions  
 **Executive / Reports** – Aggregates: `projects_delivered` (count of COMPLETED), total_projects, cycle time, SLA breaches, sentiment (from SLA/analytics endpoints)
 
@@ -474,11 +490,12 @@ Templates support two source types:
 
 **Endpoints:** POST `/api/templates/{id}/generate-preview`, GET `/api/templates/{id}/preview` and `/api/templates/{id}/preview/{path}` (auth: Bearer or `?access_token=` or trusted Referer), GET `/api/debug/chrome-path` (Admin/Manager – returns `CHROME_PATH` for Render).
 
-**Versioned template storage (clone template):** Templates can reference an immutable build source for reproducible builds. Each template row may set `build_source_type` (`s3` | `git`) and `build_source_ref` (S3 object key or git commit/tag ref). When a client selects a template, a **ProjectTemplateInstance** is created for that project pointing to the template (and optional fallback). On BUILD stage start, the worker uses the template’s source ref to pull the versioned artifact (e.g. S3 zip or git ref), expand into the build workspace, apply client data, and run the build. Previews are hosted on Render (or configured preview URL); thumbnails and proof assets use **AWS S3** when `STORAGE_BACKEND=s3`. If the selected template is missing, the system can prompt for client confirmation to use a safe fallback and show the callout: *"A safe fallback template was used with your approval."*
+**Versioned template storage (clone template):** Templates can reference an immutable build source for reproducible builds. Each template row may set `build_source_type` (`s3` | `s3_zip` | `git`) and `build_source_ref` (S3 key from `build_template_key(template_id, version)` or git commit/tag ref). **TemplateArtifact** records immutable template zips in S3 (s3_key, version, checksum). When a client selects a template, a **ProjectTemplateInstance** is created for that project (with optional fallback). On BUILD stage start, the **worker** (site_builder): (1) downloads template zip from S3 (or clones git ref), (2) unzips into temp dir, (3) injects client data (`data/client_contract.json`), (4) runs build and ensures **index.html** in output, (5) uploads to **previews/{project_id}/{run_id}/site/** (tagged `expires=30d`) and copies to **deliveries/{project_id}/current/site/**. Preview and delivery URLs use **CloudFront** via `get_preview_url()` and `get_delivery_url()`. Proof packs upload to **artifacts/** with tag `expires=180d`. If the selected template is missing, the system can create a **ConfirmationRequest** and block until the client approves/rejects a fallback (portal or **POST /confirmations/{id}/approve** or **/reject**); reminder email sent daily (max 10).
 
 ## 📋 Recovery runbook (zero-HITL)
 
 - **Project stuck in a stage:** Open project → Job Queue → **Enqueue** (current stage) or **Enqueue Build** (Admin/Manager). Ensure the worker is running so the job is picked up.
+- **Blocked by pending confirmation:** Pipeline can block on **ConfirmationRequest** (fallback template, substitute artifact). Client portal shows pending confirmations; resolve via portal or **POST /confirmations/{id}/approve** or **POST /confirmations/{id}/reject** (with comment). Reminder email sent daily (max 10).
 - **Autopilot paused (circuit breaker / ambiguous stage):** Project detail → **Pipeline** → **Resume autopilot** (Admin/Manager). Fix any blocking condition (e.g. resolve ambiguous ready stages) then resume.
 - **HOLD (awaiting client):** After 10 reminders the project is on HOLD. Contact the client; when they complete onboarding, re-activate the project and run **Resume autopilot** or advance once to re-evaluate.
 - **NEEDS_REVIEW (defect cycle cap or build retries):** Review the stage output and defects; fix or approve. Then use **Resume autopilot** or **Enqueue** the appropriate stage to continue.
@@ -495,8 +512,18 @@ Templates support two source types:
 | `FRONTEND_URL` | Yes | Frontend base URL (e.g. `https://app.example.com`) |
 | `OPENAI_API_KEY` | Yes* | For AI agents; optional if using FakeLLM |
 | `RESEND_API_KEY` | Yes* | For onboarding and completion emails |
-| `STORAGE_BACKEND` | No | `s3` for S3; else local/simple |
-| `S3_BUCKET`, `S3_REGION`, etc. | If S3 | AWS S3 for thumbnails/artifacts |
+| `STORAGE_BACKEND` | No | `local` or `s3`; when `s3`, all S3/CloudFront vars below are validated on startup |
+| **S3 (when STORAGE_BACKEND=s3)** | | |
+| `TEMPLATE_S3_BUCKET` | If S3 | Bucket for templates, previews, deliveries, artifacts (e.g. `delivery-pipeline-assets-prod`) |
+| `TEMPLATE_S3_PREFIX` | If S3 | e.g. `templates/` |
+| `PREVIEW_S3_PREFIX` | If S3 | e.g. `previews/` |
+| `DELIVERY_S3_PREFIX` | If S3 | e.g. `deliveries/` |
+| `PROOF_S3_PREFIX` | If S3 | e.g. `artifacts/` |
+| `PREVIEW_CLOUDFRONT_DOMAIN` | If S3 | CloudFront domain for previews (e.g. `d1io3h1jsbyk0b.cloudfront.net`) |
+| `DELIVERY_CLOUDFRONT_DOMAIN` | If S3 | CloudFront domain for deliveries (e.g. `dx6spv477rbpv.cloudfront.net`) |
+| `S3_REGION` | If S3 | e.g. `eu-north-1` |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | If S3 | Or `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` |
+| `PREVIEW_PUBLIC_BASE_URL`, `DELIVERY_PUBLIC_BASE_URL` | No | Optional overrides; built from CloudFront domains if unset |
 | `CHROME_PATH` | No | Override Chrome/Chromium path (Lighthouse); set on Render if needed |
 | `PLAYWRIGHT_BROWSERS_PATH` | No | Override Playwright browsers path |
 
@@ -567,7 +594,7 @@ docker compose exec backend alembic upgrade heads
 ```
 
 ### Testing
-- **Unit tests** (no DB): `cd backend && python -m pytest tests/test_state_machine.py tests/test_build_thresholds.py -v -o addopts="-v --strict-markers"` (avoids coverage if pytest-cov is missing).
+- **Unit tests** (no DB): `cd backend && python -m pytest tests/test_state_machine.py tests/test_build_thresholds.py tests/test_storage_keys_config.py -v -o addopts=""` (avoids coverage if pytest-cov is missing). **test_storage_keys_config.py** covers storage key builders (`build_template_key`, `build_preview_prefix`, `build_delivery_prefix`, `build_delivery_history_prefix`), URL helpers (`get_preview_url`, `get_delivery_url`), and S3 config validation (missing bucket or credentials fails fast when `STORAGE_BACKEND=s3`).
 - **Integration tests** (`tests/test_autopilot_integration.py`) use an in-memory SQLite DB and expect UUID support; they may fail locally if SQLite does not support UUID. Run them inside Docker (e.g. `docker compose run --rm backend pytest tests/test_autopilot_integration.py`) for a Postgres-compatible environment.
 
 ### Frontend API Connection
@@ -580,38 +607,43 @@ docker compose exec backend alembic upgrade heads
 Delivery-Pipeline/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI application
-│   │   ├── config.py            # Settings
+│   │   ├── main.py              # FastAPI application (startup: S3 config validation)
+│   │   ├── config.py            # Settings (S3/CloudFront vars, validate_s3_config_on_startup)
 │   │   ├── db.py                # Database session
-│   │   ├── models.py            # SQLAlchemy models
+│   │   ├── models.py             # SQLAlchemy models (TemplateArtifact, ProofPack, ConfirmationRequest, etc.)
 │   │   ├── schemas.py           # Pydantic schemas
 │   │   ├── auth.py              # JWT authentication
 │   │   ├── rbac.py              # Role-based access control
 │   │   ├── deps.py              # FastAPI dependencies (incl. get_current_user_for_preview)
-│   │   ├── routers/             # API routers (auth, projects, configuration, client_management, etc.)
-│   │   ├── services/            # Business logic (preview_renderer, validation_runner, storage, etc.)
+│   │   ├── error_codes.py       # Standard error codes (e.g. DEFECT_CYCLE_CAP_REACHED, TIMEOUT_STUCK_RUN)
+│   │   ├── pipeline/            # State machine and pipeline logic
+│   │   ├── routers/             # auth, projects, configuration, confirmations (+ router_flat: /confirmations/{id}/approve|reject), etc.
+│   │   ├── runners/             # site_builder (clone S3 zip, build, upload preview/delivery), self_review, qa_runner
+│   │   ├── services/            # storage (key/URL builders, S3 tags 30d/180d), workflow_runner, template_instance_service, etc.
 │   │   ├── agents/              # LangGraph workflow
 │   │   └── middleware/          # Security headers (X-Frame-Options, CSP for preview)
-│   ├── alembic/                 # Database migrations
-│   ├── generated_previews/      # AI template preview artifacts (optional)
+│   ├── alembic/                 # Database migrations (incl. template_artifacts, proof_packs)
+│   ├── generated_previews/      # Local AI template preview artifacts (optional)
 │   ├── scripts/
 │   │   ├── print_chrome_path.py # Print CHROME_PATH for Render (run in Shell)
 │   │   ├── seed_admin.py
-│   │   └── seed_users.py
+│   │   ├── seed_users.py
+│   │   └── e2e_pipeline_simulation.py
+│   ├── tests/                   # test_storage_keys_config, test_state_machine, test_build_thresholds, etc.
 │   ├── requirements.txt
 │   └── Dockerfile               # Node + Lighthouse + Playwright chromium/headless_shell
 ├── worker/
-│   └── Dockerfile               # Background worker (Lighthouse, Playwright, Chromium)
+│   └── Dockerfile               # Background worker (Lighthouse, Playwright, Chromium; same Redis/DB as backend)
 ├── frontend/
 │   ├── src/
-│   │   ├── app/                 # Next.js App Router pages
+│   │   ├── app/                 # Next.js App Router pages (incl. client portal for confirmations)
 │   │   ├── components/          # React components
-│   │   └── lib/                # Utilities (API, auth, RBAC)
+│   │   └── lib/                 # Utilities (API, auth, RBAC)
 │   ├── package.json
 │   └── (no Dockerfile; Render uses Node runtime)
 ├── render.yaml                  # Render Blueprint (backend, frontend, worker, redis, db)
 ├── docker-compose.yml
-├── .env.example
+├── .env.example                 # S3/CloudFront vars (TEMPLATE_S3_BUCKET, prefixes, CloudFront domains, S3_REGION)
 └── README.md
 ```
 
@@ -649,7 +681,7 @@ The blueprint sets DATABASE_URL, REDIS_URL, SECRET_KEY, CORS, FRONTEND_URL, BACK
 | **SENTRY_DSN** | [Sentry](https://sentry.io) — for error tracking |
 | **PLAYWRIGHT_BROWSERS_PATH** (Backend) | Set by blueprint to `/app/.cache/ms-playwright`. Do not override unless needed. |
 | **CHROME_PATH** (Backend, optional) | If template validation reports "Chrome/Chromium not found", set to the path from `GET /api/debug/chrome-path` or `python scripts/print_chrome_path.py`. |
-| **AWS S3** (optional) | Set **STORAGE_BACKEND=s3** and **S3_BUCKET**, **S3_ACCESS_KEY**, **S3_SECRET_KEY**, **S3_REGION** from [AWS IAM](https://console.aws.amazon.com/iam/) / S3 or Cloudflare R2. See [docs/RENDER_ENV.md](docs/RENDER_ENV.md#optional-aws-s3-or-s3-compatible-storage). |
+| **AWS S3 + CloudFront** (optional) | Set **STORAGE_BACKEND=s3**; **TEMPLATE_S3_BUCKET**, **TEMPLATE_S3_PREFIX**, **PREVIEW_S3_PREFIX**, **DELIVERY_S3_PREFIX**, **PROOF_S3_PREFIX**; **PREVIEW_CLOUDFRONT_DOMAIN**, **DELIVERY_CLOUDFRONT_DOMAIN**; **S3_REGION** (e.g. `eu-north-1`); **S3_ACCESS_KEY**, **S3_SECRET_KEY** (or AWS_*). All validated on startup. See [docs/RENDER_ENV.md](docs/RENDER_ENV.md#optional-aws-s3-or-s3-compatible-storage). |
 
 Full list and optional vars (SMTP, webhooks): see **[docs/RENDER_ENV.md](docs/RENDER_ENV.md)**.
 
@@ -665,34 +697,30 @@ Full list and optional vars (SMTP, webhooks): see **[docs/RENDER_ENV.md](docs/RE
 
 ## 🌐 Hosting Setup Checklist (S3 + CloudFront)
 
-Use this when serving **previews** and **deliveries** from S3 with CloudFront.
+Use this when serving **previews** and **deliveries** from S3 with CloudFront. When `STORAGE_BACKEND=s3`, the backend **validates** bucket, credentials, and all prefix/CloudFront vars on startup and fails fast if any are missing.
 
 ### S3 bucket and prefixes
-- Bucket (e.g. `delivery-pipeline-assets-prod`) with prefixes: `templates/`, `previews/`, `deliveries/`, `artifacts/`.
-- **Templates**: `templates/{template_id}/{version}/template.zip` (immutable; never overwrite).
-- **Previews**: `previews/{project_id}/{run_id}/site/...` (30-day retention recommended).
-- **Deliveries**: `deliveries/{project_id}/current/site/...` (stable); optional history `deliveries/{project_id}/{run_id}/site/...`.
-- **Proof packs**: `artifacts/{project_id}/{stage_key}/{run_id}/manifest.json` and related files (180-day retention recommended).
+- **Bucket**: Set `TEMPLATE_S3_BUCKET` (e.g. `delivery-pipeline-assets-prod`). Prefixes from env: `TEMPLATE_S3_PREFIX`, `PREVIEW_S3_PREFIX`, `DELIVERY_S3_PREFIX`, `PROOF_S3_PREFIX`.
+- **Templates**: `templates/{template_id}/{version}/template.zip` (immutable; key from `build_template_key()`).
+- **Previews**: `previews/{project_id}/{run_id}/site/` — uploaded by worker; tagged `expires=30d` for lifecycle.
+- **Deliveries**: `deliveries/{project_id}/current/site/` (stable); history `deliveries/{project_id}/{run_id}/site/` (from `build_delivery_prefix` / `build_delivery_history_prefix`).
+- **Proof packs**: `artifacts/{project_id}/{stage_key}/{run_id}/` — tagged `expires=180d`.
 
 ### CloudFront
 - **Default root object**: Set to `index.html` so `/` serves the SPA root.
 - **SPA error mapping**: Map HTTP 403 and 404 to `/index.html` (status 200) so client-side routing works.
 - **Origins**: Point each distribution to the S3 bucket; use path patterns if you use a single bucket for multiple prefixes.
 - **Recommended**: Origin Access Control (OAC) to keep the bucket private; CloudFront only can read.
+- **Env**: `PREVIEW_CLOUDFRONT_DOMAIN` and `DELIVERY_CLOUDFRONT_DOMAIN` (host only); public URLs built as `https://{domain}/{prefix path}`. Optionally set `PREVIEW_PUBLIC_BASE_URL` / `DELIVERY_PUBLIC_BASE_URL` to override.
 
-### S3 lifecycle rules (document in AWS; apply to bucket)
-- **previews/** – Expire objects after 30 days (or transition to Glacier if needed).
+### S3 lifecycle rules (AWS bucket)
+- Use object **tags** `expires=30d` (previews) and `expires=180d` (artifacts) and configure lifecycle rules to expire/transition by tag, or:
+- **previews/** – Expire objects after 30 days.
 - **artifacts/** – Expire objects after 180 days.
 - **deliveries/** and **templates/** – Keep (no expiration).
 
 ### Logging
-- Enable **CloudFront logging** to an S3 bucket (or existing prefix) for access logs.
-- Enable **S3 server access logging** if you need bucket-level audit.
-
-### Env vars
-- `PREVIEW_PUBLIC_BASE_URL` – CloudFront URL for previews (e.g. `https://d1io3h1jsbyk0b.cloudfront.net`).
-- `DELIVERY_PUBLIC_BASE_URL` – CloudFront URL for deliveries (e.g. `https://dx6spv477rbpv.cloudfront.net`).
-- Keep `S3_PUBLIC_BASE_URL` for backward compatibility; preview/delivery URLs are built from the two vars above.
+- Enable **CloudFront logging** and **S3 server access logging** if needed. Backend logs S3 upload keys and CloudFront URLs (structured logs).
 
 ## 🔒 Security Notes
 
