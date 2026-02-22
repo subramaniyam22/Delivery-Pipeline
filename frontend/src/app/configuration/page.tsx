@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { configurationAPI, configAPI, API_BASE_URL } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
@@ -248,7 +248,7 @@ function defaultDecisionPolicies() {
     };
 }
 
-export default function ConfigurationPage() {
+function ConfigurationPageContent() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
     const [templates, setTemplates] = useState<TemplateRegistry[]>([]);
@@ -3093,5 +3093,17 @@ export default function ConfigurationPage() {
             </main>
         </div>
         </RequireCapability>
+    );
+}
+
+export default function ConfigurationPage() {
+    return (
+        <Suspense fallback={
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <p style={{ color: '#64748b' }}>Loading configuration…</p>
+            </div>
+        }>
+            <ConfigurationPageContent />
+        </Suspense>
     );
 }
