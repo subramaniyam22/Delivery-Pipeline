@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     
     # Email (Resend)
     RESEND_API_KEY: Optional[str] = None
+    RESEND_WEBHOOK_SECRET: str = ""  # Svix signing secret for POST /api/webhooks/resend
     EMAIL_FROM: str = "Delivery Automation Intelligence System Yield <noreply@resend.dev>"
     APP_NAME: str = "Delivery Automation Intelligence System Yield"
 

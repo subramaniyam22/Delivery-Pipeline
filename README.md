@@ -446,11 +446,13 @@ Replace with actual API calls in production.
 
 ## 🔔 Webhooks
 
-Chat logs can be delivered to an external system via webhook:
+**Chat logs** can be delivered to an external system via webhook:
 
 - `CHAT_LOG_WEBHOOK_URL` (optional) points to a receiver endpoint
 - If not set, the service falls back to `BACKEND_URL + /api/webhooks/chat-logs`
 - `CHAT_LOG_WEBHOOK_SECRET` (optional) is validated via the `X-Webhook-Secret` header
+
+**Resend (email events):** `POST /api/webhooks/resend` receives Resend webhooks with **Svix** signature verification. Set `RESEND_WEBHOOK_SECRET` (from Resend dashboard, Svix signing secret) to enable. Returns 503 if secret not configured, 400 if Svix headers missing, 401 if signature invalid, 200 with `{"ok": true}` when valid.
 
 ## 📝 Configuration Management
 
@@ -512,6 +514,7 @@ Templates support two source types:
 | `FRONTEND_URL` | Yes | Frontend base URL (e.g. `https://app.example.com`) |
 | `OPENAI_API_KEY` | Yes* | For AI agents; optional if using FakeLLM |
 | `RESEND_API_KEY` | Yes* | For onboarding and completion emails |
+| `RESEND_WEBHOOK_SECRET` | No | Svix signing secret for `POST /api/webhooks/resend` (email events) |
 | `STORAGE_BACKEND` | No | `local` or `s3`; when `s3`, all S3/CloudFront vars below are validated on startup |
 | **S3 (when STORAGE_BACKEND=s3)** | | |
 | `TEMPLATE_S3_BUCKET` | If S3 | Bucket for templates, previews, deliveries, artifacts (e.g. `delivery-pipeline-assets-prod`) |

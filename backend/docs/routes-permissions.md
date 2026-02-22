@@ -39,6 +39,7 @@ These endpoints use `check_full_access(current_user.role)` or `require_admin_man
 | **Sentiment**     | `POST /public/sentiment/*` | Public submit |
 | **Health**        | `GET /healthz`, `GET /readyz` | No auth |
 | **Version**       | `GET /version` | No auth |
+| **Resend webhook** | `POST /api/webhooks/resend` | No auth; Svix signature verification (requires `RESEND_WEBHOOK_SECRET`) |
 
 ## All other routes
 

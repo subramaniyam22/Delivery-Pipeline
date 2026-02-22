@@ -190,9 +190,19 @@ def build_and_package(
             shutil.copytree(baseline_src, baseline_dir)
         apply_assets(mapping_plan_json, assets, repo_dir)
         dist_path, output_kind = build_site(repo_dir)
-        index_path = os.path.join(dist_path, "index.html")
-        if not os.path.isfile(index_path):
-            raise RuntimeError("Build must output index.html; missing in output directory")
+        dist_dir = os.path.join(repo_dir, "dist")
+        if not os.path.isdir(dist_dir) or not os.path.isfile(os.path.join(dist_dir, "index.html")):
+            try:
+                children = os.listdir(repo_dir)
+            except OSError:
+                children = []
+            raise RuntimeError(
+                "Template build output missing dist/index.html. "
+                "Ensure your template build produces a static site into /dist. "
+                f"Found: {children}"
+            )
+        dist_path = dist_dir
+        output_kind = "dist"
         zip_path = package_build(dist_path, workdir)
 
         with open(zip_path, "rb") as handle:
