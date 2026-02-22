@@ -17,7 +17,7 @@ A multi-agent workflow system with **7 stages** plus AI template management:
 Key capabilities:
 - **Reports** (Insights): Executive dashboard with **Projects Delivered** (count of projects in Complete status only; not active pipeline count), cycle time, SLA breaches, client sentiment; Insights with delivery health, client insights, quality & defects; filters by date range, client, stage, template; Export CSV/PDF
 - **Client Management** (Consultant+): Track client contacts, project context, pending requirements, last reminder; update client emails; send reminder emails
-- **Template Registry**: AI and Git templates; **S3 template zips** as immutable artifacts (`templates/{template_id}/{version}/template.zip`); blueprint generation; **preview** (Static = fast/cached, Live = accurate/dynamic); **validation** (Lighthouse + Axe); Performance and Evolution tabs; WCAG 2 AA–friendly preview renderer
+- **Template Registry**: AI and Git templates; **S3 template zips** as immutable artifacts (`templates/{template_id}/{version}/template.zip`); blueprint generation; **preview** (Static = fast/cached, Live = accurate/dynamic); **validation** (Lighthouse + Axe); Performance and Evolution tabs; WCAG 2 AA–friendly preview renderer; **template build must output dist/index.html** (fail-fast before package/upload)
 - **S3 + CloudFront hosting**: Previews at `previews/{project_id}/{run_id}/site/` (30-day retention tag); deliveries at `deliveries/{project_id}/current/site/` and history at `deliveries/{project_id}/{run_id}/site/`; **proof packs** in `artifacts/` with 180-day retention; config validated on startup when `STORAGE_BACKEND=s3`
 - **Portal + confirmation flows**: Pending confirmation requests (fallback template, substitute artifact) block the pipeline; client portal shows pending confirmations; **POST /confirmations/{id}/approve** and **POST /confirmations/{id}/reject**; reminder email daily (max 10)
 - **Preview Strategy** (Admin): Choose Static Preview (fast, cached) or Live Preview (accurate, dynamic). **Image prompts** (optional) in Create Template guide AI for exterior/interior/lifestyle/people/neighborhood imagery
@@ -77,6 +77,7 @@ Key capabilities:
 - JWT (python-jose), bcrypt (passlib)
 - Redis + SlowAPI (rate limiting)
 - Playwright + Lighthouse (quality checks)
+- Svix (webhook signature verification for Resend)
 
 **Frontend:**
 - Next.js 16
@@ -114,6 +115,7 @@ OPENAI_TEMPERATURE=0.2
 OPENAI_TIMEOUT_SECONDS=60
 CHAT_LOG_WEBHOOK_URL=
 CHAT_LOG_WEBHOOK_SECRET=
+RESEND_WEBHOOK_SECRET=   # optional; for POST /api/webhooks/resend (Resend + Svix)
 ```
 
 ### 3. Start with Docker Compose
@@ -287,6 +289,7 @@ Once running, visit:
 - `GET /api/ai/chat-logs/{project_id}` - Fetch chat logs
 - `POST /api/ai/chat/send` - Send consultant message
 - `POST /api/webhooks/chat-logs` - Receive chat log webhook
+- `POST /api/webhooks/resend` - Resend email events (Svix signature; requires `RESEND_WEBHOOK_SECRET`)
 
 **Artifacts:**
 - `POST /projects/{id}/artifacts/upload` - Upload artifact (role-based)
@@ -490,9 +493,11 @@ Templates support two source types:
 
 **Preview renderer (WCAG 2 AA):** Generated preview HTML uses contrast-safe text on primary/accent/white, one `<main>` landmark, and unique `aria-label`s per section so Axe color-contrast and landmark rules pass.
 
+**Build output:** Template build must produce **dist/index.html**. The worker checks for `dist/` and `dist/index.html` before packaging or uploading; if missing, it fails with a clear error that lists the top-level directory contents to aid debugging.
+
 **Endpoints:** POST `/api/templates/{id}/generate-preview`, GET `/api/templates/{id}/preview` and `/api/templates/{id}/preview/{path}` (auth: Bearer or `?access_token=` or trusted Referer), GET `/api/debug/chrome-path` (Admin/Manager – returns `CHROME_PATH` for Render).
 
-**Versioned template storage (clone template):** Templates can reference an immutable build source for reproducible builds. Each template row may set `build_source_type` (`s3` | `s3_zip` | `git`) and `build_source_ref` (S3 key from `build_template_key(template_id, version)` or git commit/tag ref). **TemplateArtifact** records immutable template zips in S3 (s3_key, version, checksum). When a client selects a template, a **ProjectTemplateInstance** is created for that project (with optional fallback). On BUILD stage start, the **worker** (site_builder): (1) downloads template zip from S3 (or clones git ref), (2) unzips into temp dir, (3) injects client data (`data/client_contract.json`), (4) runs build and ensures **index.html** in output, (5) uploads to **previews/{project_id}/{run_id}/site/** (tagged `expires=30d`) and copies to **deliveries/{project_id}/current/site/**. Preview and delivery URLs use **CloudFront** via `get_preview_url()` and `get_delivery_url()`. Proof packs upload to **artifacts/** with tag `expires=180d`. If the selected template is missing, the system can create a **ConfirmationRequest** and block until the client approves/rejects a fallback (portal or **POST /confirmations/{id}/approve** or **/reject**); reminder email sent daily (max 10).
+**Versioned template storage (clone template):** Templates can reference an immutable build source for reproducible builds. Each template row may set `build_source_type` (`s3` | `s3_zip` | `git`) and `build_source_ref` (S3 key from `build_template_key(template_id, version)` or git commit/tag ref). **TemplateArtifact** records immutable template zips in S3 (s3_key, version, checksum). When a client selects a template, a **ProjectTemplateInstance** is created for that project (with optional fallback). On BUILD stage start, the **worker** (site_builder): (1) downloads template zip from S3 (or clones git ref), (2) unzips into temp dir, (3) injects client data (`data/client_contract.json`), (4) runs build and **requires dist/index.html** (fail-fast before package/upload; error lists top-level dirs if missing), (5) uploads to **previews/{project_id}/{run_id}/site/** (tagged `expires=30d`) and copies to **deliveries/{project_id}/current/site/**. Preview and delivery URLs use **CloudFront** via `get_preview_url()` and `get_delivery_url()`. Proof packs upload to **artifacts/** with tag `expires=180d`. If the selected template is missing, the system can create a **ConfirmationRequest** and block until the client approves/rejects a fallback (portal or **POST /confirmations/{id}/approve** or **/reject**); reminder email sent daily (max 10).
 
 ## 📋 Recovery runbook (zero-HITL)
 
@@ -576,6 +581,9 @@ This repo can have multiple Alembic heads in development. Use `alembic upgrade h
 ### Client Management: "500" or "Unable to load projects"
 - The `/client-management/projects` endpoint reads onboarding data (e.g. `requirements_json`, `contacts_json`). If you see 500, ensure the backend is up to date (fixed in code to use correct OnboardingData fields). Redeploy the backend.
 
+### Template build: "Template build output missing dist/index.html"
+- The worker requires the template build to produce a **dist** directory with **index.html** before packaging or uploading. Configure your template (e.g. `package.json` scripts or `build.sh`) so the build output goes to `dist/` and includes `dist/index.html`. The error message lists the top-level directory contents to help debug.
+
 ### Database Connection Issues
 ```bash
 # Check if PostgreSQL is running
@@ -597,7 +605,7 @@ docker compose exec backend alembic upgrade heads
 ```
 
 ### Testing
-- **Unit tests** (no DB): `cd backend && python -m pytest tests/test_state_machine.py tests/test_build_thresholds.py tests/test_storage_keys_config.py -v -o addopts=""` (avoids coverage if pytest-cov is missing). **test_storage_keys_config.py** covers storage key builders (`build_template_key`, `build_preview_prefix`, `build_delivery_prefix`, `build_delivery_history_prefix`), URL helpers (`get_preview_url`, `get_delivery_url`), and S3 config validation (missing bucket or credentials fails fast when `STORAGE_BACKEND=s3`).
+- **Unit tests** (no DB): `cd backend && python -m pytest tests/test_state_machine.py tests/test_build_thresholds.py tests/test_storage_keys_config.py tests/test_resend_webhook.py -v -o addopts=""` (avoids coverage if pytest-cov is missing). **test_storage_keys_config.py** covers storage key builders, URL helpers, and S3 config validation. **test_resend_webhook.py** covers Resend webhook (503 when secret missing, 400 when Svix headers missing).
 - **Integration tests** (`tests/test_autopilot_integration.py`) use an in-memory SQLite DB and expect UUID support; they may fail locally if SQLite does not support UUID. Run them inside Docker (e.g. `docker compose run --rm backend pytest tests/test_autopilot_integration.py`) for a Postgres-compatible environment.
 
 ### Frontend API Connection
@@ -632,7 +640,7 @@ Delivery-Pipeline/
 │   │   ├── seed_admin.py
 │   │   ├── seed_users.py
 │   │   └── e2e_pipeline_simulation.py
-│   ├── tests/                   # test_storage_keys_config, test_state_machine, test_build_thresholds, etc.
+│   ├── tests/                   # test_storage_keys_config, test_resend_webhook, test_state_machine, test_build_thresholds, etc.
 │   ├── requirements.txt
 │   └── Dockerfile               # Node + Lighthouse + Playwright chromium/headless_shell
 ├── worker/
