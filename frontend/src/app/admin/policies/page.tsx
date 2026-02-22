@@ -62,7 +62,7 @@ export default function AdminPoliciesPage() {
     }
 
     return (
-        <RequireCapability requiredRoles={['admin', 'manager']}>
+        <RequireCapability cap="configure_system">
             <Navigation />
             <main className="p-6 max-w-2xl">
                 <PageHeader title="Settings → Policies" />
