@@ -99,6 +99,55 @@ def run_client_preview_pipeline(
             project.client_preview_error = "Template not found"
             session.commit()
             return {"status": "failed", "error": "Template not found"}
+
+        # S3 ZIP path: build from template zip, upload to previews/{project_id}/{run_id}/site/
+        build_source = getattr(template, "build_source_type", None)
+        source_ref = getattr(template, "build_source_ref", None)
+        if build_source in ("s3_zip", "s3") and source_ref:
+            from app.services.storage import get_s3_assets_backend, upload_preview_site, get_preview_public_url
+            from app.runners.site_builder import clone_template, build_site, _inject_client_contract
+            import tempfile
+            pc = session.query(ProjectContract).filter(ProjectContract.project_id == project_id).first()
+            contract_version = (pc.version or 1) if pc else 1
+            new_hash = hashlib.sha256(f"{source_ref}:{contract_version}".encode()).hexdigest()[:16]
+            if not force and getattr(project, "client_preview_hash", None) == new_hash and getattr(project, "client_preview_status", None) == "ready":
+                _client_preview_semaphore.release()
+                return {"status": "skipped", "message": "Preview already up to date"}
+            if not get_s3_assets_backend():
+                _client_preview_semaphore.release()
+                project.client_preview_status = "failed"
+                project.client_preview_error = "S3 not configured for template zip preview"
+                session.commit()
+                return {"status": "failed", "error": project.client_preview_error}
+            project.client_preview_status = "generating"
+            project.client_preview_error = None
+            session.commit()
+            try:
+                with tempfile.TemporaryDirectory() as workdir:
+                    repo_dir = clone_template(template, workdir)
+                    _inject_client_contract(repo_dir, contract)
+                    dist_path, _ = build_site(repo_dir)
+                    run_id = f"preview-{new_hash}"
+                    upload_preview_site(str(project_id), run_id, dist_path)
+                    preview_url = get_preview_public_url(str(project_id), run_id, "")
+                project.client_preview_url = preview_url
+                project.client_preview_thumbnail_url = None
+                project.client_preview_status = "ready"
+                project.client_preview_error = None
+                project.client_preview_last_generated_at = datetime.utcnow()
+                project.client_preview_hash = new_hash
+                session.add(PipelineEvent(project_id=project_id, stage_key="3_build", event_type="CLIENT_PREVIEW_READY", details_json={"preview_url": preview_url}))
+                session.commit()
+                _client_preview_semaphore.release()
+                return {"status": "ready", "preview_url": preview_url, "thumbnail_url": None}
+            except Exception as e:
+                logger.exception("Client preview (s3_zip) failed: %s", e)
+                project.client_preview_status = "failed"
+                project.client_preview_error = str(e)
+                session.commit()
+                _client_preview_semaphore.release()
+                return {"status": "failed", "error": str(e)}
+
         blueprint = getattr(template, "blueprint_json", None)
         if not blueprint or not isinstance(blueprint, dict):
             _client_preview_semaphore.release()

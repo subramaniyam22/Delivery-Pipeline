@@ -68,6 +68,31 @@ def get_current_active_user(current_user: User = Depends(get_current_user)) -> U
     return current_user
 
 
+def get_current_user_optional(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """Return current user if Bearer/cookie present and valid; otherwise None (no 401)."""
+    token = None
+    if credentials:
+        token = credentials.credentials
+    else:
+        token = request.cookies.get("access_token")
+    if not token:
+        return None
+    payload = decode_access_token(token)
+    if not payload:
+        return None
+    email = payload.get("sub")
+    if not email:
+        return None
+    user = db.query(User).filter(User.email == email).first()
+    if user and request:
+        request.state.user_id = str(user.id)
+    return user
+
+
 def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
     """Get user from token string (for WebSockets)"""
     payload = decode_access_token(token)

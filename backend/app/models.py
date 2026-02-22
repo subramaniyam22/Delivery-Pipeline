@@ -219,6 +219,7 @@ class Project(Base):
     needs_review_reason = Column(Text, nullable=True)  # e.g. "Defect cycle cap (5) reached"
     blockers_json = Column(JSONB, default=list, nullable=True)  # list of blocker strings
     defect_cycle_count = Column(Integer, default=0, nullable=False)  # Build <-> Defect Validation cycles
+    build_attempt_count = Column(Integer, default=0, nullable=False)  # BUILD job failures this run; cap -> NEEDS_REVIEW
 
     # Team Assignments
     manager_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
@@ -254,6 +255,7 @@ class Project(Base):
     project_contract = relationship("ProjectContract", back_populates="project", uselist=False, cascade="all, delete-orphan")
     delivery_outcomes = relationship("DeliveryOutcome", back_populates="project", cascade="all, delete-orphan")
     template_instance = relationship("ProjectTemplateInstance", back_populates="project", uselist=False, cascade="all, delete-orphan")
+    confirmation_requests = relationship("ConfirmationRequest", back_populates="project", cascade="all, delete-orphan")
 
 
 class Task(Base):
@@ -477,8 +479,8 @@ class TemplateRegistry(Base):
     performance_metrics_json = Column(JSONB, default=dict)  # usage_count, avg_sentiment, avg_cycle_time_days, avg_defects, conversion_proxy, last_updated_at
     is_deprecated = Column(Boolean, default=False)
     # Versioned build source for clone: immutable ref for build (S3 key or git ref)
-    build_source_type = Column(String(20), nullable=True)  # s3 | git
-    build_source_ref = Column(String(1000), nullable=True)  # S3 object key or git commit/tag ref
+    build_source_type = Column(String(20), nullable=True)  # blueprint | s3_zip | git
+    build_source_ref = Column(String(1000), nullable=True)  # S3 key e.g. templates/{id}/{version}/template.zip or git ref
 
     __table_args__ = (UniqueConstraint("slug", "version", name="uq_templates_slug_version"),)
 
@@ -500,6 +502,38 @@ class ProjectTemplateInstance(Base):
     project = relationship("Project", back_populates="template_instance")
     template = relationship("TemplateRegistry", foreign_keys=[template_id])
     fallback_template = relationship("TemplateRegistry", foreign_keys=[fallback_template_id])
+
+
+class ConfirmationRequest(Base):
+    """Portal-based confirmation requests that block the pipeline (fallback template, substitute artifact, etc.)."""
+    __tablename__ = "confirmation_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    type = Column(String(50), nullable=False, index=True)  # fallback_template | substitute_artifact | other
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(30), default="pending", nullable=False, index=True)  # pending | approved | rejected
+    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    decided_at = Column(DateTime, nullable=True)
+    decided_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    decision_comment = Column(Text, nullable=True)  # required when approved/rejected
+    reminder_count = Column(Integer, default=0, nullable=False)
+    last_reminded_at = Column(DateTime, nullable=True)
+    metadata_json = Column(JSONB, default=dict, nullable=True)  # artifact_type, proposed_substitute, template_id, etc.
+
+    project = relationship("Project", back_populates="confirmation_requests")
+    decider = relationship("User", foreign_keys=[decided_by])
+
+
+class PolicyConfig(Base):
+    """Single-row or keyed policy config (Admin UI editable). Replaces hardcoded thresholds."""
+    __tablename__ = "policy_config"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    key = Column(String(80), unique=True, nullable=False, index=True)  # "default" or named policy
+    value_json = Column(JSONB, nullable=False)  # reminder_cadence_hours, max_reminders, build_retry_cap, etc.
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class TemplateEvolutionProposal(Base):

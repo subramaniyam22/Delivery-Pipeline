@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -5,6 +6,7 @@ import tempfile
 import zipfile
 from app.utils.signed_tokens import generate_signed_token
 from typing import Any, Dict, List, Optional, Tuple
+from uuid import UUID
 
 import requests
 from sqlalchemy.orm import Session
@@ -25,21 +27,18 @@ def clone_template(template: TemplateRegistry, workdir: str) -> str:
     source_type = getattr(template, "build_source_type", None)
     source_ref = getattr(template, "build_source_ref", None)
 
-    if source_type == "s3" and source_ref:
+    if source_type in ("s3", "s3_zip") and source_ref:
         # Versioned artifact: download zip from S3 and expand
         try:
-            from app.services.storage import get_storage_backend
-            storage = get_storage_backend()
+            from app.services.storage import get_s3_assets_backend
+            backend = get_s3_assets_backend()
+            if not backend:
+                raise RuntimeError("S3 not configured; cannot download template zip")
             os.makedirs(repo_dir, exist_ok=True)
             zip_path = os.path.join(workdir, "template.zip")
-            if hasattr(storage, "download_file") and callable(getattr(storage, "download_file")):
-                storage.download_file(source_ref, zip_path)
-            else:
-                # S3Service style: download_file(object_name, file_path)
-                from app.services.s3_service import S3Service
-                s3 = S3Service()
-                if not s3.download_file(source_ref, zip_path):
-                    raise RuntimeError(f"Failed to download template from S3: {source_ref}")
+            data = backend.read_bytes(source_ref)
+            with open(zip_path, "wb") as f:
+                f.write(data)
             with zipfile.ZipFile(zip_path, "r") as z:
                 z.extractall(repo_dir)
             os.remove(zip_path)
@@ -144,6 +143,15 @@ def create_preview(dist_path: str, project_id, ttl_hours: int) -> Tuple[str, str
     return token, preview_url
 
 
+def _inject_client_contract(repo_dir: str, contract: Dict[str, Any]) -> None:
+    """Write normalized contract to data/client_contract.json for template consumption."""
+    data_dir = os.path.join(repo_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    path = os.path.join(data_dir, "client_contract.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(contract, f, indent=2)
+
+
 def build_and_package(
     db: Session,
     project_id,
@@ -153,9 +161,20 @@ def build_and_package(
     mapping_plan_json: Optional[List[Dict[str, Any]]],
     preview_strategy: str,
     actor_user_id,
+    run_id: Optional[UUID] = None,
+    contract: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    from app.services.storage import (
+        get_s3_assets_backend,
+        upload_preview_site,
+        get_preview_public_url,
+        copy_preview_to_delivery_current,
+    )
+
     with tempfile.TemporaryDirectory() as workdir:
         repo_dir = clone_template(template, workdir)
+        if contract:
+            _inject_client_contract(repo_dir, contract)
         baseline_dir = None
         baseline_src = os.path.join(repo_dir, "baseline")
         if os.path.isdir(baseline_src):
@@ -183,7 +202,16 @@ def build_and_package(
 
         preview_token = None
         preview_url = None
-        if preview_strategy == "serve_static_preview":
+        use_s3_preview = (
+            run_id
+            and getattr(template, "build_source_type", None) in ("s3", "s3_zip")
+            and getattr(template, "build_source_ref", None)
+            and get_s3_assets_backend() is not None
+        )
+        if use_s3_preview:
+            upload_preview_site(str(project_id), str(run_id), dist_path)
+            preview_url = get_preview_public_url(str(project_id), str(run_id), "")
+        elif preview_strategy == "serve_static_preview":
             preview_token, public_preview_url = create_preview(dist_path, project_id, settings.PREVIEW_TOKEN_TTL_HOURS)
             preview_url = f"file://{os.path.join(dist_path, 'index.html')}"
             preview_zip_path = package_build(dist_path, workdir)
@@ -202,12 +230,15 @@ def build_and_package(
         else:
             preview_url = f"file://{os.path.join(dist_path, 'index.html')}"
 
-        template_info = f"{template.repo_url}@{template.default_branch}"
-        try:
-            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_dir).decode().strip()
-            template_info = f"{template_info}#{commit}"
-        except Exception:
-            pass
+        template_info = f"{template.repo_url or ''}@{template.default_branch or 'main'}"
+        if getattr(template, "build_source_type", None) in ("s3", "s3_zip"):
+            template_info = getattr(template, "build_source_ref", "") or template_info
+        else:
+            try:
+                commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_dir).decode().strip()
+                template_info = f"{template_info}#{commit}"
+            except Exception:
+                pass
 
         artifact_service.create_artifact_from_bytes(
             db=db,
@@ -217,11 +248,13 @@ def build_and_package(
             content=template_info.encode("utf-8"),
             artifact_type="template_source_ref",
             uploaded_by_user_id=actor_user_id,
-            metadata_json={"repo_url": template.repo_url, "branch": template.default_branch},
+            metadata_json={"repo_url": getattr(template, "repo_url", None), "branch": template.default_branch},
         )
 
     return {
         "preview_url": preview_url,
         "preview_token": preview_token,
         "baseline_dir": baseline_dir,
+        "used_s3_preview": use_s3_preview,
+        "run_id": run_id,
     }

@@ -244,6 +244,87 @@ class EmailService:
             subject=f"New Project: {project_title}",
             html_content=html_content
         )
+
+    @staticmethod
+    def send_confirmation_request_email(
+        to_emails: List[str],
+        project_title: str,
+        confirmation_title: str,
+        portal_url: str,
+    ) -> bool:
+        """Notify client that a confirmation request needs their review."""
+        template = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: #4F46E5; color: white; padding: 20px; text-align: center; }
+                .content { padding: 20px; background: #f9fafb; }
+                .button { background: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header"><h1>Confirmation Request</h1></div>
+                <div class="content">
+                    <p>A confirmation request requires your decision for project <strong>{{ project_title }}</strong>.</p>
+                    <p><strong>Request:</strong> {{ confirmation_title }}</p>
+                    <p>Please review and approve or reject in the client portal.</p>
+                    <a href="{{ portal_url }}" class="button">Open Confirmation Requests</a>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        context = {"project_title": project_title, "confirmation_title": confirmation_title, "portal_url": portal_url}
+        html_content = EmailService.render_template(template, context)
+        return EmailService.send_email(
+            to=to_emails,
+            subject=f"Confirmation needed: {confirmation_title}",
+            html_content=html_content,
+        )
+
+    @staticmethod
+    def send_project_delivered_email(
+        to_emails: List[str],
+        project_title: str,
+        delivery_url: str,
+    ) -> bool:
+        """Notify client that the project has been delivered (stable delivery URL)."""
+        template = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: #10B981; color: white; padding: 20px; text-align: center; }
+                .content { padding: 20px; background: #f9fafb; }
+                .button { background: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 20px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header"><h1>Project Delivered</h1></div>
+                <div class="content">
+                    <p>Your project <strong>{{ project_title }}</strong> has been delivered.</p>
+                    <p>View your site at the stable link below.</p>
+                    <a href="{{ delivery_url }}" class="button">View Delivered Site</a>
+                    <p style="margin-top:20px;"><a href="{{ delivery_url }}">{{ delivery_url }}</a></p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        context = {"project_title": project_title, "delivery_url": delivery_url}
+        html_content = EmailService.render_template(template, context)
+        return EmailService.send_email(
+            to=to_emails,
+            subject=f"Delivered: {project_title}",
+            html_content=html_content,
+        )
     
     @staticmethod
     def send_stage_transition_email(

@@ -1,8 +1,37 @@
 """
-Pure merge of Decision Policies into global_thresholds for BUILD/QA gating.
+Pure merge of Decision Policies and PolicyConfig into global_thresholds for BUILD/QA gating.
 No DB or heavy dependencies so it can be unit-tested without app/agent imports.
 """
 from typing import Any, Dict
+
+
+def merge_policy_config_into_thresholds(
+    global_thresholds: Dict[str, Any], policy: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Merge PolicyConfig.value_json (Admin Policies UI) into thresholds.
+    Keys: pass_threshold_percent, lighthouse_thresholds_json, axe_policy_json.
+    """
+    out = dict(global_thresholds)
+    if policy.get("pass_threshold_percent") is not None:
+        out["build_pass_score"] = int(policy["pass_threshold_percent"])
+        out.setdefault("qa_pass_score", int(policy["pass_threshold_percent"]))
+    lh = policy.get("lighthouse_thresholds_json")
+    if isinstance(lh, dict):
+        out.setdefault("lighthouse_min", {})
+        for k in ("performance", "accessibility", "best_practices", "seo"):
+            if k in lh and lh[k] is not None:
+                v = lh[k]
+                out["lighthouse_min"][k] = (
+                    (v / 100.0) if (isinstance(v, (int, float)) and v > 1) else v
+                )
+    axe = policy.get("axe_policy_json")
+    if isinstance(axe, dict):
+        if "block" in axe:
+            out["axe_block_severities"] = axe["block"]
+        if axe.get("allow_medium_minor_if_total_under") is not None:
+            out.setdefault("axe", {})["moderate_max"] = int(axe["allow_medium_minor_if_total_under"])
+    return out
 
 
 def merge_decision_policies_into_thresholds(

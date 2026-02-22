@@ -17,6 +17,7 @@ from app.jobs.queue import enqueue_job
 from app.models import (
     AuditLog,
     ClientReminder,
+    ConfirmationRequest,
     JobRun,
     JobRunStatus,
     Notification,
@@ -361,6 +362,38 @@ def evaluate_project(db: Session, project_id: UUID) -> PipelineStatus:
     if not project:
         raise ValueError("Project not found")
 
+    # Confirmation gating: pending confirmations block pipeline
+    if _has_pending_confirmations(db, project_id):
+        rows = (
+            db.query(ProjectStageState)
+            .filter(ProjectStageState.project_id == project_id)
+            .order_by(ProjectStageState.stage_key)
+            .all()
+        )
+        for r in rows:
+            if r.status != "complete":
+                r.status = "blocked"
+                r.blocked_reasons_json = ["Pending confirmation request(s). Please respond in the portal."]
+                r.required_actions_json = ["Review Confirmation Requests in the client portal"]
+                r.updated_at = datetime.utcnow()
+        db.commit()
+        stage_states = [
+            StageStateView(r.stage_key, r.status, list(r.blocked_reasons_json or []), list(r.required_actions_json or []), r.last_job_id, r.updated_at)
+            for r in rows
+        ]
+        return PipelineStatus(
+            project_id=project_id,
+            autopilot_enabled=bool(project.autopilot_enabled),
+            autopilot_mode=project.autopilot_mode or "conditional",
+            current_stage_key=rows[0].stage_key if rows else None,
+            stage_states=stage_states,
+            next_ready_stages=[],
+            blocked_summary=["Pending confirmation request(s). Please respond in the portal."],
+            awaiting_approval_stage_key=None,
+            safety_flags=SafetyFlags(),
+            pending_approvals=[],
+        )
+
     contract = get_contract(db, project_id)
     if contract is None and getattr(project, "contract_build_error", None):
         # Contract build failed: block all non-complete stages and return
@@ -689,6 +722,8 @@ def on_job_success(
     project = db.query(Project).filter(Project.id == project_id).first()
     if project:
         project.autopilot_failure_count = 0
+        if stage == Stage.BUILD:
+            project.build_attempt_count = 0
 
     # Transition project.current_stage to next stage (single source of truth)
     next_stage = get_next_stage(stage, success=True, rework=False)
@@ -710,6 +745,19 @@ def on_job_success(
             stage_key=STAGE_TO_KEY.get(Stage.COMPLETE),
             details={"job_id": str(job_id), "project_completed": True},
         )
+        try:
+            from app.services.storage import get_delivery_public_url
+            from app.services.email_service import send_project_delivered_email
+            delivery_url = get_delivery_public_url(str(project_id), "")
+            to_emails = []
+            if getattr(project, "client_emails", None) and isinstance(project.client_emails, list):
+                to_emails = [e for e in project.client_emails if isinstance(e, str) and e.strip()]
+            if not to_emails and getattr(project, "client_email_ids", None):
+                to_emails = [e.strip() for e in str(project.client_email_ids).split(",") if e.strip()]
+            if to_emails and delivery_url:
+                send_project_delivered_email(to_emails, project.title or "Project", delivery_url)
+        except Exception as e:
+            logger.warning("Delivery email failed: %s", e)
     db.commit()
     try:
         from app.services.contract_service import create_or_update_contract
@@ -752,8 +800,23 @@ def run_autopilot_sweeper(db: Session, max_projects: int = 50) -> int:
     return count
 
 
+def _get_policy_config(db: Session) -> Optional[Dict[str, Any]]:
+    """Read PolicyConfig default row (Admin UI). Returns value_json or None."""
+    from app.models import PolicyConfig
+    row = db.query(PolicyConfig).filter(PolicyConfig.key == "default").first()
+    if row and isinstance(row.value_json, dict):
+        return row.value_json
+    return None
+
+
 def _get_defect_cycle_cap(db: Session) -> int:
-    """Read defect_cycle_cap from decision_policies_json (default 5)."""
+    """Read defect_validation_cycle_cap from PolicyConfig or decision_policies_json (default 5)."""
+    policy = _get_policy_config(db)
+    if policy is not None:
+        try:
+            return int(policy.get("defect_validation_cycle_cap", 5))
+        except (TypeError, ValueError):
+            pass
     from app.services.config_service import get_config
     config = get_config(db, "decision_policies_json")
     if config and isinstance(config.value_json, dict):
@@ -762,6 +825,25 @@ def _get_defect_cycle_cap(db: Session) -> int:
         except (TypeError, ValueError):
             pass
     return 5
+
+
+def _get_build_retry_cap(db: Session) -> int:
+    """Read build_retry_cap from PolicyConfig or config (default 3)."""
+    policy = _get_policy_config(db)
+    if policy is not None:
+        try:
+            return int(policy.get("build_retry_cap", 3))
+        except (TypeError, ValueError):
+            pass
+    return 3
+
+
+def _has_pending_confirmations(db: Session, project_id: UUID) -> bool:
+    """True if project has any pending ConfirmationRequest (blocks pipeline)."""
+    return db.query(ConfirmationRequest).filter(
+        ConfirmationRequest.project_id == project_id,
+        ConfirmationRequest.status == "pending",
+    ).limit(1).first() is not None
 
 
 def on_job_failure(
@@ -808,6 +890,32 @@ def on_job_failure(
         )
         db.commit()
         _log_pipeline_event(db, project_id, EVENT_JOB_FAILED, stage_key=stage_key, details={"job_id": str(job_id), "error": error_message})
+        return
+
+    # BUILD failure: increment build_attempt_count; cap -> NEEDS_REVIEW
+    if stage == Stage.BUILD:
+        cap = _get_build_retry_cap(db)
+        project.build_attempt_count = (project.build_attempt_count or 0) + 1
+        if project.build_attempt_count >= cap:
+            set_project_needs_review(
+                db, project_id,
+                reason=f"Build retry cap ({cap}) reached. Requires admin review.",
+                metadata={"stage": "build", "job_id": str(job_id), "build_attempt_count": project.build_attempt_count},
+                actor_user_id=None,
+            )
+            db.commit()
+            _log_pipeline_event(
+                db, project_id, EVENT_JOB_FAILED,
+                stage_key=stage_key,
+                details={"job_id": str(job_id), "error": error_message, "build_retry_cap_reached": True},
+            )
+            return
+        db.commit()
+        _log_pipeline_event(
+            db, project_id, EVENT_JOB_FAILED,
+            stage_key=stage_key,
+            details={"job_id": str(job_id), "error": error_message, "build_attempt_count": project.build_attempt_count},
+        )
         return
 
     # Rework path: TEST or DEFECT_VALIDATION failed -> back to BUILD (defect cycle)
@@ -858,16 +966,21 @@ def on_job_failure(
 
 
 def _get_decision_policies(db: Session) -> Dict[str, Any]:
-    """Read decision_policies_json (defaults for reminder cadence, max_reminders, min_scope_percent)."""
+    """Read PolicyConfig (default) first, then merge decision_policies_json. Used for reminder cadence, max_reminders, idle_minutes, min_scope_percent."""
+    defaults = {
+        "reminder_cadence_hours": 24,
+        "max_reminders": 10,
+        "idle_minutes": 30,
+        "min_scope_percent": 80,
+    }
+    policy = _get_policy_config(db)
+    if policy:
+        defaults.update({k: v for k, v in policy.items() if k in ("reminder_cadence_hours", "max_reminders", "idle_minutes") and v is not None})
     from app.services.config_service import get_config
     config = get_config(db, "decision_policies_json")
     if config and isinstance(config.value_json, dict):
-        return config.value_json
-    return {
-        "reminder_cadence_hours": 24,
-        "max_reminders": 10,
-        "min_scope_percent": 80,
-    }
+        defaults.update(config.value_json)
+    return defaults
 
 
 def run_onboarding_reminders_and_hold(db: Session, max_projects: int = 30) -> int:
@@ -956,9 +1069,9 @@ def run_onboarding_reminders_and_hold(db: Session, max_projects: int = 30) -> in
             count += 1
 
             if ob.reminder_count >= max_reminders:
-                hold_message = "Awaiting client response. We attempted to contact you 10 times."
+                hold_message = "Awaiting client response. We attempted to contact you 10 times. Please update the onboarding form to continue."
                 if max_reminders != 10:
-                    hold_message = f"Awaiting client response. We attempted to contact you {max_reminders} times."
+                    hold_message = f"Awaiting client response. We attempted to contact you {max_reminders} times. Please update the onboarding form to continue."
                 set_project_hold(
                     db, project.id,
                     reason=hold_message,

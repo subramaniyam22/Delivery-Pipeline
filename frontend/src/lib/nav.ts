@@ -22,6 +22,7 @@ export const navItems: NavItem[] = [
   { label: 'Reports', href: '/reports', requiredCapabilities: ['view_reports'], group: 'Insights' },
   { label: 'Manage Users', href: '/users', requiredCapabilities: ['manage_users'], group: 'Admin' },
   { label: 'Config', href: '/configuration', requiredCapabilities: ['configure_system'], group: 'Admin' },
+  { label: 'Policies', href: '/admin/policies', requiredCapabilities: ['configure_system'], group: 'Admin' },
   { label: 'Audit Logs', href: '/admin/audit-logs', requiredCapabilities: ['view_audit_logs'], group: 'Admin' },
 ];
 

@@ -57,6 +57,8 @@ interface TemplateRegistry {
     blueprint_last_run_id?: string | null;
     blueprint_updated_at?: string | null;
     meta_json?: Record<string, unknown> | null;
+    build_source_type?: string | null;
+    build_source_ref?: string | null;
 }
 
 /** Normalize API error detail (string, array of {msg}, or object) to a single string so it's safe to render in JSX. */
@@ -121,6 +123,42 @@ function EvolutionTab({ templateId }: { templateId: string }) {
                     ))}
                 </ul>
             )}
+        </div>
+    );
+}
+
+function UploadTemplateZipBlock({ templateId, currentVersion, onUploaded }: { templateId: string; currentVersion: number; onUploaded: (t: TemplateRegistry) => void }) {
+    const [version, setVersion] = useState(String(currentVersion));
+    const [file, setFile] = useState<File | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const [error, setError] = useState('');
+    const handleUpload = async () => {
+        if (!file || !version.trim()) {
+            setError('Version and file are required.');
+            return;
+        }
+        setUploading(true);
+        setError('');
+        try {
+            const res = await configurationAPI.uploadTemplateZip(templateId, version.trim(), file);
+            onUploaded(res.data as TemplateRegistry);
+            setFile(null);
+        } catch (e: unknown) {
+            setError((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Upload failed');
+        } finally {
+            setUploading(false);
+        }
+    };
+    return (
+        <div style={{ marginTop: '16px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white' }}>
+            <h4 style={{ margin: '0 0 8px' }}>Upload Template ZIP for Version</h4>
+            <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#64748b' }}>Stores to S3 as templates/{templateId}/{version}/template.zip and sets build source to s3_zip.</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                <input type="text" placeholder="Version" value={version} onChange={(e) => setVersion(e.target.value)} style={{ width: 80, padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
+                <input type="file" accept=".zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ fontSize: '13px' }} />
+                <button type="button" onClick={handleUpload} disabled={uploading || !file} style={{ padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: uploading || !file ? 'not-allowed' : 'pointer' }}>{uploading ? 'Uploading...' : 'Upload'}</button>
+            </div>
+            {error && <p style={{ margin: '8px 0 0', color: '#dc2626', fontSize: '13px' }}>{error}</p>}
         </div>
     );
 }
@@ -2137,7 +2175,11 @@ export default function ConfigurationPage() {
                                         </div>
                                     )}
                                     {templateDetailSubTab === 'versions' && (
-                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>Version: {selectedTemplate.version ?? 1}. Changelog: {selectedTemplate.changelog || '—'}</div>
+                                        <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
+                                            <p>Version: {selectedTemplate.version ?? 1}. Changelog: {selectedTemplate.changelog || '—'}</p>
+                                            <p style={{ marginTop: '8px' }}>Build source: {selectedTemplate.build_source_type || '—'}. {selectedTemplate.build_source_ref && <span style={{ wordBreak: 'break-all' }}>{selectedTemplate.build_source_ref}</span>}</p>
+                                            <UploadTemplateZipBlock templateId={selectedTemplate.id} currentVersion={selectedTemplate.version ?? 1} onUploaded={updateTemplateInState} />
+                                        </div>
                                     )}
                                     {templateDetailSubTab === 'performance' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>

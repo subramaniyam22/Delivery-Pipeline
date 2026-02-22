@@ -469,6 +469,53 @@ class TemplateResponse(BaseModel):
     blueprint_hash: Optional[str] = None
     performance_metrics_json: Optional[Dict[str, Any]] = None
     is_deprecated: Optional[bool] = False
+    build_source_type: Optional[str] = None  # blueprint | s3_zip | git
+    build_source_ref: Optional[str] = None  # S3 key or git ref
+
+
+# ============= ConfirmationRequest Schemas =============
+class ConfirmationRequestResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    project_id: UUID
+    type: str
+    title: str
+    description: Optional[str] = None
+    status: str
+    requested_at: datetime
+    decided_at: Optional[datetime] = None
+    decided_by: Optional[UUID] = None
+    decision_comment: Optional[str] = None
+    reminder_count: int = 0
+    last_reminded_at: Optional[datetime] = None
+    metadata_json: Optional[Dict[str, Any]] = None
+
+
+class ConfirmationDecideRequest(BaseModel):
+    approve: bool  # True = approved, False = rejected
+    comment: str = Field(..., min_length=1, description="Required when approving or rejecting")
+
+
+# ============= PolicyConfig Schemas =============
+class PolicyConfigValue(BaseModel):
+    reminder_cadence_hours: Optional[int] = 24
+    max_reminders: Optional[int] = 10
+    idle_minutes: Optional[int] = 30
+    build_retry_cap: Optional[int] = 3
+    defect_validation_cycle_cap: Optional[int] = 5
+    pass_threshold_percent: Optional[int] = 98
+    lighthouse_thresholds_json: Optional[Dict[str, Any]] = None  # perf, a11y, bp, seo (min 90)
+    axe_policy_json: Optional[Dict[str, Any]] = None  # block serious/critical; medium/minor <5 callouts
+    proof_pack_soft_mb: Optional[int] = 50
+    proof_pack_hard_mb: Optional[int] = 200
+
+
+class PolicyConfigResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    key: str
+    value_json: Dict[str, Any]
+    updated_at: datetime
 
 
 # ============= Sentiment Schemas =============

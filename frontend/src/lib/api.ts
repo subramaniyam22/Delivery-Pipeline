@@ -209,6 +209,20 @@ export const defectsAPI = {
         api.put(`/defects/${defectId}`, data),
 };
 
+export const policiesAPI = {
+    get: () => api.get('/admin/policies'),
+    put: (data: Record<string, unknown>) => api.put('/admin/policies', data),
+};
+
+export const confirmationsAPI = {
+    list: (projectId: string, clientToken?: string) =>
+        api.get(`/projects/${projectId}/confirmations`, { params: clientToken ? { client_token: clientToken } : {} }),
+    decide: (projectId: string, confirmationId: string, body: { approve: boolean; comment: string }, clientToken?: string) =>
+        api.post(`/projects/${projectId}/confirmations/${confirmationId}/decide`, body, {
+            params: clientToken ? { client_token: clientToken } : {},
+        }),
+};
+
 export const configAPI = {
     list: () => api.get('/admin/config'),
     get: (key: string) => api.get(`/admin/config/${key}`),
@@ -468,6 +482,13 @@ export const configurationAPI = {
         }),
     publishTemplate: (id: string, body?: { admin_override?: boolean }) =>
         api.post(`/api/templates/${id}/publish`, body || {}),
+    uploadTemplateZip: (templateId: string, version: string, file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        return api.post(`/api/templates/${templateId}/versions/${version}/upload-zip`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
     archiveTemplate: (id: string) => api.post(`/api/templates/${id}/archive`),
     setDefaultTemplate: (id: string) => api.post(`/api/templates/${id}/set-default`),
     setRecommendedTemplate: (id: string, value: boolean) =>

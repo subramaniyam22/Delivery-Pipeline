@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from app.config import settings
-from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant, cache, analytics, websocket, notifications, webhooks, jobs, preview, sentiment_public, sentiments, metrics, audit_logs, pipeline
+from app.routers import auth, users, projects, workflow, artifacts, tasks, defects, config_admin, onboarding, testing, capacity, leave_holiday, sla, client_management, project_management, configuration, ai_consultant, cache, analytics, websocket, notifications, webhooks, jobs, preview, sentiment_public, sentiments, metrics, audit_logs, pipeline, confirmations, admin_policies
 from app.services.config_service import seed_default_configs
 from app.db import SessionLocal
 from app.models import User, Role
@@ -267,6 +267,8 @@ app.include_router(notifications.router)
 app.include_router(webhooks.router)
 app.include_router(jobs.router)
 app.include_router(pipeline.router, prefix="/projects")
+app.include_router(confirmations.router)
+app.include_router(admin_policies.router)
 app.include_router(preview.router)
 app.include_router(sentiment_public.router)
 app.include_router(sentiments.router)

@@ -663,6 +663,37 @@ Full list and optional vars (SMTP, webhooks): see **[docs/RENDER_ENV.md](docs/RE
 - **Worker health**: `GET /system/health` returns `worker_healthy` (true if heartbeat &lt; 60s). If false, blueprint jobs will not execute; ensure the backend (or worker process) is running and Redis is reachable.
 - **Logs**: Worker logs include `correlation_id` for each run; search logs by that id to trace a specific blueprint generation.
 
+## 🌐 Hosting Setup Checklist (S3 + CloudFront)
+
+Use this when serving **previews** and **deliveries** from S3 with CloudFront.
+
+### S3 bucket and prefixes
+- Bucket (e.g. `delivery-pipeline-assets-prod`) with prefixes: `templates/`, `previews/`, `deliveries/`, `artifacts/`.
+- **Templates**: `templates/{template_id}/{version}/template.zip` (immutable; never overwrite).
+- **Previews**: `previews/{project_id}/{run_id}/site/...` (30-day retention recommended).
+- **Deliveries**: `deliveries/{project_id}/current/site/...` (stable); optional history `deliveries/{project_id}/{run_id}/site/...`.
+- **Proof packs**: `artifacts/{project_id}/{stage_key}/{run_id}/manifest.json` and related files (180-day retention recommended).
+
+### CloudFront
+- **Default root object**: Set to `index.html` so `/` serves the SPA root.
+- **SPA error mapping**: Map HTTP 403 and 404 to `/index.html` (status 200) so client-side routing works.
+- **Origins**: Point each distribution to the S3 bucket; use path patterns if you use a single bucket for multiple prefixes.
+- **Recommended**: Origin Access Control (OAC) to keep the bucket private; CloudFront only can read.
+
+### S3 lifecycle rules (document in AWS; apply to bucket)
+- **previews/** – Expire objects after 30 days (or transition to Glacier if needed).
+- **artifacts/** – Expire objects after 180 days.
+- **deliveries/** and **templates/** – Keep (no expiration).
+
+### Logging
+- Enable **CloudFront logging** to an S3 bucket (or existing prefix) for access logs.
+- Enable **S3 server access logging** if you need bucket-level audit.
+
+### Env vars
+- `PREVIEW_PUBLIC_BASE_URL` – CloudFront URL for previews (e.g. `https://d1io3h1jsbyk0b.cloudfront.net`).
+- `DELIVERY_PUBLIC_BASE_URL` – CloudFront URL for deliveries (e.g. `https://dx6spv477rbpv.cloudfront.net`).
+- Keep `S3_PUBLIC_BASE_URL` for backward compatibility; preview/delivery URLs are built from the two vars above.
+
 ## 🔒 Security Notes
 
 - JWT tokens expire after 6 hours

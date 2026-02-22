@@ -20,7 +20,7 @@ from app.models import TemplateRegistry, User, AuditLog, TemplateBlueprintJob, T
 from app.schemas import TemplateCreate, TemplateUpdate, TemplateResponse, SetRecommendedBody
 from app.config import settings
 from app.rbac import require_admin_manager
-from app.services.storage import refresh_presigned_thumbnail_url, get_preview_storage_backend
+from app.services.storage import refresh_presigned_thumbnail_url, get_preview_storage_backend, upload_template_zip, template_zip_s3_key
 
 router = APIRouter(tags=["templates"])
 
@@ -346,6 +346,44 @@ def update_template(
         )
     )
     db.commit()
+    return template
+
+
+@router.post("/api/templates/{template_id}/versions/{version}/upload-zip", response_model=TemplateResponse)
+async def upload_template_version_zip(
+    template_id: str,
+    version: str,
+    file: UploadFile = File(..., description="template.zip file"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Upload template.zip for a version (Admin/Manager). Stores to S3 templates/{template_id}/{version}/template.zip and sets build_source_type=s3_zip."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if not version or not version.strip():
+        raise HTTPException(status_code=400, detail="Version is required")
+    version = version.strip()
+    if file.filename and not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="File must be a .zip")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    try:
+        key = upload_template_zip(template_id, version, content)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    template.build_source_type = "s3_zip"
+    template.build_source_ref = key
+    if hasattr(template, "version"):
+        try:
+            template.version = int(version)
+        except ValueError:
+            pass
+    db.add(AuditLog(project_id=None, actor_user_id=current_user.id, action="TEMPLATE_ZIP_UPLOADED", payload_json={"template_id": template_id, "version": version, "s3_key": key}))
+    db.commit()
+    db.refresh(template)
     return template
 
 

@@ -1,13 +1,20 @@
 import hashlib
+import json
 import os
 import mimetypes
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import settings
+
+# S3 key prefixes (bucket: delivery-pipeline-assets-prod or configured)
+TEMPLATES_PREFIX = "templates/"
+PREVIEWS_PREFIX = "previews/"
+DELIVERIES_PREFIX = "deliveries/"
+ARTIFACTS_PREFIX = "artifacts/"
 
 
 @dataclass
@@ -161,6 +168,46 @@ class S3CompatibleStorage(StorageBackend):
         except (BotoCoreError, ClientError) as exc:
             raise RuntimeError(f"S3 download failed: {exc}") from exc
 
+    def list_keys(self, prefix: str, max_keys: int = 10000) -> List[str]:
+        """List object keys under prefix."""
+        keys: List[str] = []
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix, MaxKeys=max_keys):
+            for obj in page.get("Contents") or []:
+                keys.append(obj["Key"])
+        return keys
+
+    def copy_prefix_to_prefix(self, source_prefix: str, dest_prefix: str) -> int:
+        """Copy all objects under source_prefix to dest_prefix (same key suffix). Returns count copied."""
+        keys = self.list_keys(source_prefix)
+        for key in keys:
+            if not key.startswith(source_prefix):
+                continue
+            suffix = key[len(source_prefix) :]
+            dest_key = (dest_prefix.rstrip("/") + "/" + suffix).lstrip("/")
+            self.client.copy_object(
+                CopySource={"Bucket": self.bucket, "Key": key},
+                Bucket=self.bucket,
+                Key=dest_key,
+            )
+        return len(keys)
+
+    def upload_directory(self, local_dir: str, s3_prefix: str) -> int:
+        """Upload a local directory tree to S3 under s3_prefix. Returns number of files uploaded."""
+        if not os.path.isdir(local_dir):
+            raise RuntimeError(f"Not a directory: {local_dir}")
+        count = 0
+        for root, _dirs, files in os.walk(local_dir):
+            for name in files:
+                path = os.path.join(root, name)
+                rel = os.path.relpath(path, local_dir).replace("\\", "/")
+                key = f"{s3_prefix.rstrip('/')}/{rel}"
+                with open(path, "rb") as f:
+                    data = f.read()
+                self.save_bytes(key, data, content_type=_guess_content_type(path))
+                count += 1
+        return count
+
 
 def _resolve_s3_config() -> Optional[Tuple[str, str, str, Optional[str], Optional[str], Optional[str]]]:
     bucket = settings.S3_BUCKET or settings.AWS_S3_BUCKET
@@ -198,6 +245,22 @@ def get_storage_backend() -> StorageBackend:
             public_base_url=public_base,
         )
     return LocalDiskStorage()
+
+
+def get_s3_assets_backend() -> Optional[S3CompatibleStorage]:
+    """S3 backend for templates/previews/deliveries/artifacts. Returns None if S3 not configured."""
+    s3_config = _resolve_s3_config()
+    if not s3_config:
+        return None
+    bucket, access_key, secret_key, region, endpoint, public_base = s3_config
+    return S3CompatibleStorage(
+        bucket=bucket,
+        access_key=access_key,
+        secret_key=secret_key,
+        region=region,
+        endpoint_url=endpoint,
+        public_base_url=public_base,
+    )
 
 
 # --- Preview bundle helpers (retry + prefix) ---
@@ -348,3 +411,139 @@ def delete_preview_bundle(prefix: str) -> None:
                 shutil.rmtree(full)
             except Exception:
                 pass
+
+
+# --- Template ZIP (templates/{template_id}/{version}/template.zip) ---
+
+def template_zip_s3_key(template_id: str, version: str) -> str:
+    return f"{TEMPLATES_PREFIX}{template_id}/{version}/template.zip"
+
+
+def upload_template_zip(template_id: str, version: str, file_bytes: bytes) -> str:
+    """Upload template.zip to S3; immutable. Returns S3 key."""
+    key = template_zip_s3_key(template_id, version)
+    backend = get_s3_assets_backend()
+    if not backend:
+        raise RuntimeError("S3 not configured; cannot upload template zip")
+    backend.save_bytes(key, file_bytes, content_type="application/zip")
+    return key
+
+
+def download_template_zip(template_id: str, version: str) -> bytes:
+    """Download template.zip from S3. Raises if not found or S3 not configured."""
+    key = template_zip_s3_key(template_id, version)
+    backend = get_s3_assets_backend()
+    if not backend:
+        raise RuntimeError("S3 not configured; cannot download template zip")
+    return backend.read_bytes(key)
+
+
+# --- Previews (previews/{project_id}/{run_id}/site/...) ---
+
+def preview_site_prefix(project_id: str, run_id: str) -> str:
+    return f"{PREVIEWS_PREFIX}{project_id}/{run_id}/site/"
+
+
+def get_preview_public_url(project_id: str, run_id: str, path: str = "") -> str:
+    """Public URL for preview (CloudFront). path e.g. '' or 'index.html'."""
+    base = (settings.PREVIEW_PUBLIC_BASE_URL or "").rstrip("/")
+    segs = [base, "previews", project_id, run_id, "site"]
+    if path:
+        segs.append(path.lstrip("/"))
+    return "/".join(segs)
+
+
+def upload_preview_site(project_id: str, run_id: str, local_dir: str) -> None:
+    """Upload local directory to S3 previews/{project_id}/{run_id}/site/."""
+    backend = get_s3_assets_backend()
+    if not backend:
+        raise RuntimeError("S3 not configured; cannot upload preview site")
+    prefix = preview_site_prefix(project_id, run_id)
+    backend.upload_directory(local_dir, prefix)
+
+
+# --- Deliveries (deliveries/{project_id}/current/site/...) ---
+
+def delivery_current_prefix(project_id: str) -> str:
+    return f"{DELIVERIES_PREFIX}{project_id}/current/site/"
+
+
+def delivery_run_prefix(project_id: str, run_id: str) -> str:
+    return f"{DELIVERIES_PREFIX}{project_id}/{run_id}/site/"
+
+
+def get_delivery_public_url(project_id: str, path: str = "") -> str:
+    """Public URL for stable delivery (CloudFront)."""
+    base = (settings.DELIVERY_PUBLIC_BASE_URL or "").rstrip("/")
+    segs = [base, "deliveries", project_id, "current", "site"]
+    if path:
+        segs.append(path.lstrip("/"))
+    return "/".join(segs)
+
+
+def copy_preview_to_delivery_current(project_id: str, run_id: str) -> int:
+    """Copy S3 preview site to deliveries/{project_id}/current/site/. Returns object count."""
+    backend = get_s3_assets_backend()
+    if not backend:
+        raise RuntimeError("S3 not configured; cannot copy to delivery")
+    src = preview_site_prefix(project_id, run_id)
+    dest = delivery_current_prefix(project_id)
+    return backend.copy_prefix_to_prefix(src, dest)
+
+
+def copy_preview_to_delivery_run(project_id: str, run_id: str) -> int:
+    """Copy preview to deliveries/{project_id}/{run_id}/site/ (history)."""
+    backend = get_s3_assets_backend()
+    if not backend:
+        raise RuntimeError("S3 not configured")
+    src = preview_site_prefix(project_id, run_id)
+    dest = delivery_run_prefix(project_id, run_id)
+    return backend.copy_prefix_to_prefix(src, dest)
+
+
+# --- Proof packs (artifacts/{project_id}/{stage_key}/{run_id}/...) ---
+
+PROOF_PACK_SOFT_MB = 50
+PROOF_PACK_HARD_MB = 200
+
+
+def artifacts_prefix(project_id: str, stage_key: str, run_id: str) -> str:
+    return f"{ARTIFACTS_PREFIX}{project_id}/{stage_key}/{run_id}/"
+
+
+def upload_proof_pack(
+    project_id: str,
+    stage_key: str,
+    run_id: str,
+    files: Dict[str, Union[bytes, str]],
+    manifest: Dict[str, Any],
+    soft_mb: int = PROOF_PACK_SOFT_MB,
+    hard_mb: int = PROOF_PACK_HARD_MB,
+) -> Dict[str, Any]:
+    """
+    Upload proof pack files + manifest to artifacts/{project_id}/{stage_key}/{run_id}/.
+    manifest must include project_id, run_id, stage_key, timestamps, preview_url, etc.
+    Returns dict: manifest_s3_key, total_bytes, exceeded_soft (bool), exceeded_hard (bool).
+    If exceeded_hard, caller should mark stage failed and stop retries.
+    """
+    backend = get_s3_assets_backend()
+    if not backend:
+        raise RuntimeError("S3 not configured; cannot upload proof pack")
+    prefix = artifacts_prefix(project_id, stage_key, run_id)
+    total = 0
+    for name, content in files.items():
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        key = f"{prefix}{name}"
+        backend.save_bytes(key, data)
+        total += len(data)
+    manifest_bytes = json.dumps(manifest, indent=2).encode("utf-8")
+    manifest_key = f"{prefix}manifest.json"
+    backend.save_bytes(manifest_key, manifest_bytes, content_type="application/json")
+    total += len(manifest_bytes)
+    total_mb = total / (1024 * 1024)
+    return {
+        "manifest_s3_key": manifest_key,
+        "total_bytes": total,
+        "exceeded_soft": total_mb > soft_mb,
+        "exceeded_hard": total_mb > hard_mb,
+    }

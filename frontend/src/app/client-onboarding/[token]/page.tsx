@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { clientAPI } from '@/lib/api';
+import { clientAPI, confirmationsAPI } from '@/lib/api';
 
 interface Template {
     id: string;
@@ -344,6 +344,10 @@ export default function ClientOnboardingPage() {
     const [templateGridPage, setTemplateGridPage] = useState(1);
     const [templateModalPage, setTemplateModalPage] = useState(1);
     const [clientWantsFullValidation, setClientWantsFullValidation] = useState<boolean | null>(null);
+    const [confirmations, setConfirmations] = useState<Array<{ id: string; title: string; description: string | null; status: string }>>([]);
+    const [confirmationsLoading, setConfirmationsLoading] = useState(false);
+    const [decideComment, setDecideComment] = useState<Record<string, string>>({});
+    const [decideBusy, setDecideBusy] = useState<string | null>(null);
 
     const setupWebSocket = () => {
         if (!formData?.project_id) return null;
@@ -443,6 +447,36 @@ export default function ClientOnboardingPage() {
             if (ws) ws.close();
         };
     }, [formData?.project_id]);
+
+    useEffect(() => {
+        if (!formData?.project_id || !token) return;
+        setConfirmationsLoading(true);
+        confirmationsAPI.list(formData.project_id, token)
+            .then((r) => setConfirmations(Array.isArray(r.data) ? r.data.filter((c: { status: string }) => c.status === 'pending') : []))
+            .catch(() => setConfirmations([]))
+            .finally(() => setConfirmationsLoading(false));
+    }, [formData?.project_id, token]);
+
+    const handleDecide = async (confirmationId: string, approve: boolean) => {
+        const comment = (decideComment[confirmationId] || '').trim();
+        if (!comment) {
+            setError('Please enter a comment before submitting your decision.');
+            return;
+        }
+        if (!formData?.project_id || !token) return;
+        setDecideBusy(confirmationId);
+        setError('');
+        try {
+            await confirmationsAPI.decide(formData.project_id, confirmationId, { approve, comment }, token);
+            setConfirmations((prev) => prev.filter((c) => c.id !== confirmationId));
+            setDecideComment((prev) => ({ ...prev, [confirmationId]: '' }));
+            setSuccess(approve ? 'Request approved.' : 'Request rejected.');
+        } catch (e: unknown) {
+            setError((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to submit decision');
+        } finally {
+            setDecideBusy(null);
+        }
+    };
 
     // Ref so polling effect does not depend on formData (avoids re-running on every keystroke)
     const shouldPollPreviewRef = useRef(false);
@@ -1086,6 +1120,38 @@ export default function ClientOnboardingPage() {
                 <div className="alert alert-success" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>{success}</span>
                     <button onClick={() => setSuccess('')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '0 4px' }}>×</button>
+                </div>
+            )}
+
+            {/* Confirmation Requests */}
+            {formData?.project_id && (
+                <div style={{ margin: '12px 24px', padding: '16px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                    <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 600, color: '#334155' }}>Confirmation Requests</h3>
+                    {confirmationsLoading ? (
+                        <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>Loading...</p>
+                    ) : confirmations.length === 0 ? (
+                        <p style={{ margin: 0, fontSize: '14px', color: '#64748b' }}>No pending confirmation requests.</p>
+                    ) : (
+                        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                            {confirmations.map((c) => (
+                                <li key={c.id} style={{ marginBottom: '16px', padding: '12px', background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                    <div style={{ fontWeight: 600, marginBottom: '4px' }}>{c.title}</div>
+                                    {c.description && <p style={{ margin: '0 0 8px', fontSize: '14px', color: '#475569' }}>{c.description}</p>}
+                                    <textarea
+                                        placeholder="Comment (required)"
+                                        value={decideComment[c.id] || ''}
+                                        onChange={(e) => setDecideComment((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                                        rows={2}
+                                        style={{ width: '100%', marginBottom: '8px', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <button type="button" disabled={decideBusy === c.id} onClick={() => handleDecide(c.id, true)} style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #16a34a', background: '#16a34a', color: 'white', fontWeight: 600, cursor: decideBusy === c.id ? 'not-allowed' : 'pointer' }}>Approve</button>
+                                        <button type="button" disabled={decideBusy === c.id} onClick={() => handleDecide(c.id, false)} style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #dc2626', background: '#dc2626', color: 'white', fontWeight: 600, cursor: decideBusy === c.id ? 'not-allowed' : 'pointer' }}>Reject</button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                 </div>
             )}
 

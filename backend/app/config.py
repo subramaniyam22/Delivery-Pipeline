@@ -32,6 +32,20 @@ class Settings(BaseSettings):
     S3_REGION: Optional[str] = None
     S3_PUBLIC_BASE_URL: Optional[str] = None
 
+    # CloudFront / public URL bases (previews and deliveries; do not use S3_PUBLIC_BASE_URL for these)
+    PREVIEW_PUBLIC_BASE_URL: str = "https://d1io3h1jsbyk0b.cloudfront.net"
+    DELIVERY_PUBLIC_BASE_URL: str = "https://dx6spv477rbpv.cloudfront.net"
+
+    # Policy defaults (overridden by PolicyConfig table when set)
+    POLICY_REMINDER_CADENCE_HOURS: int = 24
+    POLICY_MAX_REMINDERS: int = 10
+    POLICY_IDLE_MINUTES: int = 30
+    POLICY_BUILD_RETRY_CAP: int = 3
+    POLICY_DEFECT_VALIDATION_CYCLE_CAP: int = 5
+    POLICY_PASS_THRESHOLD_PERCENT: int = 98
+    POLICY_PROOF_PACK_SOFT_MB: int = 50
+    POLICY_PROOF_PACK_HARD_MB: int = 200
+
     # Backwards compatibility
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None

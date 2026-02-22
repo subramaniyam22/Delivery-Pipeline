@@ -26,6 +26,8 @@ from app.models import (
     Role,
 )
 from app.runners.site_builder import build_and_package
+from app.services.contract_service import get_contract
+from app.services.storage import copy_preview_to_delivery_current, upload_proof_pack, get_s3_assets_backend
 from app.runners.self_review import run_self_review
 from app.runners.qa_runner import run_qa, run_targeted_tests
 from app.agents.defect_management_agent import DefectManagementAgent
@@ -35,7 +37,7 @@ from app.utils.sentiment_tokens import generate_sentiment_token
 from app.config import settings
 from app.services import artifact_service
 from app.error_codes import ErrorCode
-from app.services.threshold_merge import merge_decision_policies_into_thresholds
+from app.services.threshold_merge import merge_decision_policies_into_thresholds, merge_policy_config_into_thresholds
 from app.websocket.manager import manager
 from app.websocket.events import WebSocketEvent
 import asyncio
@@ -136,6 +138,11 @@ def run_stage(
         global_thresholds = merge_decision_policies_into_thresholds(
             global_thresholds, decision_policies.value_json
         )
+    # PolicyConfig (Admin Policies UI): pass_threshold_percent, lighthouse_thresholds_json, axe_policy_json
+    from app.models import PolicyConfig
+    policy_row = db.query(PolicyConfig).filter(PolicyConfig.key == "default").first()
+    if policy_row and isinstance(policy_row.value_json, dict):
+        global_thresholds = merge_policy_config_into_thresholds(global_thresholds, policy_row.value_json)
 
     project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == project.id).first()
     hitl_enabled = bool(project_config.hitl_enabled) if project_config else False
@@ -285,6 +292,7 @@ def run_stage(
         evidence_links = []
         build_result = {}
 
+        contract = get_contract(db, project.id)
         for attempt in range(1, max_autofix_attempts + 1):
             build_result = build_and_package(
                 db=db,
@@ -295,6 +303,8 @@ def run_stage(
                 mapping_plan_json=mapping_plan,
                 preview_strategy=preview_strategy,
                 actor_user_id=audit_actor_id,
+                run_id=job_id,
+                contract=contract,
             )
             score, report_json, evidence_links = run_self_review(
                 db=db,
@@ -324,6 +334,62 @@ def run_stage(
 
         rubric = _compute_requirements_rubric(report_json)
         report_json["requirements_rubric"] = rubric
+
+        # Proof pack: upload to S3 artifacts/{project_id}/{stage_key}/{run_id}/; enforce size limits
+        stage_key_build = "3_build"
+        proof_pack_result = None
+        if get_s3_assets_backend():
+            try:
+                policy_row = db.query(PolicyConfig).filter(PolicyConfig.key == "default").first()
+                policy_val = policy_row.value_json if policy_row and isinstance(policy_row.value_json, dict) else {}
+                soft_mb = int(policy_val.get("proof_pack_soft_mb", 50))
+                hard_mb = int(policy_val.get("proof_pack_hard_mb", 200))
+                from datetime import datetime
+                manifest = {
+                    "project_id": str(project.id),
+                    "run_id": str(job_id),
+                    "stage_key": stage_key_build,
+                    "preview_url": build_result.get("preview_url"),
+                    "score": score,
+                    "required_score": required_score,
+                    "passed": score >= required_score,
+                    "requirements_rubric": rubric,
+                    "evidence_links": evidence_links,
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                }
+                files = {"report.json": json.dumps(report_json, indent=2)}
+                proof_pack_result = upload_proof_pack(
+                    str(project.id), stage_key_build, str(job_id),
+                    files, manifest, soft_mb=soft_mb, hard_mb=hard_mb,
+                )
+                if proof_pack_result.get("exceeded_hard"):
+                    from app.pipeline.state_machine import set_project_needs_review
+                    set_project_needs_review(
+                        db, project.id,
+                        reason="Proof pack size exceeded hard limit ({} MB). Stage failed.".format(hard_mb),
+                        metadata={"job_id": str(job_id), "total_bytes": proof_pack_result.get("total_bytes")},
+                        actor_user_id=audit_actor_id,
+                    )
+                    output = StageOutput(
+                        project_id=project.id, job_run_id=job_id, stage=stage,
+                        status=StageStatus.FAILED,
+                        summary="Proof pack exceeded hard size limit; pipeline stopped.",
+                        score=score, report_json=report_json, evidence_links_json=evidence_links,
+                        structured_output_json={"proof_pack_exceeded_hard": True, "total_bytes": proof_pack_result.get("total_bytes")},
+                        required_next_inputs_json=[],
+                    )
+                    db.add(output)
+                    db.commit()
+                    return {
+                        "status": StageStatus.FAILED,
+                        "summary": output.summary,
+                        "stage": stage.value,
+                        "project_id": str(project.id),
+                        "error_code": ErrorCode.BUILD_VALIDATION_FAILED.value,
+                    }
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Proof pack upload failed: %s", e)
 
         if score < required_score:
             from app.pipeline.state_machine import set_project_needs_review
@@ -401,6 +467,12 @@ def run_stage(
                 "project_id": str(project.id),
             }
 
+        if build_result.get("used_s3_preview") and build_result.get("run_id"):
+            try:
+                copy_preview_to_delivery_current(str(project.id), str(build_result["run_id"]))
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Copy preview to delivery failed: %s", e)
         output = StageOutput(
             project_id=project.id,
             job_run_id=job_id,
