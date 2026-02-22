@@ -810,25 +810,36 @@ def _get_policy_config(db: Session) -> Optional[Dict[str, Any]]:
 
 
 def _get_defect_cycle_cap(db: Session) -> int:
-    """Read defect_validation_cycle_cap from PolicyConfig or decision_policies_json (default 5)."""
+    """Read defect_cycle_cap from decision_policies_json first, then PolicyConfig (default 5)."""
+    from app.services.config_service import get_config
+    config = get_config(db, "decision_policies_json")
+    if config and isinstance(config.value_json, dict):
+        try:
+            v = config.value_json.get("defect_cycle_cap")
+            if v is not None:
+                return int(v)
+        except (TypeError, ValueError):
+            pass
     policy = _get_policy_config(db)
     if policy is not None:
         try:
             return int(policy.get("defect_validation_cycle_cap", 5))
         except (TypeError, ValueError):
             pass
-    from app.services.config_service import get_config
-    config = get_config(db, "decision_policies_json")
-    if config and isinstance(config.value_json, dict):
-        try:
-            return int(config.value_json.get("defect_cycle_cap", 5))
-        except (TypeError, ValueError):
-            pass
     return 5
 
 
 def _get_build_retry_cap(db: Session) -> int:
-    """Read build_retry_cap from PolicyConfig or config (default 3)."""
+    """Read build_autofix_retries from decision_policies_json first, then PolicyConfig (default 3)."""
+    from app.services.config_service import get_config
+    config = get_config(db, "decision_policies_json")
+    if config and isinstance(config.value_json, dict):
+        try:
+            v = config.value_json.get("build_autofix_retries")
+            if v is not None:
+                return int(v)
+        except (TypeError, ValueError):
+            pass
     policy = _get_policy_config(db)
     if policy is not None:
         try:
@@ -966,20 +977,24 @@ def on_job_failure(
 
 
 def _get_decision_policies(db: Session) -> Dict[str, Any]:
-    """Read PolicyConfig (default) first, then merge decision_policies_json. Used for reminder cadence, max_reminders, idle_minutes, min_scope_percent."""
+    """Read decision_policies_json first (single source), then fill missing from PolicyConfig. Used for reminder cadence, max_reminders, idle_minutes, min_scope_percent, proof_pack_*."""
     defaults = {
         "reminder_cadence_hours": 24,
         "max_reminders": 10,
         "idle_minutes": 30,
         "min_scope_percent": 80,
+        "proof_pack_soft_mb": 50,
+        "proof_pack_hard_mb": 200,
     }
-    policy = _get_policy_config(db)
-    if policy:
-        defaults.update({k: v for k, v in policy.items() if k in ("reminder_cadence_hours", "max_reminders", "idle_minutes") and v is not None})
     from app.services.config_service import get_config
     config = get_config(db, "decision_policies_json")
     if config and isinstance(config.value_json, dict):
         defaults.update(config.value_json)
+    policy = _get_policy_config(db)
+    if policy:
+        for k in ("reminder_cadence_hours", "max_reminders", "idle_minutes", "proof_pack_soft_mb", "proof_pack_hard_mb"):
+            if defaults.get(k) is None and policy.get(k) is not None:
+                defaults[k] = policy[k]
     return defaults
 
 

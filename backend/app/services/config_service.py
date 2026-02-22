@@ -135,6 +135,8 @@ DEFAULT_CONFIGS = {
         "qa_stability_flake_free_min": 99,
         "qa_defect_density_critical_per_1k_loc_max": 0.5,
         "idleness_counts_toward_reminders": False,
+        "proof_pack_soft_mb": 50,
+        "proof_pack_hard_mb": 200,
     },
 }
 

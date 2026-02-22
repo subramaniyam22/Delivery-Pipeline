@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { configurationAPI, configAPI, API_BASE_URL } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
@@ -243,6 +243,8 @@ function defaultDecisionPolicies() {
         qa_stability_flake_free_min: 99,
         qa_defect_density_critical_per_1k_loc_max: 0.5,
         idleness_counts_toward_reminders: false,
+        proof_pack_soft_mb: 50,
+        proof_pack_hard_mb: 200,
     };
 }
 
@@ -310,8 +312,16 @@ export default function ConfigurationPage() {
         intent: '',
         features_input: '',
     });
+    const searchParams = useSearchParams();
     const [activeConfigTab, setActiveConfigTab] = useState<ConfigTab>('template_registry');
     const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+    useEffect(() => {
+        const tab = searchParams.get('tab');
+        if (tab && ['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates', 'decision_policies', 'learning'].includes(tab)) {
+            setActiveConfigTab(tab as ConfigTab);
+        }
+    }, [searchParams]);
     const [templateDetailSubTab, setTemplateDetailSubTab] = useState<TemplateDetailSubTab>('overview');
     const [selectedStructurePageIndex, setSelectedStructurePageIndex] = useState<number | null>(0);
     const [validationToast, setValidationToast] = useState<string | null>(null);
@@ -2969,8 +2979,8 @@ export default function ConfigurationPage() {
                     <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <PageHeader
                             title="Decision Policies"
-                            purpose="Autonomous pipeline: reminders, scope, build/defect caps, quality thresholds. Applied to new jobs with versioning."
-                            affects="Reminders, HOLD after max reminders, build auto-fix retries, defect cycle cap, Lighthouse/Axe/QA gating."
+                            purpose="Autonomous pipeline: reminders, scope, build/defect caps, quality thresholds, proof pack limits. Applied to new jobs with versioning."
+                            affects="Reminders, HOLD after max reminders, build auto-fix retries, defect cycle cap, Lighthouse/Axe/QA gating, proof pack soft/hard MB."
                             variant="section"
                         />
                         {renderDirtyDot('decision_policies')}
@@ -2990,6 +3000,8 @@ export default function ConfigurationPage() {
                         <label style={{ fontSize: '12px', color: '#64748b' }}>Defect cycle cap<input type="number" min={1} value={decisionPolicies.defect_cycle_cap ?? 5} onChange={(e) => setDecisionPolicies(p => ({ ...p, defect_cycle_cap: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
                         <label style={{ fontSize: '12px', color: '#64748b' }}>Pass threshold overall %<input type="number" min={0} max={100} value={decisionPolicies.pass_threshold_overall ?? 98} onChange={(e) => setDecisionPolicies(p => ({ ...p, pass_threshold_overall: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
                         <label style={{ fontSize: '12px', color: '#64748b' }}>Axe callout max<input type="number" min={0} value={decisionPolicies.axe_callout_max ?? 5} onChange={(e) => setDecisionPolicies(p => ({ ...p, axe_callout_max: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Proof pack soft limit (MB)<input type="number" min={1} value={decisionPolicies.proof_pack_soft_mb ?? 50} onChange={(e) => setDecisionPolicies(p => ({ ...p, proof_pack_soft_mb: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
+                        <label style={{ fontSize: '12px', color: '#64748b' }}>Proof pack hard limit (MB)<input type="number" min={1} value={decisionPolicies.proof_pack_hard_mb ?? 200} onChange={(e) => setDecisionPolicies(p => ({ ...p, proof_pack_hard_mb: Number(e.target.value) }))} disabled={!canEditDecisionPolicies} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #cbd5e1' }} /></label>
                         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#64748b' }}>
                             <input type="checkbox" checked={!!decisionPolicies.fallback_template_requires_confirmation} onChange={(e) => setDecisionPolicies(p => ({ ...p, fallback_template_requires_confirmation: e.target.checked }))} disabled={!canEditDecisionPolicies} />
                             Fallback template requires client confirmation

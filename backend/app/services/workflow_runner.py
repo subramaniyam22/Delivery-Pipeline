@@ -132,17 +132,16 @@ def run_stage(
     if global_thresholds_config and isinstance(global_thresholds_config.value_json, dict):
         global_thresholds = global_thresholds_config.value_json
 
-    # Decision policies: pass_threshold_overall, qa_pass_rate_min, lighthouse_floor, axe_block_severities (Admin-editable)
+    # PolicyConfig (legacy/fallback) then Decision Policies (single source): Decision Policies overrides.
+    from app.models import PolicyConfig
+    policy_row = db.query(PolicyConfig).filter(PolicyConfig.key == "default").first()
+    if policy_row and isinstance(policy_row.value_json, dict):
+        global_thresholds = merge_policy_config_into_thresholds(global_thresholds, policy_row.value_json)
     decision_policies = db.query(AdminConfig).filter(AdminConfig.key == "decision_policies_json").first()
     if decision_policies and isinstance(decision_policies.value_json, dict):
         global_thresholds = merge_decision_policies_into_thresholds(
             global_thresholds, decision_policies.value_json
         )
-    # PolicyConfig (Admin Policies UI): pass_threshold_percent, lighthouse_thresholds_json, axe_policy_json
-    from app.models import PolicyConfig
-    policy_row = db.query(PolicyConfig).filter(PolicyConfig.key == "default").first()
-    if policy_row and isinstance(policy_row.value_json, dict):
-        global_thresholds = merge_policy_config_into_thresholds(global_thresholds, policy_row.value_json)
 
     project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == project.id).first()
     hitl_enabled = bool(project_config.hitl_enabled) if project_config else False
@@ -340,10 +339,19 @@ def run_stage(
         proof_pack_result = None
         if get_s3_assets_backend():
             try:
-                policy_row = db.query(PolicyConfig).filter(PolicyConfig.key == "default").first()
-                policy_val = policy_row.value_json if policy_row and isinstance(policy_row.value_json, dict) else {}
-                soft_mb = int(policy_val.get("proof_pack_soft_mb", 50))
-                hard_mb = int(policy_val.get("proof_pack_hard_mb", 200))
+                _dp = db.query(AdminConfig).filter(AdminConfig.key == "decision_policies_json").first()
+                dp_val = _dp.value_json if _dp and isinstance(_dp.value_json, dict) else {}
+                soft_mb = dp_val.get("proof_pack_soft_mb")
+                hard_mb = dp_val.get("proof_pack_hard_mb")
+                if soft_mb is None or hard_mb is None:
+                    _legacy = db.query(PolicyConfig).filter(PolicyConfig.key == "default").first()
+                    leg = _legacy.value_json if _legacy and isinstance(_legacy.value_json, dict) else {}
+                    if soft_mb is None:
+                        soft_mb = leg.get("proof_pack_soft_mb", 50)
+                    if hard_mb is None:
+                        hard_mb = leg.get("proof_pack_hard_mb", 200)
+                soft_mb = int(soft_mb) if soft_mb is not None else 50
+                hard_mb = int(hard_mb) if hard_mb is not None else 200
                 from datetime import datetime
                 manifest = {
                     "project_id": str(project.id),
