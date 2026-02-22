@@ -10,7 +10,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import settings
 
-# S3 key prefixes (bucket: delivery-pipeline-assets-prod or configured)
+# S3 key prefixes (from config; fallbacks for backwards compat)
 TEMPLATES_PREFIX = "templates/"
 PREVIEWS_PREFIX = "previews/"
 DELIVERIES_PREFIX = "deliveries/"
@@ -27,7 +27,13 @@ class StoredObject:
 
 
 class StorageBackend:
-    def save_bytes(self, path: str, data: bytes, content_type: Optional[str] = None) -> StoredObject:
+    def save_bytes(
+        self,
+        path: str,
+        data: bytes,
+        content_type: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None,
+    ) -> StoredObject:
         raise NotImplementedError
 
     def save_file(self, path: str, local_file_path: str, content_type: Optional[str] = None) -> StoredObject:
@@ -60,7 +66,13 @@ class LocalDiskStorage(StorageBackend):
         cleaned = path.lstrip("/").replace("\\", "/")
         return os.path.join(self.base_dir, cleaned)
 
-    def save_bytes(self, path: str, data: bytes, content_type: Optional[str] = None) -> StoredObject:
+    def save_bytes(
+        self,
+        path: str,
+        data: bytes,
+        content_type: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None,
+    ) -> StoredObject:
         full_path = self._full_path(path)
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         with open(full_path, "wb") as handle:
@@ -115,14 +127,24 @@ class S3CompatibleStorage(StorageBackend):
             endpoint_url=endpoint_url or None,
         )
 
-    def save_bytes(self, path: str, data: bytes, content_type: Optional[str] = None) -> StoredObject:
+    def save_bytes(
+        self,
+        path: str,
+        data: bytes,
+        content_type: Optional[str] = None,
+        tags: Optional[Dict[str, str]] = None,
+    ) -> StoredObject:
         resolved_content_type = content_type or _guess_content_type(path)
+        extra = {}
+        if tags:
+            extra["Tagging"] = "&".join(f"{k}={v}" for k, v in tags.items())
         try:
             self.client.put_object(
                 Bucket=self.bucket,
                 Key=path,
                 Body=data,
                 ContentType=resolved_content_type,
+                **extra,
             )
         except (BotoCoreError, ClientError) as exc:
             raise RuntimeError(f"S3 upload failed: {exc}") from exc
@@ -192,7 +214,12 @@ class S3CompatibleStorage(StorageBackend):
             )
         return len(keys)
 
-    def upload_directory(self, local_dir: str, s3_prefix: str) -> int:
+    def upload_directory(
+        self,
+        local_dir: str,
+        s3_prefix: str,
+        tags: Optional[Dict[str, str]] = None,
+    ) -> int:
         """Upload a local directory tree to S3 under s3_prefix. Returns number of files uploaded."""
         if not os.path.isdir(local_dir):
             raise RuntimeError(f"Not a directory: {local_dir}")
@@ -204,13 +231,13 @@ class S3CompatibleStorage(StorageBackend):
                 key = f"{s3_prefix.rstrip('/')}/{rel}"
                 with open(path, "rb") as f:
                     data = f.read()
-                self.save_bytes(key, data, content_type=_guess_content_type(path))
+                self.save_bytes(key, data, content_type=_guess_content_type(path), tags=tags)
                 count += 1
         return count
 
 
 def _resolve_s3_config() -> Optional[Tuple[str, str, str, Optional[str], Optional[str], Optional[str]]]:
-    bucket = settings.S3_BUCKET or settings.AWS_S3_BUCKET
+    bucket = getattr(settings, "TEMPLATE_S3_BUCKET", None) or settings.S3_BUCKET or settings.AWS_S3_BUCKET
     access_key = settings.S3_ACCESS_KEY or settings.AWS_ACCESS_KEY_ID
     secret_key = settings.S3_SECRET_KEY or settings.AWS_SECRET_ACCESS_KEY
     region = settings.S3_REGION or settings.AWS_REGION
@@ -413,10 +440,34 @@ def delete_preview_bundle(prefix: str) -> None:
                 pass
 
 
-# --- Template ZIP (templates/{template_id}/{version}/template.zip) ---
+# --- Key builders (use config prefixes) ---
+
+def build_template_key(template_id: str, version: str) -> str:
+    """templates/{template_id}/{version}/template.zip"""
+    prefix = getattr(settings, "TEMPLATE_S3_PREFIX", TEMPLATES_PREFIX) or TEMPLATES_PREFIX
+    return f"{prefix.rstrip('/')}/{template_id}/{version}/template.zip"
+
+
+def build_preview_prefix(project_id: str, run_id: str) -> str:
+    """previews/{project_id}/{run_id}/site/"""
+    prefix = getattr(settings, "PREVIEW_S3_PREFIX", PREVIEWS_PREFIX) or PREVIEWS_PREFIX
+    return f"{prefix.rstrip('/')}/{project_id}/{run_id}/site/"
+
+
+def build_delivery_prefix(project_id: str) -> str:
+    """deliveries/{project_id}/current/site/"""
+    prefix = getattr(settings, "DELIVERY_S3_PREFIX", DELIVERIES_PREFIX) or DELIVERIES_PREFIX
+    return f"{prefix.rstrip('/')}/{project_id}/current/site/"
+
+
+def build_delivery_history_prefix(project_id: str, run_id: str) -> str:
+    """deliveries/{project_id}/{run_id}/site/"""
+    prefix = getattr(settings, "DELIVERY_S3_PREFIX", DELIVERIES_PREFIX) or DELIVERIES_PREFIX
+    return f"{prefix.rstrip('/')}/{project_id}/{run_id}/site/"
+
 
 def template_zip_s3_key(template_id: str, version: str) -> str:
-    return f"{TEMPLATES_PREFIX}{template_id}/{version}/template.zip"
+    return build_template_key(template_id, version)
 
 
 def upload_template_zip(template_id: str, version: str, file_bytes: bytes) -> str:
@@ -441,44 +492,75 @@ def download_template_zip(template_id: str, version: str) -> bytes:
 # --- Previews (previews/{project_id}/{run_id}/site/...) ---
 
 def preview_site_prefix(project_id: str, run_id: str) -> str:
-    return f"{PREVIEWS_PREFIX}{project_id}/{run_id}/site/"
+    return build_preview_prefix(project_id, run_id)
+
+
+def get_preview_url(project_id: str, run_id: str, path: str = "") -> str:
+    """CloudFront URL for preview: https://{PREVIEW_CLOUDFRONT_DOMAIN}/{previews/...}"""
+    base = (settings.preview_public_base_url or "").rstrip("/")
+    if not base:
+        base = f"https://{settings.PREVIEW_CLOUDFRONT_DOMAIN}" if settings.PREVIEW_CLOUDFRONT_DOMAIN else ""
+    prefix_path = build_preview_prefix(project_id, run_id).rstrip("/")
+    if not path or path is None:
+        path = "index.html"
+    elif path.endswith("/"):
+        path = (path.rstrip("/") + "/index.html").lstrip("/")
+    else:
+        path = path.lstrip("/")
+    return f"{base}/{prefix_path}/{path}" if base else f"/{prefix_path}/{path}"
 
 
 def get_preview_public_url(project_id: str, run_id: str, path: str = "") -> str:
-    """Public URL for preview (CloudFront). path e.g. '' or 'index.html'."""
-    base = (settings.PREVIEW_PUBLIC_BASE_URL or "").rstrip("/")
-    segs = [base, "previews", project_id, run_id, "site"]
-    if path:
-        segs.append(path.lstrip("/"))
-    return "/".join(segs)
+    """Public URL for preview (CloudFront). Defaults to index.html."""
+    return get_preview_url(project_id, run_id, path)
 
 
 def upload_preview_site(project_id: str, run_id: str, local_dir: str) -> None:
-    """Upload local directory to S3 previews/{project_id}/{run_id}/site/."""
+    """Upload local directory to S3 previews/{project_id}/{run_id}/site/ with retention tag expires=30d."""
+    import logging
+    logger = logging.getLogger(__name__)
     backend = get_s3_assets_backend()
     if not backend:
         raise RuntimeError("S3 not configured; cannot upload preview site")
-    prefix = preview_site_prefix(project_id, run_id)
-    backend.upload_directory(local_dir, prefix)
+    prefix = build_preview_prefix(project_id, run_id)
+    backend.upload_directory(local_dir, prefix, tags={"expires": "30d"})
+    url = get_preview_url(project_id, run_id, "")
+    logger.info(
+        "s3_upload preview prefix=%s preview_url=%s",
+        prefix,
+        url,
+        extra={"s3_prefix": prefix, "preview_url": url, "project_id": project_id, "run_id": run_id},
+    )
 
 
 # --- Deliveries (deliveries/{project_id}/current/site/...) ---
 
 def delivery_current_prefix(project_id: str) -> str:
-    return f"{DELIVERIES_PREFIX}{project_id}/current/site/"
+    return build_delivery_prefix(project_id)
 
 
 def delivery_run_prefix(project_id: str, run_id: str) -> str:
-    return f"{DELIVERIES_PREFIX}{project_id}/{run_id}/site/"
+    return build_delivery_history_prefix(project_id, run_id)
+
+
+def get_delivery_url(project_id: str, path: str = "") -> str:
+    """CloudFront URL for delivery: https://{DELIVERY_CLOUDFRONT_DOMAIN}/{deliveries/...}"""
+    base = (settings.delivery_public_base_url or "").rstrip("/")
+    if not base:
+        base = f"https://{settings.DELIVERY_CLOUDFRONT_DOMAIN}" if settings.DELIVERY_CLOUDFRONT_DOMAIN else ""
+    prefix_path = build_delivery_prefix(project_id).rstrip("/")
+    if not path or path is None:
+        path = "index.html"
+    elif path.endswith("/"):
+        path = (path.rstrip("/") + "/index.html").lstrip("/")
+    else:
+        path = path.lstrip("/")
+    return f"{base}/{prefix_path}/{path}" if base else f"/{prefix_path}/{path}"
 
 
 def get_delivery_public_url(project_id: str, path: str = "") -> str:
-    """Public URL for stable delivery (CloudFront)."""
-    base = (settings.DELIVERY_PUBLIC_BASE_URL or "").rstrip("/")
-    segs = [base, "deliveries", project_id, "current", "site"]
-    if path:
-        segs.append(path.lstrip("/"))
-    return "/".join(segs)
+    """Public URL for stable delivery (CloudFront). Defaults to index.html."""
+    return get_delivery_url(project_id, path)
 
 
 def copy_preview_to_delivery_current(project_id: str, run_id: str) -> int:
@@ -530,15 +612,16 @@ def upload_proof_pack(
     if not backend:
         raise RuntimeError("S3 not configured; cannot upload proof pack")
     prefix = artifacts_prefix(project_id, stage_key, run_id)
+    artifact_tags = {"expires": "180d"}
     total = 0
     for name, content in files.items():
         data = content.encode("utf-8") if isinstance(content, str) else content
         key = f"{prefix}{name}"
-        backend.save_bytes(key, data)
+        backend.save_bytes(key, data, tags=artifact_tags)
         total += len(data)
     manifest_bytes = json.dumps(manifest, indent=2).encode("utf-8")
     manifest_key = f"{prefix}manifest.json"
-    backend.save_bytes(manifest_key, manifest_bytes, content_type="application/json")
+    backend.save_bytes(manifest_key, manifest_bytes, content_type="application/json", tags=artifact_tags)
     total += len(manifest_bytes)
     total_mb = total / (1024 * 1024)
     return {

@@ -200,6 +200,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 async def startup_event():
     """Initialize application on startup"""
     logger.info("Starting Delivery Automation Intelligence System Yield...")
+    from app.config import validate_s3_config_on_startup
+    validate_s3_config_on_startup()
     logger.info("AI_MODE=%s OPENAI_MODEL=%s", settings.AI_MODE, settings.OPENAI_MODEL)
     if (settings.AI_MODE or "full").lower() != "disabled" and not settings.OPENAI_API_KEY:
         logger.warning(
@@ -268,6 +270,7 @@ app.include_router(webhooks.router)
 app.include_router(jobs.router)
 app.include_router(pipeline.router, prefix="/projects")
 app.include_router(confirmations.router)
+app.include_router(confirmations.router_flat)
 app.include_router(admin_policies.router)
 app.include_router(preview.router)
 app.include_router(sentiment_public.router)

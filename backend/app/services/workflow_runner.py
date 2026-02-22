@@ -469,7 +469,17 @@ def run_stage(
 
         if build_result.get("used_s3_preview") and build_result.get("run_id"):
             try:
-                copy_preview_to_delivery_current(str(project.id), str(build_result["run_id"]))
+                n = copy_preview_to_delivery_current(str(project.id), str(build_result["run_id"]))
+                from app.services.storage import build_delivery_prefix, get_delivery_url
+                delivery_url = get_delivery_url(str(project.id), "")
+                import logging
+                logging.getLogger(__name__).info(
+                    "s3_delivery_copy prefix=%s object_count=%s delivery_url=%s",
+                    build_delivery_prefix(str(project.id)),
+                    n,
+                    delivery_url,
+                    extra={"project_id": str(project.id), "delivery_prefix": build_delivery_prefix(str(project.id)), "delivery_url": delivery_url},
+                )
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).warning("Copy preview to delivery failed: %s", e)

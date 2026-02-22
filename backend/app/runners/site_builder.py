@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import Artifact, Stage, TemplateRegistry
 from app.services import artifact_service
+
+logger = logging.getLogger(__name__)
 
 
 def clone_template(template: TemplateRegistry, workdir: str) -> str:
@@ -165,9 +168,11 @@ def build_and_package(
     contract: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     from app.services.storage import (
+        build_preview_prefix,
+        get_preview_public_url,
+        get_preview_url,
         get_s3_assets_backend,
         upload_preview_site,
-        get_preview_public_url,
         copy_preview_to_delivery_current,
     )
 
@@ -185,6 +190,9 @@ def build_and_package(
             shutil.copytree(baseline_src, baseline_dir)
         apply_assets(mapping_plan_json, assets, repo_dir)
         dist_path, output_kind = build_site(repo_dir)
+        index_path = os.path.join(dist_path, "index.html")
+        if not os.path.isfile(index_path):
+            raise RuntimeError("Build must output index.html; missing in output directory")
         zip_path = package_build(dist_path, workdir)
 
         with open(zip_path, "rb") as handle:
@@ -211,6 +219,12 @@ def build_and_package(
         if use_s3_preview:
             upload_preview_site(str(project_id), str(run_id), dist_path)
             preview_url = get_preview_public_url(str(project_id), str(run_id), "")
+            logger.info(
+                "build_upload preview_prefix=%s cloudfront_url=%s",
+                build_preview_prefix(str(project_id), str(run_id)),
+                get_preview_url(str(project_id), str(run_id), ""),
+                extra={"project_id": str(project_id), "run_id": str(run_id), "preview_url": preview_url},
+            )
         elif preview_strategy == "serve_static_preview":
             preview_token, public_preview_url = create_preview(dist_path, project_id, settings.PREVIEW_TOKEN_TTL_HOURS)
             preview_url = f"file://{os.path.join(dist_path, 'index.html')}"

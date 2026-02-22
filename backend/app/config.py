@@ -1,6 +1,9 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -29,12 +32,23 @@ class Settings(BaseSettings):
     S3_BUCKET: Optional[str] = None
     S3_ACCESS_KEY: Optional[str] = None
     S3_SECRET_KEY: Optional[str] = None
-    S3_REGION: Optional[str] = None
+    S3_REGION: str = "eu-north-1"
     S3_PUBLIC_BASE_URL: Optional[str] = None
 
-    # CloudFront / public URL bases (previews and deliveries; do not use S3_PUBLIC_BASE_URL for these)
-    PREVIEW_PUBLIC_BASE_URL: str = "https://d1io3h1jsbyk0b.cloudfront.net"
-    DELIVERY_PUBLIC_BASE_URL: str = "https://dx6spv477rbpv.cloudfront.net"
+    # S3 bucket and prefixes for templates, previews, deliveries, proof packs
+    TEMPLATE_S3_BUCKET: str = "delivery-pipeline-assets-prod"
+    TEMPLATE_S3_PREFIX: str = "templates/"
+    PREVIEW_S3_PREFIX: str = "previews/"
+    DELIVERY_S3_PREFIX: str = "deliveries/"
+    PROOF_S3_PREFIX: str = "artifacts/"
+
+    # CloudFront domains (host only, no scheme)
+    PREVIEW_CLOUDFRONT_DOMAIN: str = "d1io3h1jsbyk0b.cloudfront.net"
+    DELIVERY_CLOUDFRONT_DOMAIN: str = "dx6spv477rbpv.cloudfront.net"
+
+    # CloudFront / public URL bases (built from domains if unset)
+    PREVIEW_PUBLIC_BASE_URL: Optional[str] = None
+    DELIVERY_PUBLIC_BASE_URL: Optional[str] = None
 
     # Policy defaults (overridden by PolicyConfig table when set)
     POLICY_REMINDER_CADENCE_HOURS: int = 24
@@ -119,6 +133,28 @@ class Settings(BaseSettings):
         return url
     
     @property
+    def preview_public_base_url(self) -> str:
+        """Base URL for preview links (CloudFront). Built from domain if PREVIEW_PUBLIC_BASE_URL unset."""
+        url = self.PREVIEW_PUBLIC_BASE_URL or ""
+        if url:
+            return url.rstrip("/")
+        domain = (self.PREVIEW_CLOUDFRONT_DOMAIN or "").strip()
+        if domain:
+            return f"https://{domain.rstrip('/')}"
+        return "https://preview.kandaswamysubramaniyam.xyz"
+
+    @property
+    def delivery_public_base_url(self) -> str:
+        """Base URL for delivery links (CloudFront). Built from domain if DELIVERY_PUBLIC_BASE_URL unset."""
+        url = self.DELIVERY_PUBLIC_BASE_URL or ""
+        if url:
+            return url.rstrip("/")
+        domain = (self.DELIVERY_CLOUDFRONT_DOMAIN or "").strip()
+        if domain:
+            return f"https://{domain.rstrip('/')}"
+        return "https://deliver.kandaswamysubramaniyam.xyz"
+
+    @property
     def cors_origins_list(self) -> list:
         """Parse CORS origins from comma-separated string"""
         return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
@@ -133,10 +169,35 @@ class Settings(BaseSettings):
         if not keys:
             keys.append(self.SECRET_KEY)
         return keys
-    
+
     class Config:
         env_file = ".env"
         case_sensitive = True
+
+
+def validate_s3_config_on_startup() -> None:
+    """Validate S3/CloudFront config when STORAGE_BACKEND=s3. Call from app startup."""
+    backend = (settings.STORAGE_BACKEND or "local").lower()
+    if backend != "s3":
+        return
+    bucket = settings.TEMPLATE_S3_BUCKET or settings.S3_BUCKET
+    if not bucket or not bucket.strip():
+        raise ValueError("TEMPLATE_S3_BUCKET or S3_BUCKET must be set when STORAGE_BACKEND=s3")
+    if not (settings.S3_ACCESS_KEY or getattr(settings, "AWS_ACCESS_KEY_ID", None)):
+        raise ValueError("S3_ACCESS_KEY (or AWS_ACCESS_KEY_ID) must be set when STORAGE_BACKEND=s3")
+    if not (settings.S3_SECRET_KEY or getattr(settings, "AWS_SECRET_ACCESS_KEY", None)):
+        raise ValueError("S3_SECRET_KEY (or AWS_SECRET_ACCESS_KEY) must be set when STORAGE_BACKEND=s3")
+    for name, val in [
+        ("TEMPLATE_S3_PREFIX", settings.TEMPLATE_S3_PREFIX),
+        ("PREVIEW_S3_PREFIX", settings.PREVIEW_S3_PREFIX),
+        ("DELIVERY_S3_PREFIX", settings.DELIVERY_S3_PREFIX),
+        ("PROOF_S3_PREFIX", settings.PROOF_S3_PREFIX),
+        ("PREVIEW_CLOUDFRONT_DOMAIN", settings.PREVIEW_CLOUDFRONT_DOMAIN),
+        ("DELIVERY_CLOUDFRONT_DOMAIN", settings.DELIVERY_CLOUDFRONT_DOMAIN),
+    ]:
+        if val is None or (isinstance(val, str) and not val.strip()):
+            raise ValueError(f"{name} must be set when STORAGE_BACKEND=s3")
+    logger.info("S3/CloudFront config validated: bucket=%s", bucket)
 
 
 settings = Settings()

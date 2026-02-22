@@ -1097,7 +1097,10 @@ def run_onboarding_idle_nudge(db: Session, max_projects: int = 20) -> int:
     cutoff = now - idle_delta
 
     # Projects in ONBOARDING, incomplete, last content update older than idle_minutes
-    q = (
+    # All filter() calls must be before limit() to avoid SQLAlchemy query order issues
+    from sqlalchemy.sql import func
+    last_update = func.coalesce(OnboardingData.last_content_update_at, OnboardingData.updated_at)
+    projects = (
         db.query(Project)
         .join(OnboardingData, OnboardingData.project_id == Project.id)
         .filter(
@@ -1105,13 +1108,11 @@ def run_onboarding_idle_nudge(db: Session, max_projects: int = 20) -> int:
             Project.current_stage == Stage.ONBOARDING,
             (OnboardingData.completion_percentage or 0) < 100,
             OnboardingData.submitted_at.is_(None),
+            last_update < cutoff,
         )
         .limit(max_projects)
+        .all()
     )
-    from sqlalchemy.sql import func
-    last_update = func.coalesce(OnboardingData.last_content_update_at, OnboardingData.updated_at)
-    q = q.filter(last_update < cutoff)
-    projects = q.all()
 
     count = 0
     for project in projects:

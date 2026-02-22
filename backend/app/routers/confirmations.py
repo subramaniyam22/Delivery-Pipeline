@@ -1,19 +1,25 @@
-"""Confirmation requests: list and decide (client token or admin)."""
+"""Confirmation requests: list, decide, approve, reject (client token or admin)."""
+import logging
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
 
 from app.db import get_db
 from app.deps import get_current_active_user, get_current_user_optional
 from app.models import ConfirmationRequest, OnboardingData, User
 from app.rbac import require_admin_manager
 from app.schemas import ConfirmationDecideRequest, ConfirmationRequestResponse
-from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects", tags=["confirmations"])
+
+# Flat routes: POST /confirmations/{id}/approve and POST /confirmations/{id}/reject
+router_flat = APIRouter(prefix="/confirmations", tags=["confirmations"])
 
 
 class ConfirmationRequestCreate(BaseModel):
@@ -130,4 +136,63 @@ def decide_confirmation(
     cr.decision_comment = body.comment
     db.commit()
     db.refresh(cr)
+    logger.info(
+        "confirmation_decision project_id=%s confirmation_id=%s decision=%s",
+        str(project_id),
+        str(confirmation_id),
+        cr.status,
+        extra={"project_id": str(project_id), "confirmation_id": str(confirmation_id), "decision": cr.status},
+    )
     return cr
+
+
+class ApproveRejectBody(BaseModel):
+    comment: str = Field(..., min_length=1, description="Required when approving or rejecting")
+
+
+def _decide_by_id(confirmation_id: UUID, approve: bool, body: ApproveRejectBody, db: Session, current_user: Optional[User], client_token: Optional[str]) -> ConfirmationRequest:
+    """Resolve confirmation by id, check access via project, then set status."""
+    cr = db.query(ConfirmationRequest).filter(ConfirmationRequest.id == confirmation_id).first()
+    if not cr:
+        raise HTTPException(status_code=404, detail="Confirmation request not found")
+    _allow_access(db, cr.project_id, current_user, client_token)
+    if cr.status != "pending":
+        raise HTTPException(status_code=400, detail="Already decided")
+    decided_by = current_user.id if current_user else None
+    cr.status = "approved" if approve else "rejected"
+    cr.decided_at = datetime.utcnow()
+    cr.decided_by = decided_by
+    cr.decision_comment = body.comment
+    db.commit()
+    db.refresh(cr)
+    logger.info(
+        "confirmation_decision confirmation_id=%s decision=%s",
+        str(confirmation_id),
+        cr.status,
+        extra={"confirmation_id": str(confirmation_id), "decision": cr.status},
+    )
+    return cr
+
+
+@router_flat.post("/{confirmation_id}/approve", response_model=ConfirmationRequestResponse)
+def approve_confirmation(
+    confirmation_id: UUID,
+    body: ApproveRejectBody,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    client_token: Optional[str] = Query(None, alias="client_token"),
+):
+    """Approve a confirmation request (client token or admin)."""
+    return _decide_by_id(confirmation_id, True, body, db, current_user, client_token)
+
+
+@router_flat.post("/{confirmation_id}/reject", response_model=ConfirmationRequestResponse)
+def reject_confirmation(
+    confirmation_id: UUID,
+    body: ApproveRejectBody,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    client_token: Optional[str] = Query(None, alias="client_token"),
+):
+    """Reject a confirmation request (client token or admin)."""
+    return _decide_by_id(confirmation_id, False, body, db, current_user, client_token)

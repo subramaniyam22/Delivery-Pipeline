@@ -504,6 +504,34 @@ class ProjectTemplateInstance(Base):
     fallback_template = relationship("TemplateRegistry", foreign_keys=[fallback_template_id])
 
 
+class TemplateArtifact(Base):
+    """Immutable template zip artifact in S3: templates/{template_id}/{version}/template.zip"""
+    __tablename__ = "template_artifacts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    s3_key = Column(String(1024), nullable=False, index=True)
+    version = Column(String(64), nullable=False, index=True)
+    checksum = Column(String(128), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    template = relationship("TemplateRegistry", backref="artifacts")
+
+
+class ProofPack(Base):
+    """Proof pack stored in S3 with retention (artifacts/ prefix)."""
+    __tablename__ = "proof_packs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    stage = Column(String(64), nullable=False, index=True)  # stage key / run identifier
+    s3_prefix = Column(String(1024), nullable=False, index=True)
+    size_mb = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project = relationship("Project", backref="proof_packs")
+
+
 class ConfirmationRequest(Base):
     """Portal-based confirmation requests that block the pipeline (fallback template, substitute artifact, etc.)."""
     __tablename__ = "confirmation_requests"
