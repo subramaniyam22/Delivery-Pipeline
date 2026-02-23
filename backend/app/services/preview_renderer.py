@@ -88,7 +88,9 @@ SECTION_SNIPPETS = {
   <div class="container" style="max-width: 900px; margin: 0 auto;">
     <h2 style="font-family: {{ font_family }}; font-size: {{ h2_size }}px; margin: 0 0 12px;">Location</h2>
     <p style="font-size: {{ body_size }}px; color: {{ text }};">{{ address }}</p>
-    <div style="height: 200px; background: #e2e8f0; border-radius: {{ card_radius }}px; display: flex; align-items: center; justify-content: center; color: #64748b;">Map placeholder</div>
+    <div style="height: 200px; border-radius: {{ card_radius }}px; overflow: hidden;">
+      <iframe title="Map showing location" src="{{ map_embed_url }}" style="width: 100%; height: 100%; border: 0;" loading="lazy"></iframe>
+    </div>
   </div>
 </section>""",
     "testimonials": """
@@ -215,6 +217,16 @@ def _get_demo_slots(
         out["floor_plans"] = slots.get("plans") or demo.get("floor_plans") or [{"name": "2B/2B", "beds": 2, "baths": 2, "rent_from": 1850, "image_url": "https://placehold.co/400x300?text=2B2B"}]
     elif section_type == "location_map":
         out["address"] = slots.get("address") or (demo.get("property") or {}).get("address") or "123 Main St"
+        # Sample map embed URL (OpenStreetMap) for context; no API key. Use property geo or default NYC.
+        geo = (demo.get("property") or {}).get("geo") or {}
+        lat = float(geo.get("lat", 40.7128))
+        lng = float(geo.get("lng", -74.0060))
+        delta = 0.01
+        bbox = f"{lng - delta},{lat - delta},{lng + delta},{lat + delta}"
+        out["map_embed_url"] = (
+            f"https://www.openstreetmap.org/export/embed.html?"
+            f"bbox={bbox}&layer=mapnik&marker={lat},{lng}"
+        )
     elif section_type == "testimonials":
         out["testimonials_list"] = slots.get("items") or demo.get("testimonials") or [{"name": "Jane D.", "quote": "Great experience."}]
     elif section_type == "faq":
@@ -298,6 +310,45 @@ def _nav_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
     return f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main navigation"><a href="index.html" style="color: {text_on_primary}; text-decoration: none; font-weight: 600;">{html_module.escape((blueprint.get("meta") or {}).get("name") or "Home")}</a>{links}</nav>'
 
 
+def _footer_href(href: str) -> str:
+    """Normalize footer link to relative .html so preview works when served from /api/templates/{id}/preview/ (avoids 404 on /about, /careers)."""
+    if not href or href == "#":
+        return "#"
+    s = (href or "").strip().lstrip("/")
+    if not s:
+        return "index.html"
+    if s.startswith("http://") or s.startswith("https://") or s.startswith("mailto:"):
+        return href
+    return f"{s}.html" if not s.endswith(".html") else s
+
+
+def _collect_linked_slugs(blueprint: Dict[str, Any]) -> List[str]:
+    """Collect all nav and footer link slugs so we can generate a page for each (no 404s)."""
+    slugs: List[str] = []
+    nav = blueprint.get("navigation") or {}
+    for item in nav.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        href = (item.get("href") or "").strip().lstrip("/")
+        if href and href != "home" and not href.startswith("http") and not href.startswith("#"):
+            base = href.replace(".html", "")
+            if base and base not in slugs:
+                slugs.append(base)
+    footer = blueprint.get("footer") or {}
+    for sec in footer.get("sections") or []:
+        if not isinstance(sec, dict):
+            continue
+        for link in sec.get("links") or []:
+            if not isinstance(link, dict):
+                continue
+            href = (link.get("href") or "").strip().lstrip("/")
+            if href and href != "#" and not href.startswith("http") and not href.startswith("mailto:"):
+                base = href.replace(".html", "")
+                if base and base not in slugs:
+                    slugs.append(base)
+    return slugs
+
+
 def _footer_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
     footer = blueprint.get("footer") or {}
     sections = footer.get("sections") or []
@@ -310,7 +361,7 @@ def _footer_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
         title = sec.get("title") or ""
         links = sec.get("links") or []
         link_str = " ".join(
-            f'<a href="{html_module.escape((l.get("href") or "#"))}" style="color: {text}; font-size: {body_size}px;">{html_module.escape(l.get("label") or "")}</a>'
+            f'<a href="{html_module.escape(_footer_href(l.get("href") or ""))}" style="color: {text}; font-size: {body_size}px;">{html_module.escape(l.get("label") or "")}</a>'
             for l in links if isinstance(l, dict)
         )
         parts.append(f"<div><strong>{html_module.escape(title)}</strong> {link_str}</div>")
@@ -368,6 +419,25 @@ def render_preview_html(blueprint_json: Dict[str, Any], demo_dataset: Dict[str, 
     return _render_one_page_html(blueprint_json, demo_dataset, first_page)
 
 
+def _slug_to_title_from_blueprint(blueprint: Dict[str, Any]) -> Dict[str, str]:
+    """Build slug -> page title from nav and footer so placeholder pages have sensible titles."""
+    m: Dict[str, str] = {}
+    for item in (blueprint.get("navigation") or {}).get("items") or []:
+        if isinstance(item, dict):
+            href = (item.get("href") or "").strip().lstrip("/").replace(".html", "")
+            if href and href != "home":
+                m[href] = (item.get("label") or href.replace("-", " ").title()).strip() or href
+    for sec in (blueprint.get("footer") or {}).get("sections") or []:
+        if isinstance(sec, dict):
+            for link in sec.get("links") or []:
+                if isinstance(link, dict):
+                    href = (link.get("href") or "").strip().lstrip("/").replace(".html", "")
+                    if href and href != "#":
+                        if href not in m:
+                            m[href] = (link.get("label") or href.replace("-", " ").title()).strip() or href
+    return m
+
+
 def render_preview_assets(
     blueprint_json: Dict[str, Any],
     demo_dataset: Dict[str, Any],
@@ -375,7 +445,8 @@ def render_preview_assets(
 ) -> Dict[str, Any]:
     """
     Return dict of path -> content (str or bytes).
-    index.html (first page), one {slug}.html per other page (so nav links work from S3 subpath),
+    index.html (first page), one {slug}.html per other page (so nav/footer links never 404).
+    Ensures every linked slug from nav and footer has a generated page (placeholder if not in blueprint).
     assets/style.css, assets/app.js.
     template_images: optional dict category -> list of image URLs (from Template Registry uploads) used for hero, gallery, feature_split by image_prompt_category.
     """
@@ -394,9 +465,19 @@ body {{ margin: 0; box-sizing: border-box; }}
 * {{ box-sizing: border-box; }}
 """
     js = "// Preview static bundle - no runtime required."
-    pages = blueprint_json.get("pages") or []
+    pages = list(blueprint_json.get("pages") or [])
     if not pages or not isinstance(pages[0], dict):
         pages = [{"slug": "home", "title": "Home", "sections": []}]
+    existing_slugs = {(p.get("slug") or "").strip().lstrip("/").replace(".html", "") or "home": p for p in pages if isinstance(p, dict)}
+    linked_slugs = _collect_linked_slugs(blueprint_json)
+    slug_to_title = _slug_to_title_from_blueprint(blueprint_json)
+    for slug in linked_slugs:
+        if not slug or slug == "home":
+            continue
+        if slug not in existing_slugs:
+            title = slug_to_title.get(slug) or slug.replace("-", " ").title()
+            pages.append({"slug": slug, "title": title, "sections": [{"type": "trust_bar", "content_slots": {"items": [f"Welcome to {title}."]}}]})
+            existing_slugs[slug] = pages[-1]
     out = {
         "index.html": _render_one_page_html(blueprint_json, demo_dataset, pages[0], template_images),
         "assets/style.css": css.strip(),

@@ -151,8 +151,10 @@ function UploadTemplateZipBlock({ templateId, currentVersion, onUploaded }: { te
     };
     return (
         <div style={{ marginTop: '16px', padding: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white' }}>
-            <h4 style={{ margin: '0 0 8px' }}>Upload Template ZIP for Version</h4>
-            <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#64748b' }}>Stores to S3 as templates/{templateId}/{version}/template.zip and sets build source to s3_zip.</p>
+            <h4 style={{ margin: '0 0 8px' }}>Replace build source with ZIP</h4>
+            <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#64748b' }}>
+                Replace this version's build source with a <strong>.zip</strong> of your template files (e.g. HTML, CSS, JS, images). Use for hotfixes, quick updates, or when you don't use a repo. The ZIP is stored in S3 at <code style={{ fontSize: '11px', background: '#f1f5f9', padding: '2px 4px', borderRadius: 4 }}>templates/{templateId}/{version}/template.zip</code> and this version will use it as the build source (<code>s3_zip</code>). <strong>For initial template content</strong>, use the &quot;Initial template ZIP&quot; option when creating the template.
+            </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                 <input type="text" placeholder="Version" value={version} onChange={(e) => setVersion(e.target.value)} style={{ width: 80, padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} />
                 <input type="file" accept=".zip" onChange={(e) => setFile(e.target.files?.[0] ?? null)} style={{ fontSize: '13px' }} />
@@ -369,6 +371,7 @@ function ConfigurationPageContent() {
         image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' },
         validate_responsiveness: true,
     });
+    const [wizardInitialZip, setWizardInitialZip] = useState<File | null>(null);
 
     type SectionKey = 'templates_default' | 'sla_config' | 'thresholds' | 'preview_strategy' | 'hitl_gates' | 'decision_policies';
     type SectionState = {
@@ -2180,8 +2183,16 @@ function ConfigurationPageContent() {
                                                 const axe = vr.axe as Record<string, unknown> | undefined;
                                                 const content = vr.content as Record<string, unknown> | undefined;
                                                 const failed = (vr.failed_reasons as string[]) || [];
+                                                const axeViolations = (axe && Array.isArray((axe as Record<string, unknown>).violations)) ? ((axe as Record<string, unknown>).violations as Array<{ id?: string; impact?: string; description?: string; help?: string }>) : [];
                                                 return (
                                                     <>
+                                                        {failed.length > 0 && (
+                                                            <div style={{ marginBottom: '16px', padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px' }}>
+                                                                <h5 style={{ margin: '0 0 8px', color: '#991b1b', fontSize: '13px' }}>Validation failed</h5>
+                                                                <ul style={{ margin: 0, paddingLeft: '20px', color: '#991b1b', fontSize: '13px' }}>{failed.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                                                                <button type="button" onClick={() => { setFixBlueprintModalOpen(true); setFixBlueprintSuggestions(null); setFixBlueprintShowTechnical(false); setFixBlueprintLoading(true); configurationAPI.getFixBlueprintSuggestions(selectedTemplate.id).then(r => { setFixBlueprintSuggestions(r.data); setFixBlueprintLoading(false); }).catch(() => { setFixBlueprintSuggestions({ plain_language_summary: 'Could not load suggestions. Please check the failed reasons above and share them with your technical team.', technical_details: null, code_snippets: [], interim_actions: [] }); setFixBlueprintLoading(false); }); }} style={{ marginTop: '10px', padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Fix Blueprint</button>
+                                                            </div>
+                                                        )}
                                                         {lh && !lh.error && (lh.scores as Record<string, number>) && (
                                                             <div style={{ marginBottom: '12px' }}>
                                                                 <h5 style={{ margin: '0 0 6px' }}>Lighthouse</h5>
@@ -2195,11 +2206,23 @@ function ConfigurationPageContent() {
                                                         {axe && !axe.error && (
                                                             <div style={{ marginBottom: '12px' }}>
                                                                 <h5 style={{ margin: '0 0 6px' }}>Axe</h5>
-                                                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: axeViolations.length ? '8px' : 0 }}>
                                                                     {['critical', 'serious', 'moderate', 'minor'].map(imp => (
-                                                                        <span key={imp} style={{ background: '#e2e8f0', padding: '4px 8px', borderRadius: '4px' }}>{imp}: {Number((axe as Record<string, number>)[imp] ?? 0)}</span>
+                                                                        <span key={imp} style={{ background: Number((axe as Record<string, number>)[imp] ?? 0) > 0 ? '#fee2e2' : '#e2e8f0', padding: '4px 8px', borderRadius: '4px' }}>{imp}: {Number((axe as Record<string, number>)[imp] ?? 0)}</span>
                                                                     ))}
                                                                 </div>
+                                                                {axeViolations.length > 0 && (
+                                                                    <div style={{ marginTop: '8px', padding: '10px', background: '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                                                                        <div style={{ fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: '#475569' }}>Rule violations (fix these for clearer validation)</div>
+                                                                        <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: '#334155' }}>
+                                                                            {axeViolations.map((v, i) => (
+                                                                                <li key={i} style={{ marginBottom: '4px' }}>
+                                                                                    <strong>{v.id ?? 'rule'}</strong> {v.impact ? `(${v.impact})` : ''} — {v.help || v.description || 'See raw results for details'}
+                                                                                </li>
+                                                                            ))}
+                                                                        </ul>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         )}
                                                         {content && !content.error && (
@@ -2210,13 +2233,6 @@ function ConfigurationPageContent() {
                                                                         <span key={k} style={{ background: (content as Record<string, boolean>)[k] ? '#dcfce7' : '#fee2e2', padding: '4px 8px', borderRadius: '4px' }}>{k}: {(content as Record<string, boolean>)[k] ? 'yes' : 'no'}</span>
                                                                     ))}
                                                                 </div>
-                                                            </div>
-                                                        )}
-                                                        {failed.length > 0 && (
-                                                            <div style={{ marginBottom: '12px' }}>
-                                                                <h5 style={{ margin: '0 0 6px' }}>Failed reasons</h5>
-                                                                <ul style={{ margin: 0, paddingLeft: '20px', color: '#991b1b' }}>{failed.map((r, i) => <li key={i}>{r}</li>)}</ul>
-                                                                <button type="button" onClick={() => { setFixBlueprintModalOpen(true); setFixBlueprintSuggestions(null); setFixBlueprintShowTechnical(false); setFixBlueprintLoading(true); configurationAPI.getFixBlueprintSuggestions(selectedTemplate.id).then(r => { setFixBlueprintSuggestions(r.data); setFixBlueprintLoading(false); }).catch(() => { setFixBlueprintSuggestions({ plain_language_summary: 'Could not load suggestions. Please check the failed reasons above and share them with your technical team.', technical_details: null, code_snippets: [], interim_actions: [] }); setFixBlueprintLoading(false); }); }} style={{ marginTop: '8px', padding: '6px 12px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: 'pointer' }}>Fix Blueprint</button>
                                                             </div>
                                                         )}
                                                         <details style={{ marginTop: '12px' }}>
@@ -2397,7 +2413,7 @@ function ConfigurationPageContent() {
                 {showCreateWizard && (
                 <Dialog
                     open={showCreateWizard}
-                    onOpenChange={(open) => { if (!open) { setShowCreateWizard(false); setWizardStep(1); setWizardForm({ source: 'ai', name: '', description: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true }); } }}
+                    onOpenChange={(open) => { if (!open) { setShowCreateWizard(false); setWizardStep(1); setWizardInitialZip(null); setWizardForm({ source: 'ai', name: '', description: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true }); } }}
                     title="Create Template"
                 >
                     <div style={{ padding: '16px', minWidth: '400px' }}>
@@ -2460,6 +2476,12 @@ function ConfigurationPageContent() {
                                     <input type="checkbox" checked={wizardForm.validate_responsiveness} onChange={e => setWizardForm(f => ({ ...f, validate_responsiveness: e.target.checked }))} />
                                     Validate responsiveness after creating (run viewport/mobile check when template is ready)
                                 </label>
+                                <div style={{ marginTop: '12px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                    <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#475569' }}>Initial template ZIP (optional)</div>
+                                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#64748b' }}>Upload a .zip of your template files now to use as this version&apos;s build source. You can also add or replace a ZIP later in the template&apos;s Versions tab.</p>
+                                    <input type="file" accept=".zip" onChange={e => setWizardInitialZip(e.target.files?.[0] ?? null)} style={{ fontSize: '13px' }} />
+                                    {wizardInitialZip && <span style={{ fontSize: '12px', color: '#059669', marginLeft: '8px' }}>{wizardInitialZip.name}</span>}
+                                </div>
                             </div>
                         )}
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
@@ -2502,11 +2524,16 @@ function ConfigurationPageContent() {
                                             payload.repo_path = wizardForm.repo_path || null;
                                         }
                                         try {
-                                            await configurationAPI.createTemplate(payload);
-                                            setSuccess('Template created. Generate blueprint for homepage (hero + 3–5 features + CTA) and 5+ internal pages with SEO content.');
+                                            const res = await configurationAPI.createTemplate(payload);
+                                            const created = res?.data as TemplateRegistry | undefined;
+                                            if (wizardInitialZip && created?.id) {
+                                                await configurationAPI.uploadTemplateZip(created.id, String(created.version ?? 1), wizardInitialZip);
+                                            }
+                                            setSuccess(created?.id && wizardInitialZip ? 'Template created and initial ZIP uploaded. You can generate blueprint or use the template as-is.' : 'Template created. Generate blueprint for homepage (hero + 3–5 features + CTA) and 5+ internal pages with SEO content.');
                                             setShowCreateWizard(false);
                                             setWizardStep(1);
                                             setWizardForm({ source: 'ai', name: '', description: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true });
+                                            setWizardInitialZip(null);
                                             loadData();
                                         } catch (err: any) {
                                             setError(err.response?.data?.detail || 'Failed to create template');

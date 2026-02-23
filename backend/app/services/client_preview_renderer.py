@@ -7,7 +7,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict
 
-from app.services.preview_renderer import render_preview_assets_single_page
+from app.services.preview_renderer import render_preview_assets
 from app.services.demo_preview_data import _default_dataset
 
 
@@ -124,8 +124,8 @@ def render_client_preview_assets(
             return {"index.html": "<!DOCTYPE html><html><body><p>No blueprint</p></body></html>"}
         client_dataset = _contract_to_client_dataset(contract_json)
         blueprint_with_tokens = _blueprint_with_client_tokens(blueprint_json, contract_json or {})
-        # Single-page preview so one S3 signed URL works; in-page links avoid AccessDenied on other .html keys
-        assets = render_preview_assets_single_page(blueprint_with_tokens, client_dataset)
+        # Multi-page preview: nav/footer links go to real pages (client preview served with same base so subpaths work)
+        assets = render_preview_assets(blueprint_with_tokens, client_dataset)
         return assets
     except Exception:
         return {"index.html": "<!DOCTYPE html><html><body><p>Preview generation failed. Please try again.</p></body></html>"}
