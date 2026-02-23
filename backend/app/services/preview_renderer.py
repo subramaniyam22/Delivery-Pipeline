@@ -411,6 +411,19 @@ body {{ margin: 0; box-sizing: border-box; }}
     return out
 
 
+def _nav_label(i: int, pages: List[Any], items: List[Any]) -> str:
+    """Return a plain string label for the nav link at index i (no nested f-strings)."""
+    if i < len(items) and isinstance(items[i], dict):
+        label = items[i].get("label")
+        if label:
+            return str(label)
+    if i < len(pages) and isinstance(pages[i], dict):
+        title = pages[i].get("title")
+        if title:
+            return str(title)
+    return "Page " + str(i + 1)
+
+
 def render_preview_assets_single_page(
     blueprint_json: Dict[str, Any],
     demo_dataset: Dict[str, Any],
@@ -453,7 +466,7 @@ def render_preview_assets_single_page(
                 )
                 section_index += 1
     nav_links = "".join(
-        f'<a href="#section-{page_section_starts[i]}" style="color: {text_on_primary}; text-decoration: none; padding: 8px 16px;">{html_module.escape((items[i].get("label") or (pages[i].get("title") if i < len(pages) and isinstance(pages[i], dict) else f"Page {i + 1}")) if i < len(items) and isinstance(items[i], dict) else (pages[i].get("title") if i < len(pages) and isinstance(pages[i], dict) else f"Page {i + 1}")}</a>'
+        f'<a href="#section-{page_section_starts[i]}" style="color: {text_on_primary}; text-decoration: none; padding: 8px 16px;">{html_module.escape(_nav_label(i, pages, items))}</a>'
         for i in range(len(page_section_starts))
     )
     nav_html = f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main navigation"><a href="#" style="color: {text_on_primary}; text-decoration: none; font-weight: 600;">{html_module.escape(meta_name)}</a>{nav_links}</nav>'

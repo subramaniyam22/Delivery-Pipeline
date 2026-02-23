@@ -4,6 +4,7 @@ import subprocess
 import threading
 import time
 import uuid
+from datetime import datetime
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
@@ -16,7 +17,7 @@ from app.jobs.queue import (
     mark_running,
     mark_success,
 )
-from app.models import StageStatus, AdminConfig, AuditLog, JobRunStatus, JobRun, Project
+from app.models import StageStatus, AdminConfig, AuditLog, JobRunStatus, JobRun, Project, TemplateRegistry
 from app.error_codes import ErrorCode
 from app.services.workflow_runner import run_stage
 from app.services.pipeline_orchestrator import on_job_success, on_job_failure
@@ -112,6 +113,18 @@ def _run_generic_job(job, db) -> bool:
     except Exception as e:
         logger.exception("Generic job failed: %s", e)
         mark_generic_job_failed(job_id, str(e), db=db)
+        # Backstop: if template preview job failed (e.g. at import time), unstick template
+        if job_type == JOB_TYPE_TEMPLATE_PREVIEW and payload.get("template_id"):
+            try:
+                template_id = payload.get("template_id")
+                template = db.query(TemplateRegistry).filter(TemplateRegistry.id == UUID(template_id)).first()
+                if template:
+                    template.preview_status = "failed"
+                    template.preview_error = f"Worker failed: {e!s}"
+                    template.preview_last_generated_at = datetime.utcnow()
+                    db.commit()
+            except Exception as backstop_err:
+                logger.warning("Failed to update template preview status on job failure: %s", backstop_err)
     return True
 
 
