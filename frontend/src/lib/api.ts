@@ -482,6 +482,8 @@ export const configurationAPI = {
         }),
     publishTemplate: (id: string, body?: { admin_override?: boolean }) =>
         api.post(`/api/templates/${id}/publish`, body || {}),
+    unpublishTemplate: (id: string) =>
+        api.post(`/api/templates/${id}/unpublish`),
     uploadTemplateZip: (templateId: string, version: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);

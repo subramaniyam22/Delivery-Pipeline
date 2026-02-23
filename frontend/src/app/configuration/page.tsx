@@ -361,7 +361,7 @@ function ConfigurationPageContent() {
     const [templateListFilters, setTemplateListFilters] = useState<{ q?: string; status?: string; category?: string; style?: string; tag?: string }>({});
     const [wizardStep, setWizardStep] = useState(1);
     const [wizardForm, setWizardForm] = useState<{
-        source: 'ai' | 'git'; name: string; description: string; category: string; style: string; feature_tags: string; intent: string;
+        source: 'ai' | 'git' | 'zip'; name: string; description: string; category: string; style: string; feature_tags: string; intent: string;
         repo_url: string; repo_branch: string; repo_path: string; preset: string;
         industry: string; image_prompts: Record<string, string>; validate_responsiveness: boolean;
     }>({
@@ -1825,12 +1825,21 @@ function ConfigurationPageContent() {
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M21 3l-7 7-4-4"/></svg>
                                             Open Preview
                                             </button>
+                                            {selectedTemplate.is_published ? (
+                                            <button type="button" onClick={async () => { if (!canEditTemplates) return; try { await configurationAPI.unpublishTemplate(selectedTemplate.id); setSuccess('Template unpublished'); loadData(); } catch (err: any) { setError(err.response?.data?.detail || 'Unpublish failed'); } }} disabled={!canEditTemplates} title="Move template back to validated so it can be edited" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #f59e0b', color: '#b45309', background: '#fffbeb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                                Unpublish
+                                            </button>
+                                            ) : (
+                                            <>
                                             <button type="button" onClick={() => handlePublishTemplate(selectedTemplate)} disabled={!canEditTemplates || !canPublishTemplate(selectedTemplate)} title={!canPublishTemplate(selectedTemplate) ? 'Requires ready preview and passed validation' : 'Publish template'} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', background: canPublishTemplate(selectedTemplate) ? '#10b981' : '#e2e8f0', color: canPublishTemplate(selectedTemplate) ? 'white' : '#94a3b8', border: 'none', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates && canPublishTemplate(selectedTemplate) ? 'pointer' : 'not-allowed' }}>
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                                            Publish
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                                                Publish
                                             </button>
                                             {!canPublishTemplate(selectedTemplate) && canEditTemplates && (
                                                 <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '4px' }}>{selectedTemplate.preview_status !== 'ready' ? 'Generate preview first' : (selectedTemplate.validation_status || 'not_run') !== 'passed' ? 'Run validation first' : ''}</span>
+                                            )}
+                                            </>
                                             )}
                                         </div>
                                         <div style={{ fontSize: '11px', color: '#64748b', marginTop: '10px', marginBottom: '6px', fontWeight: 600 }}>Settings</div>
@@ -2246,9 +2255,10 @@ function ConfigurationPageContent() {
                                     )}
                                     {templateDetailSubTab === 'versions' && (
                                         <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', fontSize: '13px' }}>
-                                            <p>Version: {selectedTemplate.version ?? 1}. Changelog: {selectedTemplate.changelog || '—'}</p>
-                                            <p style={{ marginTop: '8px' }}>Build source: {selectedTemplate.build_source_type || '—'}. {selectedTemplate.build_source_ref && <span style={{ wordBreak: 'break-all' }}>{selectedTemplate.build_source_ref}</span>}</p>
-                                            <UploadTemplateZipBlock templateId={selectedTemplate.id} currentVersion={selectedTemplate.version ?? 1} onUploaded={updateTemplateInState} />
+                                            <h4 style={{ margin: '0 0 8px' }}>Version history</h4>
+                                            <p style={{ margin: 0 }}><strong>Current version:</strong> {selectedTemplate.version ?? 1}</p>
+                                            <p style={{ margin: '8px 0 0' }}><strong>Changelog:</strong> {selectedTemplate.changelog || '—'}</p>
+                                            <p style={{ marginTop: '12px', fontSize: '12px', color: '#64748b' }}>A new version is saved when you update the template, publish, or unpublish. Build source: {selectedTemplate.build_source_type || '—'}{selectedTemplate.build_source_ref ? ` · ${selectedTemplate.build_source_ref}` : ''}</p>
                                         </div>
                                     )}
                                     {templateDetailSubTab === 'performance' && (
@@ -2420,13 +2430,27 @@ function ConfigurationPageContent() {
                         {wizardStep === 1 && (
                             <div>
                                 <p style={{ marginBottom: '12px', fontSize: '13px' }}>Source</p>
-                                <div style={{ display: 'flex', gap: '8px' }}>
+                                <p style={{ marginBottom: '12px', fontSize: '12px', color: '#64748b' }}>Choose how to create the template: AI-generated, from a Git repo, or upload a .zip as the base structure (blueprint and preview will be built on top of it).</p>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                     <button type="button" onClick={() => setWizardForm(f => ({ ...f, source: 'ai' }))} style={{ padding: '10px 16px', border: '1px solid', borderColor: wizardForm.source === 'ai' ? '#2563eb' : '#e2e8f0', background: wizardForm.source === 'ai' ? '#eff6ff' : 'white', borderRadius: '8px', cursor: 'pointer' }}>AI Generated</button>
                                     <button type="button" onClick={() => setWizardForm(f => ({ ...f, source: 'git' }))} style={{ padding: '10px 16px', border: '1px solid', borderColor: wizardForm.source === 'git' ? '#2563eb' : '#e2e8f0', background: wizardForm.source === 'git' ? '#eff6ff' : 'white', borderRadius: '8px', cursor: 'pointer' }}>Git Repository</button>
+                                    <button type="button" onClick={() => setWizardForm(f => ({ ...f, source: 'zip' }))} style={{ padding: '10px 16px', border: '1px solid', borderColor: wizardForm.source === 'zip' ? '#2563eb' : '#e2e8f0', background: wizardForm.source === 'zip' ? '#eff6ff' : 'white', borderRadius: '8px', cursor: 'pointer' }}>Upload template ZIP</button>
                                 </div>
                             </div>
                         )}
-                        {wizardStep === 2 && (
+                        {wizardStep === 2 && wizardForm.source === 'zip' && (
+                            <div style={{ display: 'grid', gap: '12px' }}>
+                                <label style={{ fontSize: '13px' }}>Name <input type="text" value={wizardForm.name} onChange={e => setWizardForm(f => ({ ...f, name: e.target.value }))} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required /></label>
+                                <label style={{ fontSize: '13px' }}>Description <textarea value={wizardForm.description} onChange={e => setWizardForm(f => ({ ...f, description: e.target.value }))} rows={2} placeholder="Short description shown in template list" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', resize: 'vertical' }} /></label>
+                                <div style={{ padding: '12px', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+                                    <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#166534' }}>Template ZIP (required)</div>
+                                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#15803d' }}>Upload a .zip of your template files. The template will use this as the base structure; blueprint and preview are built on top of it.</p>
+                                    <input type="file" accept=".zip" onChange={e => setWizardInitialZip(e.target.files?.[0] ?? null)} style={{ fontSize: '13px' }} />
+                                    {wizardInitialZip && <span style={{ fontSize: '12px', color: '#059669', marginLeft: '8px' }}>{wizardInitialZip.name}</span>}
+                                </div>
+                            </div>
+                        )}
+                        {wizardStep === 2 && wizardForm.source !== 'zip' && (
                             <div style={{ display: 'grid', gap: '12px' }}>
                                 <label style={{ fontSize: '13px' }}>Name <input type="text" value={wizardForm.name} onChange={e => setWizardForm(f => ({ ...f, name: e.target.value }))} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }} required /></label>
                                 <label style={{ fontSize: '13px' }}>Description <textarea value={wizardForm.description} onChange={e => setWizardForm(f => ({ ...f, description: e.target.value }))} rows={2} placeholder="Short description shown in template list and overview" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', resize: 'vertical' }} /></label>
@@ -2476,17 +2500,31 @@ function ConfigurationPageContent() {
                                     <input type="checkbox" checked={wizardForm.validate_responsiveness} onChange={e => setWizardForm(f => ({ ...f, validate_responsiveness: e.target.checked }))} />
                                     Validate responsiveness after creating (run viewport/mobile check when template is ready)
                                 </label>
-                                <div style={{ marginTop: '12px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                                    <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '6px', color: '#475569' }}>Initial template ZIP (optional)</div>
-                                    <p style={{ margin: '0 0 8px', fontSize: '12px', color: '#64748b' }}>Upload a .zip of your template files now to use as this version&apos;s build source. You can also add or replace a ZIP later in the template&apos;s Versions tab.</p>
-                                    <input type="file" accept=".zip" onChange={e => setWizardInitialZip(e.target.files?.[0] ?? null)} style={{ fontSize: '13px' }} />
-                                    {wizardInitialZip && <span style={{ fontSize: '12px', color: '#059669', marginLeft: '8px' }}>{wizardInitialZip.name}</span>}
-                                </div>
                             </div>
                         )}
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
                             <button type="button" onClick={() => setWizardStep(s => Math.max(1, s - 1))} style={{ padding: '8px 16px', border: '1px solid #e2e8f0', borderRadius: '6px', background: 'white', cursor: 'pointer' }}>Back</button>
-                            {wizardStep < 4 ? (
+                            {wizardForm.source === 'zip' ? (
+                                wizardStep === 2 ? (
+                                    <button type="button" disabled={!wizardForm.name.trim() || !wizardInitialZip} onClick={async () => {
+                                        try {
+                                            const payload: any = { name: wizardForm.name.trim(), description: (wizardForm.description || '').trim() || null, source_type: 'ai', feature_tags_json: [], category: 'Uploaded', style: null };
+                                            const res = await configurationAPI.createTemplate(payload);
+                                            const created = res?.data as TemplateRegistry | undefined;
+                                            if (!created?.id || !wizardInitialZip) { setError('Create or upload failed'); return; }
+                                            await configurationAPI.uploadTemplateZip(created.id, String(created.version ?? 1), wizardInitialZip);
+                                            setSuccess('Template created from ZIP. Blueprint and preview will use this as the base structure. Generate blueprint or preview next.');
+                                            setShowCreateWizard(false); setWizardStep(1); setWizardInitialZip(null);
+                                            setWizardForm({ source: 'ai', name: '', description: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true });
+                                            loadData();
+                                        } catch (err: any) {
+                                            setError(err.response?.data?.detail || 'Failed to create template from ZIP');
+                                        }
+                                    }} style={{ padding: '8px 16px', background: (!wizardForm.name.trim() || !wizardInitialZip) ? '#94a3b8' : '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: (wizardForm.name.trim() && wizardInitialZip) ? 'pointer' : 'not-allowed' }}>Create</button>
+                                ) : (
+                                    <button type="button" onClick={() => setWizardStep(2)} style={{ padding: '8px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Next</button>
+                                )
+                            ) : wizardStep < 4 ? (
                                 <button type="button" onClick={() => setWizardStep(s => s + 1)} style={{ padding: '8px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Next</button>
                             ) : (
                                 <button
@@ -2524,16 +2562,11 @@ function ConfigurationPageContent() {
                                             payload.repo_path = wizardForm.repo_path || null;
                                         }
                                         try {
-                                            const res = await configurationAPI.createTemplate(payload);
-                                            const created = res?.data as TemplateRegistry | undefined;
-                                            if (wizardInitialZip && created?.id) {
-                                                await configurationAPI.uploadTemplateZip(created.id, String(created.version ?? 1), wizardInitialZip);
-                                            }
-                                            setSuccess(created?.id && wizardInitialZip ? 'Template created and initial ZIP uploaded. You can generate blueprint or use the template as-is.' : 'Template created. Generate blueprint for homepage (hero + 3–5 features + CTA) and 5+ internal pages with SEO content.');
+                                            await configurationAPI.createTemplate(payload);
+                                            setSuccess('Template created. Generate blueprint for homepage (hero + 3–5 features + CTA) and 5+ internal pages with SEO content.');
                                             setShowCreateWizard(false);
                                             setWizardStep(1);
                                             setWizardForm({ source: 'ai', name: '', description: '', category: '', style: '', feature_tags: '', intent: '', repo_url: '', repo_branch: 'main', repo_path: '', preset: '', industry: 'real_estate', image_prompts: { exterior: '', interior: '', lifestyle: '', people: '', neighborhood: '' }, validate_responsiveness: true });
-                                            setWizardInitialZip(null);
                                             loadData();
                                         } catch (err: any) {
                                             setError(err.response?.data?.detail || 'Failed to create template');

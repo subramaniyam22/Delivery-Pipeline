@@ -1,11 +1,13 @@
 """
 Template preview pipeline: render from blueprint -> upload bundle + thumbnail -> update TemplateRegistry.
-Runs in background task; uses preview_renderer, storage, thumbnail services.
+When template has build_source_type=s3_zip, build from ZIP and upload dist as preview (blueprint not required).
+Runs in background task; uses preview_renderer, storage, thumbnail, site_builder.
 """
 from __future__ import annotations
 
 import logging
 import os
+import tempfile
 import threading
 from datetime import datetime
 from typing import Any, Dict
@@ -61,10 +63,90 @@ def run_template_preview_pipeline(
             if acquired:
                 _preview_semaphore.release()
             return {"status": "failed", "error": "Template not found"}
+
+        build_source = getattr(template, "build_source_type", None)
+        source_ref = getattr(template, "build_source_ref", None)
+        if build_source in ("s3_zip", "s3") and source_ref:
+            # Preview from ZIP: build the template from its ZIP and upload dist as preview (no blueprint required)
+            try:
+                from app.runners.site_builder import clone_template, build_site
+                with tempfile.TemporaryDirectory() as workdir:
+                    repo_dir = clone_template(template, workdir)
+                    dist_path, _ = build_site(repo_dir)
+                    dist_index = os.path.join(dist_path, "index.html")
+                    if not os.path.isfile(dist_index):
+                        raise RuntimeError("Template build did not produce dist/index.html")
+                    assets = {}
+                    for root, _dirs, files in os.walk(dist_path):
+                        for f in files:
+                            if ".." in f or f.startswith("."):
+                                continue
+                            abs_path = os.path.join(root, f)
+                            rel = os.path.relpath(abs_path, dist_path).replace("\\", "/")
+                            with open(abs_path, "rb") as fp:
+                                content = fp.read()
+                            if rel.endswith((".html", ".css", ".js", ".json", ".txt", ".xml", ".ico", ".svg")):
+                                try:
+                                    assets[rel] = content.decode("utf-8", errors="replace")
+                                except Exception:
+                                    assets[rel] = content
+                            else:
+                                assets[rel] = content
+                    total_size = sum(len(c) if isinstance(c, bytes) else len(c.encode("utf-8")) for c in assets.values())
+                    if total_size > PREVIEW_BUNDLE_MAX_BYTES:
+                        template.preview_status = "failed"
+                        template.preview_error = f"Built site size {total_size} exceeds max {PREVIEW_BUNDLE_MAX_BYTES}"
+                        session.commit()
+                        if acquired:
+                            _preview_semaphore.release()
+                        return {"status": "failed", "error": template.preview_error}
+                    prefix = _template_prefix(template)
+                    try:
+                        delete_preview_bundle(prefix)
+                    except Exception:
+                        pass
+                    preview_url = upload_preview_bundle(prefix, assets)
+                thumbnail_bytes = None
+                try:
+                    thumbnail_bytes = generate_thumbnail(
+                        blueprint_json={"meta": {"name": template.name, "category": getattr(template, "category", "") or ""}},
+                        preview_url=preview_url,
+                        title=template.name or "Preview",
+                        subtitle="",
+                    )
+                except Exception as e:
+                    logger.warning("Thumbnail generation failed (continuing): %s", e)
+                thumbnail_url = None
+                if thumbnail_bytes:
+                    try:
+                        thumbnail_url = upload_thumbnail(prefix, thumbnail_bytes)
+                    except Exception as e:
+                        logger.warning("Thumbnail upload failed: %s", e)
+                template.preview_url = preview_url
+                template.preview_thumbnail_url = thumbnail_url
+                template.preview_status = "ready"
+                template.preview_error = None
+                template.preview_last_generated_at = datetime.utcnow()
+                template.validation_status = "not_run"
+                template.validation_hash = None
+                session.commit()
+                if acquired:
+                    _preview_semaphore.release()
+                return {"status": "ready", "preview_url": preview_url, "thumbnail_url": thumbnail_url}
+            except Exception as e:
+                logger.exception("Preview from ZIP failed: %s", e)
+                template.preview_status = "failed"
+                template.preview_error = str(e)
+                template.preview_last_generated_at = datetime.utcnow()
+                session.commit()
+                if acquired:
+                    _preview_semaphore.release()
+                return {"status": "failed", "error": str(e)}
+
         blueprint = getattr(template, "blueprint_json", None)
         if not blueprint or not isinstance(blueprint, dict):
             template.preview_status = "failed"
-            template.preview_error = "No blueprint. Generate blueprint first."
+            template.preview_error = "No blueprint. Generate blueprint first (or use a template created from ZIP)."
             session.commit()
             if acquired:
                 _preview_semaphore.release()

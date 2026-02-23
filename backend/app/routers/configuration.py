@@ -185,6 +185,8 @@ def list_templates(
         query = query.filter(
             TemplateRegistry.feature_tags_json.op("@>")(cast([tag], JSONB))
         )
+    # Exclude deprecated templates so we don't show duplicate entries (e.g. after evolution approve)
+    query = query.filter(TemplateRegistry.is_deprecated == False)
     templates = query.order_by(TemplateRegistry.created_at.desc()).all()
     for t in templates:
         if getattr(t, "preview_thumbnail_url", None):
@@ -325,6 +327,10 @@ def update_template(
         updates["status"] = "draft"
     for key, value in updates.items():
         setattr(template, key, value)
+    # Save a version and changelog on every update
+    template.version = (getattr(template, "version", None) or 1) + 1
+    changed = ", ".join(k for k in updates.keys() if k not in ("is_published",))
+    template.changelog = f"Updated: {changed}" if changed else (template.changelog or "Updated")
     db.commit()
     db.refresh(template)
     if "is_published" in updates:
@@ -1126,6 +1132,8 @@ def publish_template(
         t.is_default = False
     template.status = "published"
     template.is_published = True
+    template.version = (getattr(template, "version", None) or 1) + 1
+    template.changelog = "Published"
     db.commit()
     db.refresh(template)
     db.add(
@@ -1133,6 +1141,37 @@ def publish_template(
             project_id=None,
             actor_user_id=current_user.id,
             action="TEMPLATE_PUBLISHED",
+            payload_json={"template_id": str(template.id), "name": template.name},
+        )
+    )
+    db.commit()
+    return template
+
+
+@router.post("/api/templates/{template_id}/unpublish", response_model=TemplateResponse)
+def unpublish_template(
+    template_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Move a published template back to validated/draft so it can be edited. Admin/Manager only."""
+    _require_admin_manager(current_user)
+    template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    if not template.is_published:
+        raise HTTPException(status_code=400, detail="Template is not published")
+    template.is_published = False
+    template.status = "validated"  # keep validated so they can edit and re-publish without re-running validation
+    template.version = (getattr(template, "version", None) or 1) + 1
+    template.changelog = "Unpublished"
+    db.commit()
+    db.refresh(template)
+    db.add(
+        AuditLog(
+            project_id=None,
+            actor_user_id=current_user.id,
+            action="TEMPLATE_UNPUBLISHED",
             payload_json={"template_id": str(template.id), "name": template.name},
         )
     )
