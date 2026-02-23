@@ -217,13 +217,12 @@ const styles = `
     width: 64px;
     height: 64px;
     margin: 0 auto var(--space-md);
-    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    background: transparent;
     border-radius: var(--radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 32px;
-    box-shadow: var(--shadow-md);
   }
   
   .reset-header h1 {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { configurationAPI, configAPI, API_BASE_URL } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
@@ -299,6 +299,7 @@ function ConfigurationPageContent() {
     const [previewModalOpen, setPreviewModalOpen] = useState(false);
     const [previewTemplate, setPreviewTemplate] = useState<TemplateRegistry | null>(null);
     const [previewPolling, setPreviewPolling] = useState(false);
+    const previewPollingAbortRef = useRef(false);
     const [blueprintJobPolling, setBlueprintJobPolling] = useState(false);
     const [blueprintStatusData, setBlueprintStatusData] = useState<{ blueprint_status?: string; latest_run?: { run_id: string; status: string; error_message?: string }; blueprint_preview?: { pages_count: number } } | null>(null);
     const [workerHealthy, setWorkerHealthy] = useState<boolean | null>(null);
@@ -1116,6 +1117,7 @@ function ConfigurationPageContent() {
     };
 
     const pollTemplatePreview = async (templateId: string) => {
+        previewPollingAbortRef.current = false;
         setPreviewPolling(true);
         setError('');
         setInfo('');
@@ -1124,6 +1126,10 @@ function ConfigurationPageContent() {
         let done = false;
         while (!done && Date.now() - start < pollMs) {
             await new Promise(res => setTimeout(res, 3000));
+            if (previewPollingAbortRef.current) {
+                done = true;
+                break;
+            }
             try {
                 const response = await configurationAPI.getTemplate(templateId);
                 const updated = response.data as TemplateRegistry;
@@ -1141,7 +1147,7 @@ function ConfigurationPageContent() {
                 done = true;
             }
         }
-        if (!done) setInfo('Preview is taking longer than expected. You can keep waiting or use Reset preview then try again. Ensure the worker service is running.');
+        if (!done && !previewPollingAbortRef.current) setInfo('Preview is taking longer than expected. You can keep waiting or use Reset preview then try again. Ensure the worker service is running.');
         setPreviewPolling(false);
     };
 
@@ -1214,6 +1220,7 @@ function ConfigurationPageContent() {
 
     const handleResetPreview = async (template: TemplateRegistry) => {
         if (!canEditTemplates) return;
+        previewPollingAbortRef.current = true;
         setInfo('');
         try {
             await configurationAPI.resetTemplatePreview(template.id);

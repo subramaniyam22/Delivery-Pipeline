@@ -328,9 +328,8 @@ export default function Navigation() {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    box-shadow: var(--shadow-sm);
                     overflow: hidden;
-                    background: var(--bg-tertiary);
+                    background: transparent;
                 }
                 .brand-logo img {
                     width: 100%;

@@ -714,6 +714,12 @@ def reset_template_preview(
         raise HTTPException(status_code=404, detail="Template not found")
     template.preview_status = "not_generated"
     template.preview_error = None
+    # Mark any queued/retry preview job for this template as dead so next Generate enqueues a fresh job
+    from app.models import Job
+    db.query(Job).filter(
+        Job.idempotency_key == f"template_preview:{template_id}",
+        Job.status.in_(["queued", "retry"]),
+    ).update({"status": "dead"}, synchronize_session=False)
     db.commit()
     return {"preview_status": "not_generated"}
 
