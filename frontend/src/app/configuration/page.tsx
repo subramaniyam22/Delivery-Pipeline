@@ -257,6 +257,7 @@ function ConfigurationPageContent() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [info, setInfo] = useState('');
     const [infoBannerDismissed, setInfoBannerDismissed] = useState(false);
     const [globalStageGates, setGlobalStageGates] = useState({
         onboarding: false,
@@ -697,6 +698,7 @@ function ConfigurationPageContent() {
     const handleSaveAll = async () => {
         setError('');
         setSuccess('');
+        setInfo('');
         const dirty = getDirtySections();
         const ordered: SectionKey[] = [
             'preview_strategy',
@@ -1115,8 +1117,10 @@ function ConfigurationPageContent() {
 
     const pollTemplatePreview = async (templateId: string) => {
         setPreviewPolling(true);
+        setError('');
+        setInfo('');
         const start = Date.now();
-        const pollMs = 120000; // 2 min - backend can take 60–90s on Render
+        const pollMs = 300000; // 5 min - worker can take 2–3 min on cold start
         let done = false;
         while (!done && Date.now() - start < pollMs) {
             await new Promise(res => setTimeout(res, 3000));
@@ -1137,7 +1141,7 @@ function ConfigurationPageContent() {
                 done = true;
             }
         }
-        if (!done) setError('Preview is taking longer than expected. Use Reset preview then try again.');
+        if (!done) setInfo('Preview is taking longer than expected. You can keep waiting or use Reset preview then try again. Ensure the worker service is running.');
         setPreviewPolling(false);
     };
 
@@ -1156,6 +1160,7 @@ function ConfigurationPageContent() {
             return;
         }
         setTemplateDetailSubTab('preview');
+        setInfo('');
         updateTemplateInState({ ...template, preview_status: 'generating', preview_error: null });
         try {
             // If stuck from a previous run, reset first so backend starts fresh
@@ -1179,6 +1184,7 @@ function ConfigurationPageContent() {
     const handleGeneratePreviewSync = async (template: TemplateRegistry) => {
         if (!canEditTemplates || template.source_type === 'git' || !template.blueprint_json) return;
         setTemplateDetailSubTab('preview');
+        setInfo('');
         updateTemplateInState({ ...template, preview_status: 'generating', preview_error: null });
         setPreviewPolling(true);
         try {
@@ -1208,6 +1214,7 @@ function ConfigurationPageContent() {
 
     const handleResetPreview = async (template: TemplateRegistry) => {
         if (!canEditTemplates) return;
+        setInfo('');
         try {
             await configurationAPI.resetTemplatePreview(template.id);
             const updated = await configurationAPI.getTemplate(template.id);
@@ -1623,9 +1630,15 @@ function ConfigurationPageContent() {
                 )}
 
                 {error && (
-                    <div className="alert alert-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                    <div className="alert alert-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px 16px', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
                         <span>{typeof error === 'string' ? error : formatApiErrorDetail(error)}</span>
-                        <button type="button" onClick={() => setError('')} aria-label="Close" style={{ flexShrink: 0, padding: '4px 8px', border: '1px solid currentColor', background: 'transparent', color: 'inherit', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>Close</button>
+                        <button type="button" onClick={() => setError('')} aria-label="Close" style={{ flexShrink: 0, padding: '4px 8px', border: '1px solid #dc2626', background: 'white', color: '#dc2626', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>Close</button>
+                    </div>
+                )}
+                {info && (
+                    <div role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
+                        <span>{info}</span>
+                        <button type="button" onClick={() => setInfo('')} aria-label="Close" style={{ flexShrink: 0, padding: '4px 8px', border: '1px solid #1d4ed8', background: 'white', color: '#1d4ed8', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>Close</button>
                     </div>
                 )}
                 {success && (
