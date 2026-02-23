@@ -1162,12 +1162,11 @@ function ConfigurationPageContent() {
             if (template.preview_status === 'generating') {
                 await configurationAPI.resetTemplatePreview(template.id);
             }
-            // Async: return in <1s so Render doesn't kill the request; we poll for result
             await configurationAPI.generateTemplatePreview(template.id, {
                 force: template.preview_status === 'ready',
                 sync: false,
             });
-            setSuccess('Preview generation started');
+            setSuccess('Preview generation started (worker will process; ensure worker is running)');
             pollTemplatePreview(template.id);
         } catch (err: any) {
             const detail = err.response?.data?.detail;
@@ -1179,7 +1178,32 @@ function ConfigurationPageContent() {
 
     const handleGeneratePreviewSync = async (template: TemplateRegistry) => {
         if (!canEditTemplates || template.source_type === 'git' || !template.blueprint_json) return;
-        await handleGeneratePreview(template);
+        setTemplateDetailSubTab('preview');
+        updateTemplateInState({ ...template, preview_status: 'generating', preview_error: null });
+        setPreviewPolling(true);
+        try {
+            if (template.preview_status === 'generating') {
+                await configurationAPI.resetTemplatePreview(template.id);
+            }
+            const res = await configurationAPI.generateTemplatePreview(template.id, {
+                force: template.preview_status === 'ready',
+                sync: true,
+            });
+            const data = res.data as { preview_status?: string; error?: string };
+            const updated = await configurationAPI.getTemplate(template.id);
+            updateTemplateInState(updated.data as TemplateRegistry);
+            if (previewTemplate?.id === template.id) setPreviewTemplate(updated.data as TemplateRegistry);
+            if (data.preview_status === 'ready') setSuccess('Preview generated successfully');
+            else if (data.preview_status === 'failed') setError(data.error || 'Preview generation failed');
+        } catch (err: any) {
+            const isTimeout = err.code === 'ECONNABORTED' || err.message?.toLowerCase?.().includes('timeout');
+            const msg = isTimeout
+                ? 'Request timed out. Ensure the worker is running or try again (sync waits up to ~3 min).'
+                : (typeof err.response?.data?.detail === 'string' ? err.response?.data.detail : err.response?.data?.error) || 'Preview generation failed';
+            setError(msg);
+        } finally {
+            setPreviewPolling(false);
+        }
     };
 
     const handleResetPreview = async (template: TemplateRegistry) => {
@@ -1605,9 +1629,9 @@ function ConfigurationPageContent() {
                     </div>
                 )}
                 {success && (
-                    <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                    <div role="alert" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '12px 16px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
                         <span>{success}</span>
-                        <button type="button" onClick={() => setSuccess('')} aria-label="Close" style={{ flexShrink: 0, padding: '4px 8px', border: '1px solid currentColor', background: 'transparent', color: 'inherit', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>Close</button>
+                        <button type="button" onClick={() => setSuccess('')} aria-label="Close" style={{ flexShrink: 0, padding: '4px 8px', border: '1px solid #1d4ed8', background: 'white', color: '#1d4ed8', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: 600 }}>Close</button>
                     </div>
                 )}
 
@@ -2042,7 +2066,7 @@ function ConfigurationPageContent() {
                                                     <button
                                                         type="button"
                                                         onClick={() => handleGeneratePreviewSync(selectedTemplate)}
-                                                        title="Wait in this page for result (recommended if preview gets stuck)"
+                                                        title="Wait up to 90s in this request (use when worker is not running or preview stays stuck)"
                                                         style={{ padding: '8px 16px', background: 'white', color: '#0369a1', border: '1px solid #0ea5e9', borderRadius: '6px', fontSize: '13px', cursor: 'pointer', marginLeft: '8px' }}
                                                     >
                                                         Generate Preview (sync)

@@ -22,6 +22,7 @@ from app.services.workflow_runner import run_stage
 from app.services.pipeline_orchestrator import on_job_success, on_job_failure
 from app.services.job_queue import (
     JOB_TYPE_BLUEPRINT_GENERATE,
+    JOB_TYPE_TEMPLATE_PREVIEW,
     claim_next_generic_job,
     extend_lease,
     mark_generic_job_failed,
@@ -96,6 +97,13 @@ def _run_generic_job(job, db) -> bool:
                 mark_generic_job_failed(job_id, "Missing run_id or template_id in payload", db=db)
                 return True
             blueprint_generate(UUID(template_id), UUID(run_id), db=db)
+        elif job_type == JOB_TYPE_TEMPLATE_PREVIEW:
+            template_id = payload.get("template_id")
+            if not template_id:
+                mark_generic_job_failed(job_id, "Missing template_id in payload", db=db)
+                return True
+            from app.jobs.template_preview import run_template_preview_pipeline
+            run_template_preview_pipeline(UUID(template_id), db=db)
         else:
             mark_generic_job_failed(job_id, f"Unknown job type: {job_type}", db=db)
             return True

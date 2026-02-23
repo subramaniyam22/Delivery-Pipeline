@@ -441,7 +441,7 @@ export const configurationAPI = {
     updateTemplate: (id: string, data: any) => api.put(`/api/templates/${id}`, data),
     deleteTemplate: (id: string) => api.delete(`/api/templates/${id}`),
     generateTemplatePreview: (id: string, body?: { force?: boolean; sync?: boolean }) =>
-        api.post(`/api/templates/${id}/generate-preview`, body || {}),
+        api.post(`/api/templates/${id}/generate-preview`, body || {}, body?.sync ? { timeout: 220000 } : {}),
     resetTemplatePreview: (id: string) =>
         api.post(`/api/templates/${id}/preview/reset`),
     generateBlueprint: (id: string, body?: { regenerate?: boolean; max_iterations?: number }) =>

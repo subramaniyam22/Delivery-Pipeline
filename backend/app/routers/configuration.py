@@ -643,8 +643,8 @@ def generate_template_preview(
     db.commit()
 
     if sync_mode:
-        # Run pipeline with timeout so we get a clear result or failure (Render cold start + upload can take 60s+)
-        PREVIEW_SYNC_TIMEOUT = int(os.getenv("PREVIEW_SYNC_TIMEOUT", "90"))
+        # Run pipeline with timeout so we get a clear result or failure (Render cold start + upload can take 2–3 min)
+        PREVIEW_SYNC_TIMEOUT = int(os.getenv("PREVIEW_SYNC_TIMEOUT", "180"))
         result_holder: dict = {}
 
         def _run_sync() -> None:
@@ -679,7 +679,20 @@ def generate_template_preview(
             "error": err_msg if status != "ready" else None,
         }
 
-    background_tasks.add_task(_run_template_preview_pipeline, template_id)
+    # Prefer job queue so the worker runs preview (survives web process sleep on Render).
+    # Fall back to in-process background task if enqueue fails (e.g. worker not configured).
+    try:
+        from app.services.job_queue import enqueue_job, JOB_TYPE_TEMPLATE_PREVIEW
+        idempotency_key = None if force else f"template_preview:{template_id}"
+        enqueue_job(
+            type=JOB_TYPE_TEMPLATE_PREVIEW,
+            payload={"template_id": template_id},
+            idempotency_key=idempotency_key,
+            max_attempts=3,
+            db=db,
+        )
+    except Exception:
+        background_tasks.add_task(_run_template_preview_pipeline, template_id)
     return {"preview_status": "generating"}
 
 

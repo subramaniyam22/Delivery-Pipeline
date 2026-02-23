@@ -2478,9 +2478,9 @@ export default function ClientOnboardingPage() {
                 }
 
                 .alert-success {
-                    background: #f0fdf4;
-                    color: #16a34a;
-                    border: 1px solid #bbf7d0;
+                    background: #eff6ff;
+                    color: #1d4ed8;
+                    border: 1px solid #bfdbfe;
                 }
 
                 .missing-alert {

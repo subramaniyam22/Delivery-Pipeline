@@ -2302,7 +2302,7 @@ export default function ProjectDetailPage() {
 
                 {/* Alerts */}
                 {error && <div className="alert alert-error">{error}</div>}
-                {success && <div className="alert alert-success">{success}</div>}
+                {success && <div className="alert alert-success" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>{success}</div>}
                 {showUpdateNotice && onboardingData?.updated_at && (
                     <div className="alert alert-info">
                         <div className="alert-content">
