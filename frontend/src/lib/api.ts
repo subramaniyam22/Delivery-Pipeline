@@ -35,9 +35,11 @@ const api = axios.create({
 
 // Add request interceptor to send token in Authorization header
 api.interceptors.request.use((config) => {
-    // Let browser set Content-Type with boundary when sending FormData (otherwise 422 on multipart endpoints)
+    // Let browser set Content-Type with boundary when sending FormData (otherwise 500 on multipart endpoints)
     if (config.data instanceof FormData) {
-        delete config.headers['Content-Type'];
+        const h = config.headers as Record<string, unknown>;
+        delete h['Content-Type'];
+        delete h['content-type'];
     }
     // Check if we are in a browser environment
     if (typeof window !== 'undefined') {
@@ -313,12 +315,28 @@ export const clientAPI = {
     uploadLogo: (token: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);
-        return api.post(`/projects/client-onboarding/${token}/upload-logo`, formData);
+        return api.post(`/projects/client-onboarding/${token}/upload-logo`, formData, {
+            transformRequest: [(data, headers) => {
+                if (data instanceof FormData && headers) {
+                    delete (headers as Record<string, unknown>)['Content-Type'];
+                    delete (headers as Record<string, unknown>)['content-type'];
+                }
+                return data;
+            }],
+        });
     },
     uploadImage: (token: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);
-        return api.post(`/projects/client-onboarding/${token}/upload-image`, formData);
+        return api.post(`/projects/client-onboarding/${token}/upload-image`, formData, {
+            transformRequest: [(data, headers) => {
+                if (data instanceof FormData && headers) {
+                    delete (headers as Record<string, unknown>)['Content-Type'];
+                    delete (headers as Record<string, unknown>)['content-type'];
+                }
+                return data;
+            }],
+        });
     },
     deleteImage: (token: string, index: number) =>
         api.delete(`/projects/client-onboarding/${token}/image`, { params: { index } }),
