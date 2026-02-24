@@ -70,6 +70,8 @@ interface OnboardingFormData {
     missing_fields_eta_json?: Record<string, string>;
     client_preview?: { preview_url?: string; thumbnail_url?: string; status?: string } | null;
     client_wants_full_validation?: boolean | null;
+    preview_iteration_count?: number;
+    client_preview_max_iterations?: number;
     data: {
         logo_url: string | null;
         logo_file_path: string | null;
