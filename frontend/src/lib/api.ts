@@ -302,6 +302,24 @@ export const onboardingAPI = {
         api.post(`/projects/${projectId}/onboarding-data/remind`),
 };
 
+/** Upload FormData via fetch so the browser sets Content-Type (multipart/form-data; boundary=...). Avoids Axios default JSON header. */
+async function clientUploadFormData(path: string, formData: FormData): Promise<{ data: any }> {
+    const url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+    const res = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        // Do not set Content-Type; browser sets multipart/form-data with boundary
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+        const err: any = new Error(data?.detail || res.statusText || 'Upload failed');
+        err.response = { status: res.status, data: { detail: data?.detail || res.statusText } };
+        throw err;
+    }
+    return { data };
+}
+
 // Client API (no auth required)
 export const clientAPI = {
     getOnboardingForm: (token: string) =>
@@ -315,28 +333,12 @@ export const clientAPI = {
     uploadLogo: (token: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);
-        return api.post(`/projects/client-onboarding/${token}/upload-logo`, formData, {
-            transformRequest: [(data, headers) => {
-                if (data instanceof FormData && headers) {
-                    delete (headers as Record<string, unknown>)['Content-Type'];
-                    delete (headers as Record<string, unknown>)['content-type'];
-                }
-                return data;
-            }],
-        });
+        return clientUploadFormData(`/projects/client-onboarding/${token}/upload-logo`, formData);
     },
     uploadImage: (token: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);
-        return api.post(`/projects/client-onboarding/${token}/upload-image`, formData, {
-            transformRequest: [(data, headers) => {
-                if (data instanceof FormData && headers) {
-                    delete (headers as Record<string, unknown>)['Content-Type'];
-                    delete (headers as Record<string, unknown>)['content-type'];
-                }
-                return data;
-            }],
-        });
+        return clientUploadFormData(`/projects/client-onboarding/${token}/upload-image`, formData);
     },
     deleteImage: (token: string, index: number) =>
         api.delete(`/projects/client-onboarding/${token}/image`, { params: { index } }),
