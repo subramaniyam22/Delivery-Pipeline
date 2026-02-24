@@ -1629,7 +1629,7 @@ export default function ClientOnboardingPage() {
                                 </div>
                                 {(formData.templates?.length ?? 0) === 0 ? (
                                     <div className="form-group" style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', color: '#64748b' }}>
-                                        No validated templates are configured yet. Add and publish templates in the app Config &gt; Templates section to see them here.
+                                        No published templates with preview are available yet. Add templates in Config &gt; Templates, generate preview, then publish to see them here.
                                     </div>
                                 ) : (
                                 <>

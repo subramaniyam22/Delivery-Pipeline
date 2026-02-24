@@ -754,13 +754,13 @@ def get_active_templates(db: Session):
     """Return published TemplateRegistry templates for client onboarding (replaces ThemeTemplate)."""
     try:
         from uuid import UUID
-        # Only show active AND (published status or is_published) templates to clients
         from sqlalchemy import or_
+        # Show active, published templates with preview ready. Allow validation not_run or passed (hide only failed).
         db_templates = db.query(TemplateRegistry).filter(
             TemplateRegistry.is_active == True,
             or_(TemplateRegistry.status == "published", TemplateRegistry.is_published == True),
             TemplateRegistry.preview_status == "ready",
-            TemplateRegistry.validation_status == "passed",
+            TemplateRegistry.validation_status.in_(["passed", "not_run"]),
         ).all()
         # Prefer high-performing templates; hide deprecated (Prompt 9)
         db_templates = [t for t in db_templates if not getattr(t, "is_deprecated", False)]
