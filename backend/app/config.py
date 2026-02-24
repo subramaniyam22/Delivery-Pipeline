@@ -1,9 +1,17 @@
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from typing import Optional
 import os
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _default_upload_dir() -> str:
+    """On Render (and similar PaaS), app filesystem is often read-only; use /tmp for uploads unless UPLOAD_DIR is set."""
+    if os.environ.get("RENDER") == "true" and not os.environ.get("UPLOAD_DIR"):
+        return "/tmp/delivery-uploads"
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
 
 
 class Settings(BaseSettings):
@@ -19,8 +27,8 @@ class Settings(BaseSettings):
     SECRET_KEY_CURRENT: Optional[str] = None
     SECRET_KEY_PREVIOUS: Optional[str] = None
     
-    # Upload - Use absolute path derived from project root
-    UPLOAD_DIR: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
+    # Upload - Use writable path on Render (/tmp) when RENDER=true and UPLOAD_DIR not set
+    UPLOAD_DIR: str = Field(default_factory=_default_upload_dir)
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     
     # Storage backend
