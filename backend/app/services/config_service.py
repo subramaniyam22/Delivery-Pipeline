@@ -141,6 +141,7 @@ DEFAULT_CONFIGS = {
         "idleness_counts_toward_reminders": False,
         "proof_pack_soft_mb": 50,
         "proof_pack_hard_mb": 200,
+        "client_preview_max_iterations": 3,
     },
 }
 

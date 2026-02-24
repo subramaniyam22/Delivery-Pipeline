@@ -27,6 +27,36 @@ from app.pipeline.stages import STAGE_TO_KEY
 logger = logging.getLogger(__name__)
 
 
+def _brand_with_resolved_urls(ob: OnboardingData) -> Dict[str, Any]:
+    """Build brand dict with logo and image URLs resolved to absolute/presigned so preview HTML can load them."""
+    logo_url = ob.logo_url
+    logo_file_path = ob.logo_file_path
+    images = list(ob.images_json or [])
+    try:
+        from app.services.storage import get_storage_backend
+        storage = get_storage_backend()
+        if getattr(storage, "get_url", None):
+            if logo_file_path:
+                fresh = storage.get_url(logo_file_path, expires_seconds=3600)
+                if fresh:
+                    logo_url = fresh
+            for i, img in enumerate(images):
+                if not isinstance(img, dict):
+                    continue
+                key = img.get("storage_key") or img.get("file_path") or img.get("path")
+                if key:
+                    fresh = storage.get_url(key, expires_seconds=3600)
+                    if fresh:
+                        images[i] = {**img, "url": fresh}
+    except Exception:
+        pass
+    return {
+        "logo_url": logo_url,
+        "logo_file_path": logo_file_path,
+        "images": images,
+    }
+
+
 def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     """Recursively merge patch into base. Patch wins; lists are replaced (not merged)."""
     result = copy.deepcopy(base)
@@ -64,11 +94,7 @@ def build_contract_from_sources(db: Session, project_id: UUID) -> Optional[Dict[
                 "status": "submitted" if ob.submitted_at else "draft",
                 "summary": req_json.get("summary", "") or req_json.get("project_summary", ""),
                 "primary_contact": primary if isinstance(primary, dict) else {},
-                "brand": {
-                    "logo_url": ob.logo_url,
-                    "logo_file_path": ob.logo_file_path,
-                    "images": list(ob.images_json or []),
-                },
+                "brand": _brand_with_resolved_urls(ob),
                 "design_preferences": {
                     "theme_preference": ob.theme_preference,
                     "theme_colors": dict(ob.theme_colors_json or {}),

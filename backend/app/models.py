@@ -780,6 +780,7 @@ class OnboardingData(Base):
     # Client submission tracking
     submitted_at = Column(DateTime, nullable=True)
     missing_fields_eta_json = Column(JSONB, nullable=True)  # { field_key: "2026-01-18" }
+    preview_iteration_count = Column(Integer, default=0, nullable=False)  # Number of preview generations used (capped by config client_preview_max_iterations)
 
     # Review Process
     review_status = Column(Enum(OnboardingReviewStatus), default=OnboardingReviewStatus.PENDING)

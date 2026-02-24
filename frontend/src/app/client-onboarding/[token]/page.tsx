@@ -1179,17 +1179,34 @@ export default function ClientOnboardingPage() {
                 </div>
             )}
 
-            {/* Success screen after submit: preview button, AI callout, Yes/No for full validation, disclaimer */}
+            {/* Success screen after submit: progress, embedded preview when ready, Yes/No, attempts, pick-another-template when No */}
             {formData.submitted_at && (
                 <div className="success-screen-block" style={{ margin: '16px 24px 24px', padding: '24px', background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)', borderRadius: '16px', border: '1px solid #bbf7d0' }}>
                     <h3 style={{ margin: '0 0 8px', fontSize: '18px', color: '#166534' }}>Form submitted successfully</h3>
                     <p style={{ margin: 0, fontSize: '14px', color: '#15803d' }}>Our Consultant team has been notified and will reach out to you.</p>
+                    {typeof formData.preview_iteration_count === 'number' && typeof formData.client_preview_max_iterations === 'number' && (
+                        <p style={{ margin: '8px 0 0', fontSize: '13px', color: '#64748b' }}>
+                            Preview attempts: {formData.preview_iteration_count} of {formData.client_preview_max_iterations} used ({Math.max(0, formData.client_preview_max_iterations - formData.preview_iteration_count)} remaining).
+                        </p>
+                    )}
                     {formData.client_preview && (
                         <>
-                            {formData.client_preview.status === 'ready' && formData.client_preview.preview_url ? (
+                            {(formData.client_preview.status === 'generating' || formData.client_preview.status === 'not_generated') && (
+                                <div style={{ marginTop: '20px', padding: '20px', background: 'rgba(255,255,255,0.8)', borderRadius: '12px', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                    <span style={{ width: 32, height: 32, border: '3px solid #166534', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                    <div>
+                                        <p style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#166534' }}>Generating your website preview…</p>
+                                        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>This page will update when it is ready.</p>
+                                    </div>
+                                </div>
+                            )}
+                            {formData.client_preview.status === 'ready' && formData.client_preview.preview_url && (
                                 <>
                                     <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.7)', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
                                         <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#166534', fontWeight: 600 }}>Built by our Specialist Builder (using AI)</p>
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <iframe src={formData.client_preview.preview_url} title="Website preview" style={{ width: '100%', height: 420, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff' }} />
+                                        </div>
                                         <a
                                             href={formData.client_preview.preview_url}
                                             target="_blank"
@@ -1203,22 +1220,35 @@ export default function ClientOnboardingPage() {
                                             ) : (
                                                 <span style={{ width: 48, height: 36, background: 'rgba(255,255,255,0.2)', borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>🌐</span>
                                             )}
-                                            Preview your website
+                                            Preview your website (open in new tab)
                                         </a>
                                     </div>
                                     <p style={{ margin: '16px 0 0', fontSize: '12px', color: '#64748b' }}>
                                         This preview is a static view. Full validation, testing, SEO, and accessibility checks will be run; we will send you the fully functional website once it is ready.
                                     </p>
-                                        <div style={{ marginTop: '16px' }}>
+                                    <div style={{ marginTop: '16px' }}>
                                         <p style={{ margin: '0 0 8px', fontSize: '14px', color: '#334155', fontWeight: 600 }}>Proceed with full validation, testing, SEO, accessibility, and build & QA?</p>
                                         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                                             <button type="button" onClick={() => { setClientWantsFullValidation(true); clientAPI.setFullValidationChoice(token, true).catch(() => {}); }} style={{ padding: '10px 20px', borderRadius: '8px', border: '2px solid #166534', background: clientWantsFullValidation === true ? '#166534' : 'white', color: clientWantsFullValidation === true ? 'white' : '#166534', fontWeight: 600, cursor: 'pointer' }}>Yes</button>
                                             <button type="button" onClick={() => { setClientWantsFullValidation(false); clientAPI.setFullValidationChoice(token, false).catch(() => {}); }} style={{ padding: '10px 20px', borderRadius: '8px', border: '2px solid #64748b', background: clientWantsFullValidation === false ? '#64748b' : 'white', color: clientWantsFullValidation === false ? 'white' : '#64748b', fontWeight: 600, cursor: 'pointer' }}>No</button>
                                         </div>
+                                        {clientWantsFullValidation === false && (
+                                            <div style={{ marginTop: '12px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                                                <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
+                                                    Want to try another template? Select a different template in the <strong>Website Template</strong> section above, then submit the form again to generate a new preview.
+                                                    {typeof formData.client_preview_max_iterations === 'number' && typeof formData.preview_iteration_count === 'number' && (
+                                                        <span style={{ display: 'block', marginTop: '6px', fontWeight: 600 }}>
+                                                            You have {Math.max(0, formData.client_preview_max_iterations - formData.preview_iteration_count)} preview attempt(s) remaining.
+                                                        </span>
+                                                    )}
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 </>
-                            ) : (
-                                <p style={{ margin: '16px 0 0', fontSize: '14px', color: '#15803d' }}>Your website preview is being prepared. This page will update when it is ready.</p>
+                            )}
+                            {formData.client_preview.status === 'failed' && (
+                                <p style={{ margin: '16px 0 0', fontSize: '14px', color: '#b91c1c' }}>Preview generation failed. You can try again by selecting another template and resubmitting, or contact your consultant.</p>
                             )}
                         </>
                     )}

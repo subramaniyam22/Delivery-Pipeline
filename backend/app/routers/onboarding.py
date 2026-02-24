@@ -401,7 +401,29 @@ def get_onboarding_data(
         create_predefined_tasks_for_project(db, project_id, Stage.ONBOARDING, current_user.id)
     else:
         db.refresh(onboarding)  # Ensure we return latest persisted state (e.g. auto_reminder_enabled)
-    
+
+    # Refresh presigned URLs for S3 so project details page can load logo/images (avoid 403 on expired URLs)
+    try:
+        storage = get_storage_backend()
+        if getattr(storage, "get_url", None) and onboarding.logo_file_path:
+            fresh = storage.get_url(onboarding.logo_file_path, expires_seconds=3600)
+            if fresh:
+                onboarding.logo_url = fresh
+        images = list(onboarding.images_json or [])
+        for i, img in enumerate(images):
+            if not isinstance(img, dict):
+                continue
+            key = img.get("storage_key") or img.get("file_path")
+            if key and getattr(storage, "get_url", None):
+                fresh = storage.get_url(key, expires_seconds=3600)
+                if fresh:
+                    images[i] = {**img, "url": fresh}
+        if images != (onboarding.images_json or []):
+            onboarding.images_json = images
+            flag_modified(onboarding, "images_json")
+    except Exception as e:
+        logger.warning("Refresh presigned URLs for onboarding assets failed: %s", e)
+
     return onboarding
 
 
@@ -709,6 +731,14 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
             "status": getattr(project, "client_preview_status", "not_generated"),
         }
     client_wants_full_validation = _get_custom_field(onboarding, "client_wants_full_validation") if onboarding else None
+    preview_iteration_count = getattr(onboarding, "preview_iteration_count", 0) or 0
+    client_preview_max_iterations = 3
+    try:
+        cfg = get_config(db, "decision_policies_json")
+        if cfg and isinstance(cfg.value_json, dict) and cfg.value_json.get("client_preview_max_iterations") is not None:
+            client_preview_max_iterations = int(cfg.value_json["client_preview_max_iterations"])
+    except (TypeError, ValueError):
+        pass
     cfg_tooltip = get_config(db, "onboarding_field_tooltip")
     field_tooltip = None
     if cfg_tooltip and cfg_tooltip.value_json is not None:
@@ -725,6 +755,8 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
         "missing_fields_eta_json": onboarding.missing_fields_eta_json,
         "client_preview": client_preview,
         "client_wants_full_validation": client_wants_full_validation,
+        "preview_iteration_count": preview_iteration_count,
+        "client_preview_max_iterations": client_preview_max_iterations,
         "data": {
             "logo_url": onboarding.logo_url,
             "logo_file_path": onboarding.logo_file_path,
@@ -971,9 +1003,20 @@ async def submit_client_onboarding_form(
         except Exception as e:
             logger.warning("Template instance ensure after onboarding submit failed: %s", e)
 
-    # When AI approved and client has selected a template, generate clickable website preview in background
+    # When AI approved and client has selected a template, generate clickable website preview in background (respect max iterations from config)
     if ai_approved and (onboarding.selected_template_id or onboarding.theme_preference):
-        background_tasks.add_task(_run_client_preview_after_submit, project.id)
+        max_iterations = 3
+        try:
+            cfg = get_config(db, "decision_policies_json")
+            if cfg and isinstance(cfg.value_json, dict) and cfg.value_json.get("client_preview_max_iterations") is not None:
+                max_iterations = int(cfg.value_json["client_preview_max_iterations"])
+        except (TypeError, ValueError):
+            pass
+        current_count = getattr(onboarding, "preview_iteration_count", 0) or 0
+        if current_count < max_iterations:
+            onboarding.preview_iteration_count = current_count + 1
+            db.commit()
+            background_tasks.add_task(_run_client_preview_after_submit, project.id)
 
     notification_sent = False
     recipients = []

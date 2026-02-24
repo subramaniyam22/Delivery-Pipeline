@@ -123,7 +123,8 @@ def create_project(db: Session, data: ProjectCreate, user) -> Project:
         estimated_revenue_usd=getattr(data, "estimated_revenue_usd", None),
         manager_user_id=None # Manager assignment removed
     )
-    _record_stage_transition(project, None, current_stage, str(user.id))
+    # Record first transition: from SALES (or None) to initial stage so timeline shows "From: SALES" when starting in ONBOARDING
+    _record_stage_transition(project, Stage.SALES if current_stage == Stage.ONBOARDING else None, current_stage, str(user.id))
     if moved_to_onboarding:
         project.phase_start_dates = project.phase_start_dates or {}
         project.phase_start_dates[Stage.ONBOARDING.value] = datetime.utcnow().isoformat()

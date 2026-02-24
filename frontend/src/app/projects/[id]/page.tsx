@@ -2121,7 +2121,7 @@ export default function ProjectDetailPage() {
                                 <tbody>
                                     {(project.stage_history || []).map((item: any, idx: number) => (
                                         <tr key={idx}>
-                                            <Td>{item.from_stage ?? '—'}</Td>
+                                            <Td>{(item.from_stage != null && item.from_stage !== '') ? item.from_stage : (item.to_stage === 'ONBOARDING' ? 'SALES' : '—')}</Td>
                                             <Td>{item.to_stage ?? '—'}</Td>
                                             <Td>{item.at ? new Date(item.at).toLocaleString() : '—'}</Td>
                                             <Td>{item.actor_user_id ? 'User' : (item.request_id ? 'Pipeline' : '—')}</Td>
@@ -2240,12 +2240,14 @@ export default function ProjectDetailPage() {
                         </div>
                     )}
                     <div className="summary-field">
-                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Client Notification</label>
+                        <label style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>Onboarding Review</label>
                         <div style={{ fontSize: '14px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {onboardingData?.review_status === 'NEEDS_CHANGES' ? (
-                                <><span style={{ color: '#ef4444' }}>❌</span> Failed (Missing Info)</>
+                                <><span style={{ color: '#ef4444' }}>❌</span> Needs changes (incomplete or flagged by review)</>
                             ) : onboardingData?.review_status === 'PENDING' || onboardingData?.review_status === 'APPROVED' ? (
-                                <><span style={{ color: '#10b981' }}>✅</span> Sent</>
+                                <><span style={{ color: '#10b981' }}>✅</span> Approved / Sent</>
+                            ) : onboardingData?.review_status === 'WAITING_FOR_CONSULTANT' ? (
+                                <><span style={{ color: '#f59e0b' }}>⏳</span> Waiting for consultant</>
                             ) : (
                                 <><span style={{ color: '#f59e0b' }}>⏳</span> Pending</>
                             )}
@@ -2938,7 +2940,6 @@ export default function ProjectDetailPage() {
                 {/* Onboarding Section - Unified View for All Roles */}
                 {project.current_stage === 'ONBOARDING' && project.current_stage !== 'SALES' && onboardingData && (
                     <div className="onboarding-section">
-                        {console.log('Project Page Debug - User Role:', user?.role, 'Is Admin:', isAdmin, 'Matches:', ['ADMIN', 'MANAGER'].includes(user?.role || ''))}
                         <div className="section-header">
                             <h2>📋 {['ADMIN', 'MANAGER'].includes(user?.role || '') ? 'Project Requirement Progress' : 'Project Onboarding Details'}</h2>
                             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
