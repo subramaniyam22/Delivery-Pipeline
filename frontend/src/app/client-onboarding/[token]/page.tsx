@@ -1244,6 +1244,9 @@ export default function ClientOnboardingPage() {
                                         <div style={{ height: '100%', width: `${previewProgress}%`, background: '#166534', borderRadius: 8, transition: 'width 1s ease-out' }} />
                                     </div>
                                     <p style={{ margin: '12px 0 0', fontSize: '13px', color: '#64748b' }}>This can take 2–5 minutes. This page will update when it is ready—no need to refresh.</p>
+                                    {previewProgress >= 95 && (
+                                        <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>If it’s been more than 5 minutes, preview may still be processing on our servers or your consultant can share the link once it’s ready.</p>
+                                    )}
                                 </div>
                             )}
                             {formData.client_preview.status === 'ready' && formData.client_preview.preview_url && (
