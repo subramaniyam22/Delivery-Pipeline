@@ -711,7 +711,7 @@ class AuditLog(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
-    actor_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    actor_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # NULL = system/automated action
     action = Column(String(255), nullable=False)
     payload_json = Column(JSONB, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

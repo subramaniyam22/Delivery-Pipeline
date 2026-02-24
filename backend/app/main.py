@@ -403,13 +403,14 @@ async def health_check(db: Session = Depends(get_db)):
         health_status["status"] = "degraded"
         logger.error(f"Redis health check failed: {e}")
 
-    # Check storage (local = ok; s3 = lightweight list/head)
+    # Check storage (local = ok; s3 = lightweight list with allowed prefix so IAM prefix condition is satisfied)
     try:
         if (settings.STORAGE_BACKEND or "local").lower() == "s3":
             from app.services.storage import get_storage_backend
             backend = get_storage_backend()
             if hasattr(backend, "client") and backend.client:
-                backend.client.list_objects_v2(Bucket=backend.bucket, MaxKeys=1)
+                # List with a prefix so policy condition s3:prefix (templates/*, projects/*, etc.) is satisfied
+                backend.client.list_objects_v2(Bucket=backend.bucket, Prefix="projects/", MaxKeys=1)
                 health_status["checks"]["storage"] = "ok"
             else:
                 health_status["checks"]["storage"] = "not_configured"

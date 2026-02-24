@@ -488,6 +488,38 @@ export default function ClientOnboardingPage() {
         shouldPollPreviewRef.current = submitted && (status === 'generating' || status === 'not_generated');
     }, [formData?.submitted_at, formData?.client_preview?.status]);
 
+    // Progress bar for preview generation (0–95% over 90s while generating; 100% when ready). Use ref so polling doesn't reset progress.
+    const [previewProgress, setPreviewProgress] = useState(0);
+    const previewProgressStartRef = useRef<number | null>(null);
+    useEffect(() => {
+        const status = formData?.client_preview?.status;
+        if (status === 'ready') {
+            setPreviewProgress(100);
+            previewProgressStartRef.current = null;
+            return;
+        }
+        if (!formData?.submitted_at || (status !== 'generating' && status !== 'not_generated')) {
+            setPreviewProgress(0);
+            previewProgressStartRef.current = null;
+            return;
+        }
+        const start = previewProgressStartRef.current ?? Date.now();
+        if (previewProgressStartRef.current === null) previewProgressStartRef.current = start;
+        const durationMs = 90 * 1000;
+        const maxProgress = 95;
+        const tick = () => {
+            const elapsed = Date.now() - start;
+            const p = Math.min(maxProgress, Math.round((elapsed / durationMs) * maxProgress));
+            setPreviewProgress(p);
+            if (p < maxProgress) (window as any).__previewProgressTimer = setTimeout(tick, 2000);
+        };
+        tick();
+        return () => {
+            const t = (window as any).__previewProgressTimer;
+            if (t) clearTimeout(t);
+        };
+    }, [formData?.submitted_at, formData?.client_preview?.status]);
+
 
     const [chatInput, setChatInput] = useState('');
 
@@ -591,8 +623,8 @@ export default function ClientOnboardingPage() {
     const loadFormDataRef = useRef(loadFormData);
     loadFormDataRef.current = loadFormData;
 
-    // Poll for client preview only when submitted and status is generating; interval does not depend on formData so typing does not restart it
-    const POLL_INTERVAL_MS = 10000;
+    // Poll for client preview when submitted and status is generating; poll every 5s so preview ready shows without long wait
+    const POLL_INTERVAL_MS = 5000;
     useEffect(() => {
         if (!token) return;
         const t = setInterval(() => {
@@ -960,6 +992,12 @@ export default function ClientOnboardingPage() {
         try {
             await clientAPI.submitOnboardingForm(token, { missing_fields_eta: missingFieldsEta });
             setSuccess('Form submitted successfully! Our Consultant team has been notified and will reach out to you.');
+            // Show success + "Generating preview" immediately without waiting for refetch (no refresh needed)
+            setFormData(prev => prev ? {
+                ...prev,
+                submitted_at: new Date().toISOString(),
+                client_preview: { ...prev.client_preview, status: 'generating', preview_url: prev.client_preview?.preview_url, thumbnail_url: prev.client_preview?.thumbnail_url } as any,
+            } : null);
             await loadFormData();
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Failed to submit form');
@@ -1194,12 +1232,18 @@ export default function ClientOnboardingPage() {
                     {formData.client_preview && (
                         <>
                             {(formData.client_preview.status === 'generating' || formData.client_preview.status === 'not_generated') && (
-                                <div style={{ marginTop: '20px', padding: '20px', background: 'rgba(255,255,255,0.8)', borderRadius: '12px', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                    <span style={{ width: 32, height: 32, border: '3px solid #166534', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                                    <div>
-                                        <p style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#166534' }}>Generating your website preview…</p>
-                                        <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#64748b' }}>This page will update when it is ready.</p>
+                                <div style={{ marginTop: '20px', padding: '20px', background: 'rgba(255,255,255,0.8)', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
+                                        <span style={{ width: 32, height: 32, border: '3px solid #166534', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+                                        <div style={{ flex: 1 }}>
+                                            <p style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#166534' }}>Generating your website preview…</p>
+                                            <p style={{ margin: '4px 0 0', fontSize: '14px', fontWeight: 600, color: '#15803d' }}>{previewProgress}%</p>
+                                        </div>
                                     </div>
+                                    <div style={{ height: 10, background: '#dcfce7', borderRadius: 8, overflow: 'hidden' }}>
+                                        <div style={{ height: '100%', width: `${previewProgress}%`, background: '#166534', borderRadius: 8, transition: 'width 1s ease-out' }} />
+                                    </div>
+                                    <p style={{ margin: '12px 0 0', fontSize: '13px', color: '#64748b' }}>This can take 2–5 minutes. This page will update when it is ready—no need to refresh.</p>
                                 </div>
                             )}
                             {formData.client_preview.status === 'ready' && formData.client_preview.preview_url && (

@@ -44,7 +44,7 @@ def list_audit_logs(
 ):
     _require_admin_manager(current_user)
 
-    query = db.query(AuditLog, User).join(User, User.id == AuditLog.actor_user_id)
+    query = db.query(AuditLog, User).outerjoin(User, User.id == AuditLog.actor_user_id)
 
     if actor_id:
         query = query.filter(AuditLog.actor_user_id == actor_id)
@@ -87,17 +87,22 @@ def list_audit_logs(
 
     items = []
     for log, actor in rows:
+        actor_info = (
+            {
+                "id": actor.id,
+                "name": actor.name,
+                "email": actor.email,
+                "role": actor.role.value if hasattr(actor.role, "value") else str(actor.role),
+            }
+            if actor
+            else {"id": None, "name": "System", "email": None, "role": "system"}
+        )
         items.append(
             {
                 "id": log.id,
                 "project_id": log.project_id,
                 "actor_user_id": log.actor_user_id,
-                "actor": {
-                    "id": actor.id,
-                    "name": actor.name,
-                    "email": actor.email,
-                    "role": actor.role.value if hasattr(actor.role, "value") else str(actor.role),
-                },
+                "actor": actor_info,
                 "action": log.action,
                 "payload_json": log.payload_json or {},
                 "created_at": log.created_at,

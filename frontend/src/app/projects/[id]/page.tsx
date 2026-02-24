@@ -2135,6 +2135,7 @@ export default function ProjectDetailPage() {
                     <Card>
                         <CardHeader>
                             <CardTitle>Stage Cards</CardTitle>
+                            <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b', fontWeight: 400 }}>Status, score, and last run appear once that stage has been run.</p>
                         </CardHeader>
                         <CardContent>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>

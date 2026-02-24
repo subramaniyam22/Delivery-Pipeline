@@ -613,7 +613,7 @@ class AuditLogResponse(BaseModel):
 
     id: UUID
     project_id: Optional[UUID]
-    actor_user_id: UUID
+    actor_user_id: Optional[UUID] = None  # None = system/automated action
     actor: Optional[UserBrief] = None
     action: str
     payload_json: Dict[str, Any]

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm.attributes import flag_modified
 from app.db import get_db
 from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus, TemplateRegistry, OnboardingReviewStatus
@@ -906,6 +907,22 @@ async def submit_client_onboarding_form(
     db: Session = Depends(get_db),
 ):
     """Submit onboarding form and notify the assigned consultant with AI Review. When AI approves, generates client website preview."""
+    try:
+        return await _submit_client_onboarding_impl(token, payload, background_tasks, db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Onboarding submit failed: %s", e)
+        raise HTTPException(status_code=500, detail="Submission failed. Please try again or contact support.")
+
+
+async def _submit_client_onboarding_impl(
+    token: str,
+    payload: Dict[str, Any],
+    background_tasks: BackgroundTasks,
+    db: Session,
+):
+    """Implementation of client onboarding submit (called from submit_client_onboarding_form)."""
     onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
 
     if not onboarding:
@@ -915,6 +932,8 @@ async def submit_client_onboarding_form(
         raise HTTPException(status_code=410, detail="This link has expired")
 
     project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
 
     missing_fields_eta = payload.get("missing_fields_eta", {})
     if isinstance(missing_fields_eta, dict):
@@ -955,7 +974,17 @@ async def submit_client_onboarding_form(
         onboarding.review_status = OnboardingReviewStatus.WAITING_FOR_CONSULTANT
         onboarding.ai_review_notes = f"AI Review Failed: {str(e)}"
 
-    db.commit()
+    try:
+        db.commit()
+    except (OperationalError, ProgrammingError) as e:
+        logger.exception("Onboarding submit commit failed (DB schema): %s", e)
+        msg = str(e).lower()
+        if "column" in msg and ("does not exist" in msg or "preview_iteration" in msg):
+            raise HTTPException(
+                status_code=503,
+                detail="Database migration required. Run: alembic upgrade head, then redeploy.",
+            )
+        raise HTTPException(status_code=503, detail="Database error during submit. Check server logs.")
 
     try:
         from app.services.contract_service import create_or_update_contract
