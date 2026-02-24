@@ -20,7 +20,7 @@ from app.models import (
     Stage,
     Artifact,
 )
-from app.services import artifact_service
+from app.services import artifact_service, config_service
 from app.runners.lighthouse_runner import run_lighthouse
 
 
@@ -45,11 +45,22 @@ def _load_checklist_items(db: Session, project_id) -> List[str]:
         Artifact.project_id == project_id,
         Artifact.artifact_type == "checklist_qa",
     ).order_by(Artifact.created_at.desc()).first()
-    if not artifact:
+    content_bytes = None
+    filename = None
+    if artifact:
+        content_bytes = artifact_service.get_artifact_bytes(artifact)
+        filename = artifact.filename
+    else:
+        # Project-level overrides: if no project QA checklist, use global QA checklist
+        global_qa = config_service.get_global_checklist(db, "qa")
+        if global_qa and global_qa.get("content"):
+            content_bytes = global_qa["content"]
+            filename = global_qa.get("filename") or "checklist.json"
+    if not content_bytes:
         return []
     try:
-        content = artifact_service.get_artifact_bytes(artifact).decode("utf-8")
-        if artifact.filename.endswith(".csv"):
+        content = content_bytes.decode("utf-8")
+        if filename and filename.endswith(".csv"):
             lines = [line.strip() for line in content.splitlines() if line.strip()]
             return [line.split(",")[0] for line in lines[1:]] if len(lines) > 1 else []
         data = json.loads(content)

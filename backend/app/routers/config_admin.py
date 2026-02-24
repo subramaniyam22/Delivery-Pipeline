@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Header, UploadFile, File
 from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import User
@@ -104,6 +104,56 @@ def apply_learning_proposal(
     proposals.pop(index)
     save_learning_proposals(db, proposals)
     return {"message": "Proposal applied", "remaining": len(proposals)}
+
+
+# ---------- Global checklists (Admin: upload/list; project-level overrides global) ----------
+@router.get("/global-checklists")
+def list_global_checklists(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """List global checklist metadata per stage (Admin/Manager). No file content."""
+    require_admin_manager(current_user)
+    return config_service.list_global_checklists(db)
+
+
+@router.post("/global-checklists/build")
+async def upload_global_checklist_build(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Upload global Build checklist (JSON/CSV). Used when project has no project-level checklist."""
+    require_admin_manager(current_user)
+    content = await file.read()
+    config_service.set_global_checklist(db, "build", file.filename or "checklist.json", content, current_user)
+    return {"stage": "build", "filename": file.filename, "message": "Global build checklist updated."}
+
+
+@router.post("/global-checklists/qa")
+async def upload_global_checklist_qa(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Upload global QA checklist (JSON/CSV). Used when project has no project-level QA checklist."""
+    require_admin_manager(current_user)
+    content = await file.read()
+    config_service.set_global_checklist(db, "qa", file.filename or "checklist.json", content, current_user)
+    return {"stage": "qa", "filename": file.filename, "message": "Global QA checklist updated."}
+
+
+@router.post("/global-checklists/defect_validation")
+async def upload_global_checklist_defect_validation(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Upload global Defect Validation checklist (JSON/CSV). Used when project has no project-level checklist."""
+    require_admin_manager(current_user)
+    content = await file.read()
+    config_service.set_global_checklist(db, "defect_validation", file.filename or "checklist.json", content, current_user)
+    return {"stage": "defect_validation", "filename": file.filename, "message": "Global defect validation checklist updated."}
 
 
 # ---------- Generic config by key (must be after specific paths) ----------

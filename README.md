@@ -16,17 +16,17 @@ A multi-agent workflow system with **7 stages** plus AI template management:
 
 Key capabilities:
 - **Reports** (Insights): Executive dashboard with **Projects Delivered** (count of projects in Complete status only; not active pipeline count), cycle time, SLA breaches, client sentiment; Insights with delivery health, client insights, quality & defects; filters by date range, client, stage, template; Export CSV/PDF
-- **Client Management** (Consultant+): Track client contacts, project context, pending requirements, last reminder; update client emails; send reminder emails
+- **Client Management** (Consultant+): Track client contacts, project context, pending requirements, last reminder; **contact info from project creation** (Sales-entered name, email, company) is shown in the list and in **Edit Client Contacts**; Admin/Consultant/PC can edit and save from Client Management; update client emails; send reminder emails
 - **Template Registry**: AI and Git templates; **S3 template zips** as immutable artifacts (`templates/{template_id}/{version}/template.zip`); blueprint generation; **multi-page preview** (index + one .html per linked page, no 404s; **sample maps** via OpenStreetMap embed); **optional Initial template ZIP** when creating a template; Versions tab for **replacing** build source (hotfixes); **validation** (Lighthouse + Axe) with clear failure display (failed reasons + Axe rule id/help); Performance and Evolution tabs; WCAG 2 AA–friendly preview renderer; **template build must output dist/index.html** (fail-fast before package/upload)
 - **S3 + CloudFront hosting**: Previews at `previews/{project_id}/{run_id}/site/` (30-day retention tag); deliveries at `deliveries/{project_id}/current/site/` and history at `deliveries/{project_id}/{run_id}/site/`; **proof packs** in `artifacts/` with 180-day retention; config validated on startup when `STORAGE_BACKEND=s3`
 - **Portal + confirmation flows**: Pending confirmation requests (fallback template, substitute artifact) block the pipeline; client portal shows pending confirmations; **POST /confirmations/{id}/approve** and **POST /confirmations/{id}/reject**; reminder email daily (max 10)
 - **Preview Strategy** (Admin): Choose Static Preview (fast, cached) or Live Preview (accurate, dynamic). **Image prompts** (optional) in Create Template guide AI for exterior/interior/lifestyle/people/neighborhood imagery
 - AI-driven workflow orchestration with optional human approval gates (global and per-project)
-- SLA configuration, quality thresholds, HITL gates, and Learning Proposals in admin UI
+- SLA configuration, quality thresholds, HITL gates, **Global Checklists** (Build/QA/Defect Validation; project-level overrides global), and Learning Proposals in admin UI
 - Operations dashboard for job queue health, retries, and stuck runs; **Dashboard** template performance (top / needs improvement) with threshold note and deduplication by template name
 - Quality dashboard and client sentiment tracking
 - Auto-advance from Sales to Onboarding when required fields are complete; **onboarding auto-reminder** toggle persists when navigating away
-- Multi-location support (`location_names`) and stage timeline history (`stage_history`)
+- Multi-location support (`location_names`) and **stage timeline history** (`stage_history`): project details page shows **From**, **To**, **Date/Time**, and **Triggered by** (User/Pipeline) for every stage transition (HITL, Autopilot, or partial)
 - Notifications, audit logs, and admin configuration UI; **toasts and info banner** have close buttons
 - Chat log webhooks for external systems and training pipelines
 - JWT-secured notification WebSocket connections
@@ -327,11 +327,17 @@ Once running, visit:
 - `GET /api/debug/chrome-path` - Return Chrome path for Lighthouse (Admin/Manager only)
 
 **Client Management (Consultant+):**
-- `GET /client-management/projects` - List projects with client info, pending requirements, last reminder
-- `PUT /client-management/projects/{id}/client-emails` - Update client emails/contact
+- `GET /client-management/projects` - List projects with client info (contacts/emails from Sales or edited values), pending requirements, last reminder
+- `PUT /client-management/projects/{id}/client-emails` - Update client emails, primary contact, company (Admin/Consultant/PC for assigned)
 - `POST /client-management/send-reminder` - Send reminder email to client
 - `GET /client-management/reminders/{project_id}` - Reminder history
 - `GET /client-management/pending-requirements/{project_id}` - Pending requirements for project
+
+**Global checklists (Admin/Manager):**
+- `GET /admin/config/global-checklists` - List global checklist metadata (Build, QA, Defect Validation)
+- `POST /admin/config/global-checklists/build` - Upload global Build checklist (JSON/CSV, max 500KB)
+- `POST /admin/config/global-checklists/qa` - Upload global QA checklist
+- `POST /admin/config/global-checklists/defect_validation` - Upload global Defect Validation checklist
 
 ## 🤖 Autonomous pipeline (zero-HITL)
 
@@ -344,7 +350,7 @@ The pipeline runs **end-to-end without manual Enqueue** after Sales handover:
   - **HOLD:** After **max onboarding reminders** (default 10); message: *"Awaiting client response. We attempted to contact you 10 times."* Autopilot skips HOLD projects.
   - **NEEDS_REVIEW:** When **defect cycle cap** (default 5) is reached (Build ↔ Defect Validation rework loops). Autopilot stops; Admin/Manager can resume after review.
 - **Config (Admin/Manager):** **Configuration → Decision Policies** tab: reminder cadence, max reminders, idle minutes, min scope %, build auto-fix retries, defect cycle cap, pass thresholds, Lighthouse/Axe/QA thresholds. **HITL Gates** default to "No HITL"; can be enabled per stage for approval gates.
-- **Recovery:** On the project detail page, **Enqueue** is in the Job Queue section (Admin/Manager only). Use it to force re-run a stage after a failure or to unstick a project. **Pipeline → Advance** and **Resume autopilot** are also Admin/Manager only.
+- **Recovery:** On the project detail page, **Enqueue** is shown only when the project is in **HITL mode** (Autopilot off or `autopilot_mode=off`). When the project is on Autopilot, stages advance automatically and Enqueue is hidden. Enqueue appears in the Job Queue section and on stage cards (Admin/Manager only) for HITL projects; use it to force re-run a stage after a failure or to unstick a project. **Pipeline → Advance** and **Resume autopilot** are also Admin/Manager only.
 - **Observability:** Audit logs record stage transitions, reminders, HOLD/NEEDS_REVIEW, job enqueue/fail. Job `error_json` includes a standard **error_code** (e.g. `TIMEOUT_STUCK_RUN`, `JOB_EXECUTION_ERROR`, `DEFECT_CYCLE_CAP_REACHED`). See `backend/app/error_codes.py`.
 
 **E2E simulation script (optional):** From repo root with backend running and auth token:
@@ -400,7 +406,7 @@ npm run dev
 **Users** – User accounts with roles  
 **Projects** – Project metadata, locations (`location_names`), current stage, client fields (`client_name`, `client_company`, `client_primary_contact`, `client_emails`), client preview and stage history  
 **OnboardingData** – Per-project onboarding (contacts_json, requirements_json, copy_text, theme, auto_reminder_enabled, etc.)  
-**Stage History** – Stage transition log (`stage_history`)  
+**Stage History** – Stage transition log (`stage_history`: `from_stage`, `to_stage`, `at`, `actor_user_id`, `request_id`). Project details page shows full timeline with From, To, Date/Time, and Triggered by (User/Pipeline).  
 **ClientReminderLog** – Sent reminders (project_id, reminder_type, sent_to, subject, message, sent_at)  
 **Tasks** – Task assignments per stage  
 **StageOutputs** – Workflow stage execution results  
@@ -472,6 +478,7 @@ Admin/Manager can edit workflow configurations via UI or API:
 - `global_thresholds_json` - Quality thresholds per stage
 - `preview_strategy` - Preview artifact strategy
 - `default_template_id` - Default template for builds
+- **Global checklists** (System Configuration → **Global Checklists** tab): `global_checklist_build`, `global_checklist_qa`, `global_checklist_defect_validation` — Admin uploads JSON/CSV per stage (max 500KB each). Used as the default checklist for Build, Test, and Defect Validation when a project has no project-level checklist. **Project-level checklists override global** for that project.
 
 ## 🧩 Template Registry (AI + Git)
 
@@ -509,7 +516,7 @@ Templates support two source types:
 
 ## 📋 Recovery runbook (zero-HITL)
 
-- **Project stuck in a stage:** Open project → Job Queue → **Enqueue** (current stage) or **Enqueue Build** (Admin/Manager). Ensure the worker is running so the job is picked up.
+- **Project stuck in a stage:** If the project is in **HITL mode** (Autopilot off), open project → Job Queue → **Enqueue** (current stage) or **Enqueue Build** (Admin/Manager). Enqueue is only visible for HITL projects; for Autopilot projects, use **Resume autopilot** or fix the blocking condition. Ensure the worker is running so the job is picked up.
 - **Blocked by pending confirmation:** Pipeline can block on **ConfirmationRequest** (fallback template, substitute artifact). Client portal shows pending confirmations; resolve via portal or **POST /confirmations/{id}/approve** or **POST /confirmations/{id}/reject** (with comment). Reminder email sent daily (max 10).
 - **Autopilot paused (circuit breaker / ambiguous stage):** Project detail → **Pipeline** → **Resume autopilot** (Admin/Manager). Fix any blocking condition (e.g. resolve ambiguous ready stages) then resume.
 - **HOLD (awaiting client):** After 10 reminders the project is on HOLD. Contact the client; when they complete onboarding, re-activate the project and run **Resume autopilot** or advance once to re-evaluate.

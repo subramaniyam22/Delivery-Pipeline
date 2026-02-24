@@ -147,14 +147,19 @@ def get_projects_with_client_info(
         last_reminder = db.query(ClientReminderLog).filter(
             ClientReminderLog.project_id == project.id
         ).order_by(ClientReminderLog.sent_at.desc()).first()
-        
+        # Use sales-entered data as fallback when contact fields are empty (e.g. legacy projects)
+        client_emails = project.client_emails if project.client_emails else []
+        if not client_emails and project.client_email_ids:
+            client_emails = [e.strip() for e in str(project.client_email_ids).split(",") if e.strip()]
+        client_primary = project.client_primary_contact or project.client_name
+        client_company = project.client_company or project.pmc_name
         result.append(ProjectClientInfo(
             project_id=project.id,
             project_title=project.title,
             client_name=project.client_name,
-            client_company=project.client_company,
-            client_primary_contact=project.client_primary_contact,
-            client_emails=project.client_emails or [],
+            client_company=client_company or None,
+            client_primary_contact=client_primary or None,
+            client_emails=client_emails,
             pending_requirements=get_pending_requirements(project, db),
             last_reminder_sent=last_reminder.sent_at if last_reminder else None
         ))
@@ -182,10 +187,8 @@ def update_client_emails(
             raise HTTPException(status_code=403, detail="Access denied to this project")
     
     project.client_emails = [str(email) for email in client_data.client_emails]
-    if client_data.client_primary_contact:
-        project.client_primary_contact = client_data.client_primary_contact
-    if client_data.client_company:
-        project.client_company = client_data.client_company
+    project.client_primary_contact = client_data.client_primary_contact or None
+    project.client_company = client_data.client_company or None
     
     db.commit()
     

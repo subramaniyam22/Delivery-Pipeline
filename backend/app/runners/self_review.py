@@ -13,7 +13,7 @@ from app.models import Artifact, Stage
 from app.runners.html_validator import validate_html
 from app.runners.lighthouse_runner import run_lighthouse
 from app.runners.visual_regression import run_visual_regression
-from app.services import artifact_service
+from app.services import artifact_service, config_service
 
 
 def _parse_checklist(content: bytes, filename: str) -> List[Dict[str, Any]]:
@@ -81,7 +81,12 @@ def run_self_review(
         content = artifact_service.get_artifact_bytes(checklist_artifact)
         checklist = _parse_checklist(content, checklist_artifact.filename)
     else:
-        checklist = _generate_plan_with_llm(str(project_id), {"preview_url": preview_url}, [])
+        # Project-level overrides: if no project checklist, use global build checklist
+        global_build = config_service.get_global_checklist(db, "build")
+        if global_build and global_build.get("content"):
+            checklist = _parse_checklist(global_build["content"], global_build.get("filename") or "checklist.json")
+        if not checklist:
+            checklist = _generate_plan_with_llm(str(project_id), {"preview_url": preview_url}, [])
 
     if preview_url:
         types_to_run = {entry.get("type", "") for entry in checklist or []}

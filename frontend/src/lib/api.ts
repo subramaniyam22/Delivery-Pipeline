@@ -235,6 +235,10 @@ export const configAPI = {
     runLearningProposals: () => api.post('/admin/config/learning-proposals/run'),
     applyLearningProposal: (index: number) => api.post('/admin/config/learning-proposals/apply', { index }),
     runTemplateMetrics: () => api.post('/admin/config/run-template-metrics'),
+    getGlobalChecklists: () => api.get<Record<string, { filename: string; uploaded_at: string } | null>>('/admin/config/global-checklists'),
+    uploadGlobalChecklistBuild: (formData: FormData) => api.post('/admin/config/global-checklists/build', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    uploadGlobalChecklistQA: (formData: FormData) => api.post('/admin/config/global-checklists/qa', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    uploadGlobalChecklistDefectValidation: (formData: FormData) => api.post('/admin/config/global-checklists/defect_validation', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 };
 
 export const projectConfigAPI = {

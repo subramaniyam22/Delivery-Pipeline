@@ -9,7 +9,7 @@ import RequireCapability from '@/components/RequireCapability';
 import { Dialog } from '@/components/ui/dialog';
 import PageHeader from '@/components/PageHeader';
 
-type ConfigTab = 'template_registry' | 'sla' | 'thresholds' | 'preview_strategy' | 'hitl_gates' | 'decision_policies' | 'learning';
+type ConfigTab = 'template_registry' | 'sla' | 'thresholds' | 'preview_strategy' | 'hitl_gates' | 'decision_policies' | 'global_checklists' | 'learning';
 type TemplateDetailSubTab = 'overview' | 'preview' | 'validation' | 'versions' | 'blueprint' | 'performance' | 'evolution';
 
 interface TemplateRegistry {
@@ -161,6 +161,59 @@ function UploadTemplateZipBlock({ templateId, currentVersion, onUploaded }: { te
                 <button type="button" onClick={handleUpload} disabled={uploading || !file} style={{ padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: uploading || !file ? 'not-allowed' : 'pointer' }}>{uploading ? 'Uploading...' : 'Upload'}</button>
             </div>
             {error && <p style={{ margin: '8px 0 0', color: '#dc2626', fontSize: '13px' }}>{error}</p>}
+        </div>
+    );
+}
+
+function GlobalChecklistsPanel() {
+    const [list, setList] = useState<Record<string, { filename: string; uploaded_at: string } | null>>({ build: null, qa: null, defect_validation: null });
+    const [loading, setLoading] = useState(true);
+    const [uploading, setUploading] = useState<string | null>(null);
+    const [error, setError] = useState('');
+    const fileRefBuild = useRef<HTMLInputElement>(null);
+    const fileRefQA = useRef<HTMLInputElement>(null);
+    const fileRefDefect = useRef<HTMLInputElement>(null);
+    const load = () => {
+        setLoading(true);
+        configAPI.getGlobalChecklists()
+            .then((r: any) => { setList(r.data || {}); setError(''); })
+            .catch((e: any) => { setError(e.response?.data?.detail || 'Failed to load'); })
+            .finally(() => setLoading(false));
+    };
+    useEffect(() => { load(); }, []);
+    const upload = (stage: 'build' | 'qa' | 'defect_validation') => {
+        const input = stage === 'build' ? fileRefBuild.current : stage === 'qa' ? fileRefQA.current : fileRefDefect.current;
+        if (!input?.files?.length) return;
+        setUploading(stage);
+        const formData = new FormData();
+        formData.append('file', input.files[0]);
+        const api = stage === 'build' ? configAPI.uploadGlobalChecklistBuild : stage === 'qa' ? configAPI.uploadGlobalChecklistQA : configAPI.uploadGlobalChecklistDefectValidation;
+        api(formData)
+            .then(() => { load(); input.value = ''; })
+            .catch((e: any) => setError(e.response?.data?.detail || 'Upload failed'))
+            .finally(() => setUploading(null));
+    };
+    if (loading && !list.build && !list.qa && !list.defect_validation) return <div style={{ padding: 16 }}>Loading global checklists…</div>;
+    return (
+        <div>
+            {error && <p style={{ color: '#dc2626', marginBottom: 12 }}>{error}</p>}
+            <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: 13 }}>Upload JSON or CSV. Max 500KB per file. Project-level checklists override global for that project.</p>
+            {(['build', 'qa', 'defect_validation'] as const).map((stage) => (
+                <div key={stage} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 12 }}>
+                    <h4 style={{ margin: '0 0 8px' }}>{stage === 'build' ? 'Build' : stage === 'qa' ? 'QA / Test' : 'Defect Validation'} checklist</h4>
+                    {list[stage] ? (
+                        <p style={{ margin: '0 0 8px', fontSize: 13 }}>Current: <strong>{list[stage]!.filename}</strong> {list[stage]!.uploaded_at ? ` · Uploaded ${new Date(list[stage]!.uploaded_at).toLocaleString()}` : ''}</p>
+                    ) : (
+                        <p style={{ margin: '0 0 8px', fontSize: 13, color: '#64748b' }}>No global checklist set.</p>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <input type="file" ref={stage === 'build' ? fileRefBuild : stage === 'qa' ? fileRefQA : fileRefDefect} accept=".json,.csv" style={{ fontSize: 13 }} />
+                        <button type="button" onClick={() => upload(stage)} disabled={!!uploading} style={{ padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                            {uploading === stage ? 'Uploading…' : 'Upload'}
+                        </button>
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }
@@ -322,7 +375,7 @@ function ConfigurationPageContent() {
 
     useEffect(() => {
         const tab = searchParams.get('tab');
-        if (tab && ['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates', 'decision_policies', 'learning'].includes(tab)) {
+        if (tab && ['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates', 'decision_policies', 'global_checklists', 'learning'].includes(tab)) {
             setActiveConfigTab(tab as ConfigTab);
         }
     }, [searchParams]);
@@ -1659,7 +1712,7 @@ function ConfigurationPageContent() {
                 )}
 
                 <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                    {(['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates', 'decision_policies', 'learning'] as ConfigTab[]).map((tab) => (
+                    {(['template_registry', 'sla', 'thresholds', 'preview_strategy', 'hitl_gates', 'decision_policies', 'global_checklists', 'learning'] as ConfigTab[]).map((tab) => (
                         <button
                             key={tab}
                             type="button"
@@ -1681,6 +1734,7 @@ function ConfigurationPageContent() {
                             {tab === 'preview_strategy' && 'Preview Strategy'}
                             {tab === 'hitl_gates' && 'HITL Gates'}
                             {tab === 'decision_policies' && 'Decision Policies'}
+                            {tab === 'global_checklists' && 'Global Checklists'}
                             {tab === 'learning' && 'Learning Proposals'}
                         </button>
                     ))}
@@ -1825,7 +1879,7 @@ function ConfigurationPageContent() {
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M21 3l-7 7-4-4"/></svg>
                                             Open Preview
                                             </button>
-                                            {selectedTemplate.is_published ? (
+                                            {selectedTemplate.is_published && (selectedTemplate.status || '') === 'published' ? (
                                             <button type="button" onClick={async () => { if (!canEditTemplates) return; try { await configurationAPI.unpublishTemplate(selectedTemplate.id); setSuccess('Template unpublished'); loadData(); } catch (err: any) { setError(err.response?.data?.detail || 'Unpublish failed'); } }} disabled={!canEditTemplates} title="Move template back to validated so it can be edited" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #f59e0b', color: '#b45309', background: '#fffbeb', borderRadius: '6px', fontSize: '12px', cursor: canEditTemplates ? 'pointer' : 'not-allowed' }}>
                                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                                                 Unpublish
@@ -3124,6 +3178,17 @@ function ConfigurationPageContent() {
                             {savingDecisionPolicies ? 'Saving...' : 'Save Decision Policies'}
                         </button>
                     </div>
+                </section>
+                )}
+
+                {activeConfigTab === 'global_checklists' && (
+                <section style={{ background: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginTop: '24px' }}>
+                    <PageHeader
+                        title="Global Checklists"
+                        purpose="Upload checklists at global level for Build, Test, and Defect Validation. All projects use these as guidelines when they do not have a project-level checklist. Project-level checklists take precedence over global."
+                        variant="section"
+                    />
+                    <GlobalChecklistsPanel />
                 </section>
                 )}
 

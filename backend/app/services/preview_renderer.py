@@ -43,7 +43,7 @@ def _contrast_button_on_white(hex_primary: str) -> str:
 # Section type -> (html snippet template, optional variant handling)
 SECTION_SNIPPETS = {
     "hero": """
-<section class="section-hero" {{ aria_attr }} style="{% if hero_image_url %}background: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url('{{ hero_image_url }}') center/cover;{% else %}background: {{ primary }};{% endif %} color: {{ text_light }}; padding: {{ section_padding }}px 24px; min-height: 280px; display: flex; align-items: center;">
+<section class="section-hero" {{ aria_attr }} style="{% if hero_image_url %}background: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.3)), url('{{ hero_image_url }}') center/cover; color: #ffffff;{% else %}background: {{ primary }}; color: {{ text_light }};{% endif %} padding: {{ section_padding }}px 24px; min-height: 280px; display: flex; align-items: center;">
   <div class="container" style="max-width: 900px; margin: 0 auto;">
     <h1 style="font-family: {{ font_family }}; font-size: {{ h1_size }}px; margin: 0 0 12px;">{{ hero_title }}</h1>
     <p style="font-size: {{ body_size }}px; opacity: 0.95; margin: 0;">{{ hero_subtitle }}</p>
@@ -98,7 +98,7 @@ SECTION_SNIPPETS = {
   <div class="container" style="max-width: 900px; margin: 0 auto;">
     <h2 style="font-family: {{ font_family }}; font-size: {{ h2_size }}px; margin: 0 0 20px;">What residents say</h2>
     <div style="display: grid; gap: 16px;">
-      {% for t in testimonials_list %}<blockquote style="margin: 0; padding: 16px; border-left: 4px solid {{ primary }}; background: white; border-radius: {{ card_radius }}px;">{{ t.quote }} — <cite>{{ t.name }}</cite></blockquote>{% endfor %}
+      {% for t in testimonials_list %}<blockquote style="margin: 0; padding: 16px; border-left: 4px solid {{ primary }}; background: #ffffff; color: {{ text }}; border-radius: {{ card_radius }}px;">{{ t.quote }} — <cite>{{ t.name }}</cite></blockquote>{% endfor %}
     </div>
   </div>
 </section>""",
@@ -177,11 +177,22 @@ def _get_tokens(blueprint: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _get_template_images_by_category(template_images: Optional[Dict[str, List[str]]], category: Optional[str]) -> List[str]:
-    """Return list of URLs for a given category (exterior, interior, etc.) from template uploads."""
-    if not template_images or not category:
+    """Return list of URLs for a given category (exterior, interior, etc.) from template uploads. Falls back to 'general' then first non-empty category."""
+    if not template_images:
         return []
-    urls = template_images.get(category) or template_images.get(category.lower())
-    return list(urls) if isinstance(urls, list) else [urls] if urls else []
+    for key in (category, (category or "").lower(), "general"):
+        if not key:
+            continue
+        urls = template_images.get(key)
+        result = list(urls) if isinstance(urls, list) else [urls] if urls else []
+        if result:
+            return result
+    # Use first non-empty category so any uploaded images appear in preview
+    for urls in template_images.values():
+        result = list(urls) if isinstance(urls, list) else [urls] if urls else []
+        if result:
+            return result
+    return []
 
 
 def _get_demo_slots(
@@ -201,8 +212,10 @@ def _get_demo_slots(
         out["hero_subtitle"] = slots.get("subtitle") or (demo.get("company") or {}).get("description") or "Your tagline here"
         out["cta_text"] = slots.get("cta_text") or "Get started"
         out["cta_href"] = slots.get("cta_href") or "#"
+        # Prefer blueprint content_slots image, then uploaded template images by category
+        hero_from_slot = slots.get("hero_image_url") or slots.get("image")
         hero_imgs = _get_template_images_by_category(template_images, image_prompt_category or "exterior")
-        out["hero_image_url"] = hero_imgs[0] if hero_imgs else None
+        out["hero_image_url"] = hero_from_slot or (hero_imgs[0] if hero_imgs else None)
     elif section_type == "trust_bar":
         out["trust_items"] = slots.get("items") or demo.get("amenities") or ["Trusted", "Secure", "Fast"]
     elif section_type == "amenities_grid":
@@ -211,7 +224,12 @@ def _get_demo_slots(
     elif section_type == "gallery_grid":
         out["gallery_title"] = slots.get("title") or "Gallery"
         gallery_from_template = _get_template_images_by_category(template_images, image_prompt_category or "exterior")
-        out["gallery_images"] = slots.get("images") or gallery_from_template or demo.get("gallery_images") or ["https://placehold.co/800x500?text=Image"]
+        # Prefer blueprint content_slots.images, then uploaded template images by category
+        slot_images = slots.get("images")
+        if slot_images is not None and isinstance(slot_images, list) and len(slot_images) > 0:
+            out["gallery_images"] = slot_images
+        else:
+            out["gallery_images"] = gallery_from_template or demo.get("gallery_images") or ["https://placehold.co/800x500?text=Image"]
     elif section_type == "floorplan_cards":
         out["floorplans_title"] = slots.get("title") or "Floor plans"
         out["floor_plans"] = slots.get("plans") or demo.get("floor_plans") or [{"name": "2B/2B", "beds": 2, "baths": 2, "rent_from": 1850, "image_url": "https://placehold.co/400x300?text=2B2B"}]
@@ -234,8 +252,10 @@ def _get_demo_slots(
     elif section_type == "feature_split":
         out["feature_heading"] = slots.get("heading") or "Feature"
         out["feature_body"] = slots.get("body") or "Description."
+        # Prefer blueprint content_slots image, then uploaded template images by category
+        feature_from_slot = slots.get("feature_image_url") or slots.get("image")
         split_imgs = _get_template_images_by_category(template_images, image_prompt_category or "interior")
-        out["feature_image_url"] = split_imgs[0] if split_imgs else None
+        out["feature_image_url"] = feature_from_slot or (split_imgs[0] if split_imgs else None)
     elif section_type == "cta_banner":
         out["cta_heading"] = slots.get("heading") or "Get in touch"
         out["cta_subtext"] = slots.get("subtext") or "We'd love to hear from you."
@@ -552,9 +572,11 @@ def render_preview_assets_single_page(
     )
     nav_html = f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main navigation"><a href="#" style="color: {text_on_primary}; text-decoration: none; font-weight: 600;">{html_module.escape(meta_name)}</a>{nav_links}</nav>'
     footer = _footer_html(blueprint_json, tokens)
+    body_text = tokens.get("text", "#1a1a2e")
+    body_bg = tokens.get("background", "#ffffff")
     css = f"""
 :root {{ --color-primary: {primary}; --font-body: {font_family}; }}
-body {{ margin: 0; box-sizing: border-box; }}
+body {{ margin: 0; box-sizing: border-box; color: {body_text}; background: {body_bg}; }}
 * {{ box-sizing: border-box; }}
 """
     js = "// Preview static bundle - no runtime required."

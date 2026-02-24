@@ -1,9 +1,13 @@
+import base64
 from sqlalchemy.orm import Session
 from app.models import AdminConfig, AuditLog
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime
 from fastapi import HTTPException, status
+
+# Max size for global checklist content (bytes) stored in config
+GLOBAL_CHECKLIST_MAX_BYTES = 500 * 1024  # 500KB
 
 
 # Default configuration templates
@@ -206,3 +210,70 @@ def update_config(db: Session, key: str, value_json: Any, user, expected_version
     )
     db.commit()
     return config
+
+
+# ---------- Global checklists (Build, QA, Defect Validation) ----------
+GLOBAL_CHECKLIST_KEYS = {
+    "build": "global_checklist_build",
+    "qa": "global_checklist_qa",
+    "defect_validation": "global_checklist_defect_validation",
+}
+
+
+def get_global_checklist(db: Session, stage_key: str) -> Optional[Dict[str, Any]]:
+    """Return global checklist for stage (build, qa, defect_validation). Keys: filename, content (bytes), uploaded_at."""
+    key = GLOBAL_CHECKLIST_KEYS.get(stage_key)
+    if not key:
+        return None
+    config = get_config(db, key)
+    if not config or not config.value_json:
+        return None
+    data = config.value_json
+    content_b64 = data.get("content_base64")
+    if not content_b64:
+        return None
+    try:
+        content = base64.b64decode(content_b64)
+    except Exception:
+        return None
+    return {
+        "filename": data.get("filename") or "checklist.json",
+        "content": content,
+        "uploaded_at": data.get("uploaded_at"),
+    }
+
+
+def set_global_checklist(
+    db: Session, stage_key: str, filename: str, content: bytes, user
+) -> None:
+    """Store global checklist for stage. Raises if content exceeds GLOBAL_CHECKLIST_MAX_BYTES."""
+    if len(content) > GLOBAL_CHECKLIST_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Checklist exceeds {GLOBAL_CHECKLIST_MAX_BYTES // 1024}KB limit.",
+        )
+    key = GLOBAL_CHECKLIST_KEYS.get(stage_key)
+    if not key:
+        raise HTTPException(status_code=400, detail=f"Unknown stage: {stage_key}")
+    value_json = {
+        "filename": filename,
+        "content_base64": base64.b64encode(content).decode("ascii"),
+        "uploaded_at": datetime.utcnow().isoformat(),
+    }
+    update_config(db, key, value_json, user)
+
+
+def list_global_checklists(db: Session) -> Dict[str, Dict[str, Any]]:
+    """Return metadata for each global checklist (no content). Keys: build, qa, defect_validation."""
+    result = {}
+    for stage_key, key in GLOBAL_CHECKLIST_KEYS.items():
+        config = get_config(db, key)
+        if config and config.value_json:
+            data = config.value_json
+            result[stage_key] = {
+                "filename": data.get("filename"),
+                "uploaded_at": data.get("uploaded_at"),
+            }
+        else:
+            result[stage_key] = None
+    return result

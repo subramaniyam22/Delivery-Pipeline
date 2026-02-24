@@ -445,7 +445,7 @@ class TemplateRegistry(Base):
     preview_thumbnail_url = Column(String(1000), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     is_active = Column(Boolean, default=True)
-    is_published = Column(Boolean, default=True)
+    is_published = Column(Boolean, default=False)  # Only True after explicit Publish; draft templates show Publish button
     # Extended registry fields
     category = Column(String(50), nullable=True)
     style = Column(String(50), nullable=True)

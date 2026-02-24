@@ -179,6 +179,8 @@ class ProjectResponse(BaseModel):
     manager_user_id: Optional[UUID] = None
     stage_history: Optional[List[Dict[str, Any]]] = None
     hitl_enabled: Optional[bool] = False
+    autopilot_enabled: Optional[bool] = True
+    autopilot_mode: Optional[str] = None  # off | conditional | full
     pending_approvals_count: Optional[int] = 0
     pending_approvals: Optional[List[Dict[str, Any]]] = None
     

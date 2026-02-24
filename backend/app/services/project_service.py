@@ -98,6 +98,10 @@ def create_project(db: Session, data: ProjectCreate, user) -> Project:
     else:
         status = data.status or ProjectStatus.DRAFT
         current_stage = Stage.SALES
+    # Parse client emails from sales field for Client Management / Edit Contacts
+    client_emails_list = []
+    if data.client_email_ids and str(data.client_email_ids).strip():
+        client_emails_list = [e.strip() for e in str(data.client_email_ids).split(",") if e.strip()]
     project = Project(
         title=data.title,
         client_name=data.client_name,
@@ -106,6 +110,10 @@ def create_project(db: Session, data: ProjectCreate, user) -> Project:
         status=status,
         current_stage=current_stage,
         created_by_user_id=user.id,
+        # Client contact fields (used by Client Management and Edit Contacts)
+        client_primary_contact=data.client_name,
+        client_company=data.pmc_name,
+        client_emails=client_emails_list,
         # Sales Fields
         pmc_name=data.pmc_name,
         location=location_display,

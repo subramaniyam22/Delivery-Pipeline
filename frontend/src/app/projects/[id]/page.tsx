@@ -719,10 +719,12 @@ export default function ProjectDetailPage() {
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const canRunAutoAssign = user?.role === 'ADMIN' || user?.role === 'MANAGER';
     const isExecutiveAdmin = user?.role === 'ADMIN';
-    // Enqueue is Recovery-only: only Admin/Manager (normal flow is zero-HITL autopilot)
+    // Enqueue only in HITL mode: hide when project is on Autopilot (stages advance automatically)
+    const isHITLMode = project && (project.autopilot_enabled === false || (project as any).autopilot_mode === 'off');
     const canEnqueueStage = (stage: string) => {
-        if (!user?.role) return false;
-        return user.role === 'ADMIN' || user.role === 'MANAGER';
+        if (!user?.role || !project) return false;
+        if (user.role !== 'ADMIN' && user.role !== 'MANAGER') return false;
+        return Boolean(isHITLMode);
     };
 
     // Check if current user is assigned to this project (check both teamAssignments and project direct fields)
@@ -2112,15 +2114,17 @@ export default function ProjectDetailPage() {
                                     <tr>
                                         <Th>From</Th>
                                         <Th>To</Th>
-                                        <Th>At</Th>
+                                        <Th>Date / Time</Th>
+                                        <Th>Triggered by</Th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {(project.stage_history || []).map((item: any, idx: number) => (
                                         <tr key={idx}>
-                                            <Td>{item.from_stage}</Td>
-                                            <Td>{item.to_stage}</Td>
-                                            <Td>{new Date(item.at).toLocaleString()}</Td>
+                                            <Td>{item.from_stage ?? '—'}</Td>
+                                            <Td>{item.to_stage ?? '—'}</Td>
+                                            <Td>{item.at ? new Date(item.at).toLocaleString() : '—'}</Td>
+                                            <Td>{item.actor_user_id ? 'User' : (item.request_id ? 'Pipeline' : '—')}</Td>
                                         </tr>
                                     ))}
                                 </tbody>
