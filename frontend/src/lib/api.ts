@@ -313,16 +313,12 @@ export const clientAPI = {
     uploadLogo: (token: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);
-        return api.post(`/projects/client-onboarding/${token}/upload-logo`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        return api.post(`/projects/client-onboarding/${token}/upload-logo`, formData);
     },
     uploadImage: (token: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);
-        return api.post(`/projects/client-onboarding/${token}/upload-image`, formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        return api.post(`/projects/client-onboarding/${token}/upload-image`, formData);
     },
     deleteImage: (token: string, index: number) =>
         api.delete(`/projects/client-onboarding/${token}/image`, { params: { index } }),

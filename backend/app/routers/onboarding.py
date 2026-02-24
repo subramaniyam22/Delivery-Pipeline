@@ -1117,6 +1117,8 @@ async def upload_client_logo(
         raise HTTPException(status_code=400, detail="Invalid file type. Allowed: PNG, JPEG, SVG, WEBP")
     
     content = await file.read()
+    if not content or len(content) == 0:
+        raise HTTPException(status_code=400, detail="No file received. Please select an image and try again.")
     safe_name = _sanitize_upload_filename(file.filename, "logo", "png")
     file_path_result = None
     
@@ -1160,6 +1162,8 @@ async def upload_client_image(
         raise HTTPException(status_code=400, detail="Invalid file type. Allowed: PNG, JPEG, WEBP, GIF")
     
     content = await file.read()
+    if not content or len(content) == 0:
+        raise HTTPException(status_code=400, detail="No file received. Please select an image and try again.")
     safe_name = _sanitize_upload_filename(file.filename, "image", "jpg")
     images = list(onboarding.images_json or [])
     file_path_result = None
