@@ -20,6 +20,8 @@ from app.rbac import check_full_access
 from typing import List, Dict, Any, Optional
 from uuid import UUID, uuid4
 from datetime import datetime, timedelta
+import os
+import re
 import secrets
 import logging
 from app.config import Settings, settings
@@ -1072,6 +1074,32 @@ async def set_client_full_validation_choice(token: str, payload: Dict[str, Any],
     return {"success": True, "proceed": proceed}
 
 
+def _sanitize_upload_filename(raw: Optional[str], default_prefix: str, ext: Optional[str] = None) -> str:
+    """Return a safe storage filename: basename only, no path separators, alphanumeric + dash/underscore/dot. Fallback to prefix + uuid + ext."""
+    if raw and isinstance(raw, str):
+        base = os.path.basename(raw).strip()
+        if base:
+            # Keep only safe chars (letters, digits, dash, underscore, dot)
+            safe = re.sub(r"[^\w.\-]", "_", base)
+            if len(safe) > 200:
+                safe = safe[:200]
+            if safe:
+                return safe
+    suffix = (f".{ext}" if ext else "") or ".bin"
+    return f"{default_prefix}_{uuid4().hex[:12]}{suffix}"
+
+
+def _allowed_image_content_type(content_type: Optional[str], filename: Optional[str], allowed: List[str]) -> bool:
+    """True if content_type is in allowed or can be inferred from filename (e.g. browser sent application/octet-stream)."""
+    if content_type and content_type in allowed:
+        return True
+    if content_type and content_type == "application/octet-stream" and filename:
+        ext = (os.path.splitext(filename)[1] or "").lower()
+        if ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
+            return True
+    return False
+
+
 @client_router.post("/{token}/upload-logo")
 async def upload_client_logo(
     token: str,
@@ -1084,18 +1112,19 @@ async def upload_client_logo(
     if not onboarding:
         raise HTTPException(status_code=404, detail="Invalid link")
     
-    # Validate file type
-    allowed_types = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp']
-    if file.content_type not in allowed_types:
+    allowed_types = ["image/png", "image/jpeg", "image/svg+xml", "image/webp"]
+    if not _allowed_image_content_type(file.content_type, file.filename, allowed_types):
         raise HTTPException(status_code=400, detail="Invalid file type. Allowed: PNG, JPEG, SVG, WEBP")
     
     content = await file.read()
+    safe_name = _sanitize_upload_filename(file.filename, "logo", "png")
     file_path_result = None
     
     try:
         storage = get_storage_backend()
-        key = f"projects/{onboarding.project_id}/onboarding/logo/{file.filename}"
-        stored = storage.save_bytes(key, content, file.content_type)
+        key = f"projects/{onboarding.project_id}/onboarding/logo/{safe_name}"
+        content_type = file.content_type if file.content_type in allowed_types else "image/png"
+        stored = storage.save_bytes(key, content, content_type)
         onboarding.logo_url = stored.url
         onboarding.logo_file_path = stored.storage_key
         file_path_result = stored.url or stored.storage_key
@@ -1109,9 +1138,9 @@ async def upload_client_logo(
         
         return {"success": True, "file_path": file_path_result}
     except Exception as e:
-        logger.error(f"Logo upload failed for project {onboarding.project_id}: {str(e)}")
+        logger.exception("Logo upload failed for project %s: %s", onboarding.project_id, e)
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Logo upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Logo upload failed. Please try again or use a different image.")
 
 
 @client_router.post("/{token}/upload-image")
@@ -1126,20 +1155,21 @@ async def upload_client_image(
     if not onboarding:
         raise HTTPException(status_code=404, detail="Invalid link")
     
-    # Validate file type
-    allowed_types = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="Invalid file type")
+    allowed_types = ["image/png", "image/jpeg", "image/webp", "image/gif"]
+    if not _allowed_image_content_type(file.content_type, file.filename, allowed_types):
+        raise HTTPException(status_code=400, detail="Invalid file type. Allowed: PNG, JPEG, WEBP, GIF")
     
     content = await file.read()
+    safe_name = _sanitize_upload_filename(file.filename, "image", "jpg")
     images = list(onboarding.images_json or [])
     file_path_result = None
     
     try:
         storage = get_storage_backend()
-        key = f"projects/{onboarding.project_id}/onboarding/images/{file.filename}"
-        stored = storage.save_bytes(key, content, file.content_type)
-        images.append({"url": stored.url, "storage_key": stored.storage_key, "filename": file.filename, "type": "uploaded"})
+        key = f"projects/{onboarding.project_id}/onboarding/images/{safe_name}"
+        content_type = file.content_type if file.content_type in allowed_types else "image/jpeg"
+        stored = storage.save_bytes(key, content, content_type)
+        images.append({"url": stored.url, "storage_key": stored.storage_key, "filename": safe_name, "type": "uploaded"})
         file_path_result = stored.url or stored.storage_key
             
         onboarding.images_json = images
@@ -1153,9 +1183,9 @@ async def upload_client_image(
         
         return {"success": True, "file_path": file_path_result, "images": images}
     except Exception as e:
-        logger.error(f"Image upload failed for project {onboarding.project_id}: {str(e)}")
+        logger.exception("Image upload failed for project %s: %s", onboarding.project_id, e)
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Image upload failed. Please try again or use a different image.")
 
 
 @client_router.delete("/{token}/image")

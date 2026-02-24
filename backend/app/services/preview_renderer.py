@@ -40,6 +40,25 @@ def _contrast_button_on_white(hex_primary: str) -> str:
     lum = _relative_luminance(r, g, b)
     return hex_primary if lum < 0.4 else "#1e3a5f"
 
+
+def _contrast_ratio(lum1: float, lum2: float) -> float:
+    """WCAG contrast ratio between two relative luminances (0-1)."""
+    lo, hi = min(lum1, lum2), max(lum1, lum2)
+    return (hi + 0.05) / (lo + 0.05) if lo >= 0 else 21.0
+
+
+def _link_color_for_background(link_hex: str, bg_hex: str) -> str:
+    """Return a link color that meets WCAG AA (4.5:1) on bg. Avoids color-contrast Axe failures."""
+    link_rgb = _hex_to_rgb(link_hex)
+    bg_rgb = _hex_to_rgb(bg_hex)
+    link_lum = _relative_luminance(*link_rgb)
+    bg_lum = _relative_luminance(*bg_rgb)
+    if _contrast_ratio(link_lum, bg_lum) >= 4.5:
+        return link_hex
+    if bg_lum > 0.5:
+        return "#1e3a5f"  # dark blue on light background
+    return "#93c5fd"  # light blue on dark background
+
 # Section type -> (html snippet template, optional variant handling)
 SECTION_SNIPPETS = {
     "hero": """
@@ -70,7 +89,7 @@ SECTION_SNIPPETS = {
   <div class="container" style="max-width: 900px; margin: 0 auto;">
     <h2 style="font-family: {{ font_family }}; font-size: {{ h2_size }}px; margin: 0 0 20px;">{{ gallery_title }}</h2>
     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px;">
-      {% for img in gallery_images %}<img src="{{ img }}" alt="Gallery" style="width: 100%; height: 200px; object-fit: cover; border-radius: {{ card_radius }}px;" loading="lazy" />{% endfor %}
+      {% for img in gallery_images %}<img src="{{ img }}" alt="{{ gallery_title }} image {{ loop.index }}" style="width: 100%; height: 200px; object-fit: cover; border-radius: {{ card_radius }}px;" loading="lazy" />{% endfor %}
     </div>
   </div>
 </section>""",
@@ -123,7 +142,7 @@ SECTION_SNIPPETS = {
   <div class="container" style="max-width: 700px; margin: 0 auto;">
     <h2 style="font-family: {{ font_family }}; font-size: {{ h2_size }}px; margin: 0 0 12px;">{{ cta_heading }}</h2>
     <p style="margin: 0 0 20px;">{{ cta_subtext }}</p>
-    <a href="{{ cta_link }}" style="display: inline-block; padding: 12px 24px; background: white; color: {{ button_text_on_white }}; border-radius: {{ card_radius }}px; text-decoration: none;">{{ cta_button }}</a>
+    <a href="{{ cta_link }}" style="display: inline-block; padding: 12px 24px; background: #ffffff; color: {{ button_text_on_white }}; border-radius: {{ card_radius }}px; text-decoration: none;">{{ cta_button }}</a>
   </div>
 </section>""",
     "contact_form": """
@@ -157,16 +176,18 @@ def _get_tokens(blueprint: Dict[str, Any]) -> Dict[str, Any]:
     spacing = tokens.get("spacing") or {}
     primary = colors.get("primary") or "#2563eb"
     accent = colors.get("accent") or "#3b82f6"
+    background = colors.get("background") or "#ffffff"
     return {
         "primary": primary,
         "secondary": (colors.get("secondary") or "#1e40af"),
-        "background": (colors.get("background") or "#ffffff"),
+        "background": background,
         "text": (colors.get("text") or "#0f172a"),
         "accent": accent,
         "text_light": _contrast_text_on(primary),
         "text_on_primary": _contrast_text_on(primary),
         "text_on_accent": _contrast_text_on(accent),
         "button_text_on_white": _contrast_button_on_white(primary),
+        "link_color": _link_color_for_background(primary, background),
         "font_family": (typography.get("fontFamily") or "Inter, sans-serif"),
         "h1_size": scale.get("h1") or 32,
         "h2_size": scale.get("h2") or 24,
@@ -174,6 +195,18 @@ def _get_tokens(blueprint: Dict[str, Any]) -> Dict[str, Any]:
         "section_padding": spacing.get("sectionPadding") or 48,
         "card_radius": spacing.get("cardRadius") or 12,
     }
+
+
+def _is_relative_image_path(url: Any) -> bool:
+    """True if url looks like a relative path (e.g. assets/img/hero.jpg), not an absolute URL. Preview bundle does not serve image files; use template-uploaded URLs instead."""
+    if not url or not isinstance(url, str):
+        return False
+    s = url.strip()
+    if not s:
+        return False
+    if s.startswith("http://") or s.startswith("https://") or s.startswith("//"):
+        return False
+    return True
 
 
 def _get_template_images_by_category(template_images: Optional[Dict[str, List[str]]], category: Optional[str]) -> List[str]:
@@ -212,10 +245,13 @@ def _get_demo_slots(
         out["hero_subtitle"] = slots.get("subtitle") or (demo.get("company") or {}).get("description") or "Your tagline here"
         out["cta_text"] = slots.get("cta_text") or "Get started"
         out["cta_href"] = slots.get("cta_href") or "#"
-        # Prefer blueprint content_slots image, then uploaded template images by category
+        # Prefer uploaded template images over relative paths from blueprint (ZIP-derived paths like assets/img/hero.jpg 404 in preview)
         hero_from_slot = slots.get("hero_image_url") or slots.get("image")
         hero_imgs = _get_template_images_by_category(template_images, image_prompt_category or "exterior")
-        out["hero_image_url"] = hero_from_slot or (hero_imgs[0] if hero_imgs else None)
+        if hero_imgs and _is_relative_image_path(hero_from_slot):
+            out["hero_image_url"] = hero_imgs[0]
+        else:
+            out["hero_image_url"] = hero_from_slot or (hero_imgs[0] if hero_imgs else None)
     elif section_type == "trust_bar":
         out["trust_items"] = slots.get("items") or demo.get("amenities") or ["Trusted", "Secure", "Fast"]
     elif section_type == "amenities_grid":
@@ -224,10 +260,13 @@ def _get_demo_slots(
     elif section_type == "gallery_grid":
         out["gallery_title"] = slots.get("title") or "Gallery"
         gallery_from_template = _get_template_images_by_category(template_images, image_prompt_category or "exterior")
-        # Prefer blueprint content_slots.images, then uploaded template images by category
+        # Prefer uploaded template images over relative paths from blueprint (ZIP-derived paths 404 in preview)
         slot_images = slots.get("images")
         if slot_images is not None and isinstance(slot_images, list) and len(slot_images) > 0:
-            out["gallery_images"] = slot_images
+            if gallery_from_template and any(_is_relative_image_path(u) for u in slot_images):
+                out["gallery_images"] = gallery_from_template
+            else:
+                out["gallery_images"] = slot_images
         else:
             out["gallery_images"] = gallery_from_template or demo.get("gallery_images") or ["https://placehold.co/800x500?text=Image"]
     elif section_type == "floorplan_cards":
@@ -252,10 +291,13 @@ def _get_demo_slots(
     elif section_type == "feature_split":
         out["feature_heading"] = slots.get("heading") or "Feature"
         out["feature_body"] = slots.get("body") or "Description."
-        # Prefer blueprint content_slots image, then uploaded template images by category
+        # Prefer uploaded template images over relative paths from blueprint (ZIP-derived paths 404 in preview)
         feature_from_slot = slots.get("feature_image_url") or slots.get("image")
         split_imgs = _get_template_images_by_category(template_images, image_prompt_category or "interior")
-        out["feature_image_url"] = feature_from_slot or (split_imgs[0] if split_imgs else None)
+        if split_imgs and _is_relative_image_path(feature_from_slot):
+            out["feature_image_url"] = split_imgs[0]
+        else:
+            out["feature_image_url"] = feature_from_slot or (split_imgs[0] if split_imgs else None)
     elif section_type == "cta_banner":
         out["cta_heading"] = slots.get("heading") or "Get in touch"
         out["cta_subtext"] = slots.get("subtext") or "We'd love to hear from you."
@@ -297,7 +339,8 @@ def _render_section(
     if not aria_label:
         type_label = _SECTION_TYPE_LABELS.get(stype) or stype.replace("_", " ").title()
         aria_label = f"{type_label} {section_index + 1}"
-    aria_attr = f'aria-label="{html_module.escape(aria_label)}"' if aria_label else ""
+    # role="region" + aria-label so content is in landmarks (Axe region rule) and one main is preserved
+    aria_attr = f'role="region" aria-label="{html_module.escape(aria_label)}"' if aria_label else 'role="region"'
     slots = _get_demo_slots(stype, content_slots, demo, template_images, image_prompt_category)
     ctx = {**tokens, **slots, "aria_attr": aria_attr}
     if stype in SECTION_SNIPPETS:
@@ -385,7 +428,7 @@ def _footer_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
             for l in links if isinstance(l, dict)
         )
         parts.append(f"<div><strong>{html_module.escape(title)}</strong> {link_str}</div>")
-    return f'<footer style="padding: 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; margin-top: 48px;"><div style="max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 24px;">{"".join(parts)}</div></footer>'
+    return f'<footer role="contentinfo" aria-label="Site footer" style="padding: 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; margin-top: 48px;"><div style="max-width: 900px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 24px;">{"".join(parts)}</div></footer>'
 
 
 def _render_one_page_html(
@@ -417,9 +460,9 @@ def _render_one_page_html(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{html_module.escape(title)} - {html_module.escape(meta_name)}</title>
   <style>
-    body {{ margin: 0; font-family: {font_family}; font-size: {body_size}px; color: {tokens.get("text", "#0f172a")}; background: {tokens.get("background", "#fff")}; }}
+    body {{ margin: 0; font-family: {font_family}; font-size: {body_size}px; color: {tokens.get("text", "#0f172a")}; background: {tokens.get("background", "#ffffff")}; }}
     .container {{ max-width: 900px; margin: 0 auto; }}
-    a {{ color: {tokens.get("primary", "#2563eb")}; }}
+    a {{ color: {tokens.get("link_color", "#1e3a5f")}; }}
   </style>
 </head>
 <body>
@@ -574,10 +617,12 @@ def render_preview_assets_single_page(
     footer = _footer_html(blueprint_json, tokens)
     body_text = tokens.get("text", "#1a1a2e")
     body_bg = tokens.get("background", "#ffffff")
+    link_color = tokens.get("link_color", "#1e3a5f")
     css = f"""
 :root {{ --color-primary: {primary}; --font-body: {font_family}; }}
 body {{ margin: 0; box-sizing: border-box; color: {body_text}; background: {body_bg}; }}
 * {{ box-sizing: border-box; }}
+a {{ color: {link_color}; }}
 """
     js = "// Preview static bundle - no runtime required."
     body_size = tokens.get("body_size", 16)
