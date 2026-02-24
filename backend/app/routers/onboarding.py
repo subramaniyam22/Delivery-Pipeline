@@ -939,14 +939,16 @@ async def submit_client_onboarding_form(
         from app.services.pipeline_orchestrator import ensure_stage_rows, auto_advance
         from app.pipeline.state_machine import transition_project_stage
         ensure_stage_rows(db, project.id)
-        # Only transition to ASSIGNMENT when onboarding is approved (auto or after review)
-        if onboarding.review_status == OnboardingReviewStatus.APPROVED:
+        # Transition to ASSIGNMENT when onboarding is submitted and not needing client changes.
+        # APPROVED = auto-advance; WAITING_FOR_CONSULTANT = move to Assignment so consultant can approve/assign.
+        # NEEDS_CHANGES = keep in Onboarding until client resubmits.
+        if onboarding.review_status in (OnboardingReviewStatus.APPROVED, OnboardingReviewStatus.WAITING_FOR_CONSULTANT):
             transition_project_stage(
                 db, project.id,
                 from_stage=Stage.ONBOARDING,
                 to_stage=Stage.ASSIGNMENT,
                 reason="onboarding_submitted",
-                metadata={"source": "client_submit"},
+                metadata={"source": "client_submit", "review_status": onboarding.review_status.value},
                 actor_user_id=None,
             )
         auto_advance(db, project.id, trigger_source="onboarding_saved")

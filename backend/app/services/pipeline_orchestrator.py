@@ -494,6 +494,26 @@ def evaluate_project(db: Session, project_id: UUID) -> PipelineStatus:
             r2.last_error = None
             r2.updated_at = datetime.utcnow()
 
+    # Backstop: if onboarding is complete but project.current_stage was never advanced (e.g. pre-fix submit), sync it
+    ob_row = by_key.get("1_onboarding")
+    if (
+        ob_row
+        and ob_row.status == "complete"
+        and project.current_stage == Stage.ONBOARDING
+    ):
+        try:
+            transition_project_stage(
+                db, project_id,
+                from_stage=Stage.ONBOARDING,
+                to_stage=Stage.ASSIGNMENT,
+                reason="sweeper_sync",
+                metadata={"source": "autopilot_sweeper"},
+                actor_user_id=None,
+            )
+            project = db.query(Project).filter(Project.id == project_id).first()
+        except Exception as sync_err:
+            logger.warning("Sweeper sync ONBOARDING->ASSIGNMENT failed for project %s: %s", project_id, sync_err)
+
     # Lazy expiry of old pending approvals
     expire_old_pending_approvals(db, project_id)
 
