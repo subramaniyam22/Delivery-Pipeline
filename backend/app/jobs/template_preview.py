@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import tempfile
 import threading
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -38,6 +39,64 @@ def _template_prefix(template: TemplateRegistry) -> str:
     slug = (template.slug or "template").replace(" ", "-").lower()
     version = getattr(template, "version", None) or 1
     return f"templates/{slug}/v{version}"
+
+
+# Map common ZIP image filenames (stem) to template image category keys (user may upload by category name)
+_STEM_TO_CATEGORY_FALLBACK: Dict[str, str] = {
+    "hero": "exterior",
+    "careers": "people",
+    "services": "lifestyle",
+    "office": "interior",
+}
+
+
+def _inject_template_images_into_zip_assets(
+    assets: Dict[str, Any],
+    template_images: Optional[Dict[str, list]] = None,
+) -> None:
+    """
+    Replace assets/img/* references in HTML/CSS with uploaded template image URLs (meta_json.images).
+    Modifies assets in place. template_images: category -> list of image URLs (from Template Registry uploads).
+    """
+    if not template_images:
+        return
+    # Normalize to lowercase keys for matching (user categories may be "Exterior", "Careers", etc.)
+    by_category: Dict[str, list] = {}
+    for k, v in template_images.items():
+        if not v:
+            continue
+        key = (k or "").strip().lower().replace(" ", "_")
+        if key:
+            by_category[key] = v if isinstance(v, list) else [v]
+
+    def replacer(match: re.Match) -> str:
+        prefix, quote1, path, quote2 = match.groups()
+        # path is e.g. assets/img/hero.jpg or assets/img/careers.png
+        stem = os.path.splitext(os.path.basename(path))[0].lower().replace(" ", "_")
+        url = None
+        if stem in by_category and by_category[stem]:
+            url = by_category[stem][0]
+        else:
+            fallback = _STEM_TO_CATEGORY_FALLBACK.get(stem)
+            if fallback and fallback in by_category and by_category[fallback]:
+                url = by_category[fallback][0]
+        if url and isinstance(url, str):
+            return f"{prefix}{quote1}{url}{quote2}"
+        return match.group(0)
+
+    # Match src="assets/img/..." or url('assets/img/...') or url("assets/img/...")
+    pattern = re.compile(
+        r'(src=|url\()(\s*["\']?)(assets/img/[^"\')\s]+)(["\']?)',
+        re.IGNORECASE,
+    )
+    for rel, content in list(assets.items()):
+        if not isinstance(content, str):
+            continue
+        if not (rel.endswith(".html") or rel.endswith(".css")):
+            continue
+        new_content = pattern.sub(replacer, content)
+        if new_content != content:
+            assets[rel] = new_content
 
 
 def run_template_preview_pipeline(
@@ -92,6 +151,11 @@ def run_template_preview_pipeline(
                                     assets[rel] = content
                             else:
                                 assets[rel] = content
+                    # Inject user-uploaded template images (meta_json.images by category) into HTML/CSS so preview uses them instead of ZIP's assets/img/*
+                    meta = getattr(template, "meta_json", None) or {}
+                    if isinstance(meta.get("images"), dict):
+                        zip_template_images = {k: v if isinstance(v, list) else [v] for k, v in meta["images"].items() if v}
+                        _inject_template_images_into_zip_assets(assets, zip_template_images)
                     total_size = sum(len(c) if isinstance(c, bytes) else len(c.encode("utf-8")) for c in assets.values())
                     if total_size > PREVIEW_BUNDLE_MAX_BYTES:
                         template.preview_status = "failed"

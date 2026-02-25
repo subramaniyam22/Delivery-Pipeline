@@ -601,7 +601,9 @@ def serve_template_preview(
     file_path = (path or "").strip().lstrip("/") or "index.html"
     if ".." in file_path or any(seg.startswith(".") for seg in file_path.split("/")):
         raise HTTPException(status_code=400, detail="Invalid path")
-    if not file_path.endswith((".html", ".css", ".js")):
+    # Allow image and other asset extensions; only append .html for paths with no extension
+    allowed_extensions = (".html", ".css", ".js", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".ico", ".svg", ".woff", ".woff2", ".ttf", ".json", ".txt", ".xml")
+    if not any(file_path.lower().endswith(ext) for ext in allowed_extensions):
         file_path = file_path + ".html" if file_path and not file_path.endswith("/") else "index.html"
     prefix = _template_preview_prefix(template)
     key = f"{prefix.rstrip('/')}/{file_path}"
@@ -612,10 +614,29 @@ def serve_template_preview(
         logging.warning("Preview proxy read failed key=%s: %s", key, e)
         raise HTTPException(status_code=404, detail="Preview file not found")
     media_type = "text/html"
-    if key.endswith(".css"):
+    kl = key.lower()
+    if kl.endswith(".css"):
         media_type = "text/css"
-    elif key.endswith(".js"):
+    elif kl.endswith(".js"):
         media_type = "application/javascript"
+    elif kl.endswith((".jpg", ".jpeg")):
+        media_type = "image/jpeg"
+    elif kl.endswith(".png"):
+        media_type = "image/png"
+    elif kl.endswith(".gif"):
+        media_type = "image/gif"
+    elif kl.endswith(".webp"):
+        media_type = "image/webp"
+    elif kl.endswith(".ico"):
+        media_type = "image/x-icon"
+    elif kl.endswith(".svg"):
+        media_type = "image/svg+xml"
+    elif kl.endswith((".woff", ".woff2")):
+        media_type = "font/woff2" if kl.endswith(".woff2") else "font/woff"
+    elif kl.endswith(".ttf"):
+        media_type = "font/ttf"
+    elif kl.endswith(".json"):
+        media_type = "application/json"
     headers = {"Content-Security-Policy": "frame-ancestors *"}
     return Response(content=body, media_type=media_type, headers=headers)
 
