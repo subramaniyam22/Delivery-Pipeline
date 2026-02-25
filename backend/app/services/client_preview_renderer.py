@@ -1,13 +1,14 @@
 """
 Render client preview assets from template blueprint + delivery contract.
 Uses real client onboarding data (brand, content) with graceful fallbacks.
+Single-page output so nav links use in-page anchors and work with one pre-signed URL (no 403 on other pages).
 """
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-from app.services.preview_renderer import render_preview_assets
+from app.services.preview_renderer import render_preview_assets_single_page
 from app.services.demo_preview_data import _default_dataset
 
 
@@ -111,12 +112,35 @@ def _blueprint_with_client_tokens(blueprint: Dict[str, Any], contract: Dict[str,
     return out
 
 
+def _client_images_as_template_images(contract: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Build category -> [urls] from contract onboarding brand.images so hero/gallery/feature_split use client uploads."""
+    ob = (contract or {}).get("onboarding") or {}
+    brand = ob.get("brand") or {}
+    images_json = brand.get("images") or []
+    if not isinstance(images_json, list) or not images_json:
+        return {}
+    urls: List[str] = []
+    for img in images_json[:12]:
+        if isinstance(img, dict):
+            u = img.get("url") or img.get("path")
+            if u:
+                urls.append(str(u))
+        elif isinstance(img, str):
+            urls.append(img)
+    if not urls:
+        return {}
+    # Spread to all section categories so hero, gallery, feature_split get client images (no relative 404s)
+    return {cat: urls for cat in ("exterior", "interior", "lifestyle", "people", "neighborhood")}
+
+
 def render_client_preview_assets(
     blueprint_json: Dict[str, Any],
     contract_json: Dict[str, Any],
 ) -> Dict[str, str]:
     """
     Render preview assets using blueprint structure and client data from contract.
+    Uses single-page output (in-page anchors) so nav links work with one URL (no 403 on other pages).
+    Passes client-uploaded images as template_images so hero/gallery/feature sections show them.
     Returns dict of path -> content (str). Never raises; missing data uses placeholders.
     """
     try:
@@ -124,9 +148,11 @@ def render_client_preview_assets(
             return {"index.html": "<!DOCTYPE html><html><body><p>No blueprint</p></body></html>"}
         client_dataset = _contract_to_client_dataset(contract_json)
         blueprint_with_tokens = _blueprint_with_client_tokens(blueprint_json, contract_json or {})
-        # Multi-page preview: index.html + one page per nav item (e.g. floor-plans.html). For links to work,
-        # previews must be served from a base URL (e.g. CloudFront or public S3 prefix) so relative hrefs resolve.
-        assets = render_preview_assets(blueprint_with_tokens, client_dataset)
+        client_template_images = _client_images_as_template_images(contract_json or {})
+        # Single-page: one index.html with #section-0, #section-1, ... so navigation doesn't trigger new requests (403 with pre-signed URLs).
+        assets = render_preview_assets_single_page(
+            blueprint_with_tokens, client_dataset, template_images=client_template_images
+        )
         return assets
     except Exception:
         return {"index.html": "<!DOCTYPE html><html><body><p>Preview generation failed. Please try again.</p></body></html>"}
