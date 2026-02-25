@@ -8,7 +8,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         is_preview_route = "/api/templates/" in request.url.path and "/preview" in request.url.path
-        if request.url.path.startswith("/previews/") or is_preview_route:
+        is_client_preview_route = "/client-onboarding/" in request.url.path and "/preview" in request.url.path
+        if request.url.path.startswith("/previews/") or is_preview_route or is_client_preview_route:
             if "X-Frame-Options" in response.headers:
                 del response.headers["X-Frame-Options"]
             if request.url.path.startswith("/previews/"):

@@ -178,6 +178,12 @@ def mark_failed(
         session.commit()
         session.refresh(job)
         _broadcast_job_update(job)
+        if job.status == JobRunStatus.FAILED and job.attempts >= job.max_attempts:
+            try:
+                from app.services.notification_service import notify_admin_manager_max_attempts_reached
+                notify_admin_manager_max_attempts_reached(str(job.project_id), job.stage.value, session)
+            except Exception as e:
+                logger.warning("Failed to send max-attempts notification: %s", e)
         return job
     finally:
         if close_session:

@@ -1054,12 +1054,19 @@ def assign_team(
     # Builder can only be assigned after PC
     # Tester can only be assigned after Builder
     
-    # Validate Consultant assignment
+    # Validate Consultant assignment — allow when HITL is on OR when client requested a human (so they can be assigned)
     if data.consultant_user_id:
-        if not project.require_manual_review:
+        from app.models import AuditLog
+        client_requested_human = (
+            db.query(AuditLog.id)
+            .filter(AuditLog.project_id == project_id, AuditLog.action == "CLIENT_REQUESTED_HUMAN")
+            .limit(1)
+            .first()
+        ) is not None
+        if not project.require_manual_review and not client_requested_human:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Consultant cannot be assigned when Manual Review (HITL) is disabled. AI Agent handles this phase."
+                detail="Consultant cannot be assigned when Manual Review (HITL) is disabled and client has not requested a human. Enable HITL or wait for client to request a consultant."
             )
         consultant = db.query(User).filter(User.id == data.consultant_user_id).first()
         if not consultant:

@@ -108,3 +108,45 @@ class NotificationConnectionManager:
                     logger.error(f"Failed to send Notification WS message to {user_id}: {e}")
 
 notification_manager = NotificationConnectionManager()
+
+
+def notify_admin_manager_max_attempts_reached(project_id: str, stage: str, db: Any) -> None:
+    """
+    When a stage job has failed after max attempts and project HITL is off,
+    create in-app notifications for all Admin and Manager users so they can enable HITL if needed.
+    Call this from sync code (e.g. job queue); db session must be valid.
+    """
+    from app.models import Project, User, Role, Notification
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return
+    if getattr(project, "require_manual_review", False):
+        return
+    admins_managers = (
+        db.query(User).filter(User.role.in_([Role.ADMIN, Role.MANAGER]), User.is_active == True).all()
+    )
+    title = project.title or "Project"
+    message = (
+        f"Stage {stage} reached maximum attempts and failed for project \"{title}\". "
+        "Consider enabling HITL (Human-in-the-Loop) for this project or stage to intervene."
+    )
+    for user in admins_managers:
+        try:
+            db.add(Notification(
+                user_id=user.id,
+                project_id=project.id,
+                type="URGENT_ALERT",
+                message=message,
+                is_read=False,
+            ))
+        except Exception as e:
+            logger.error("Failed to add max-attempts notification for user %s: %s", user.id, e)
+    try:
+        db.commit()
+    except Exception as e:
+        logger.error("Failed to commit max-attempts notifications: %s", e)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    logger.info("Notified %d Admin/Manager(s) for max-attempts failure project=%s stage=%s", len(admins_managers), project_id, stage)

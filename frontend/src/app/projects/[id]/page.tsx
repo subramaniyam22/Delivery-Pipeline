@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { projectsAPI, artifactsAPI, workflowAPI, onboardingAPI, projectTasksAPI, remindersAPI, testingAPI, usersAPI, capacityAPI, jobsAPI } from '@/lib/api';
+import { projectsAPI, artifactsAPI, workflowAPI, onboardingAPI, projectTasksAPI, remindersAPI, testingAPI, usersAPI, capacityAPI, jobsAPI, projectConfigAPI } from '@/lib/api';
 import { getCurrentUser } from '@/lib/auth';
 import Navigation from '@/components/Navigation';
 import HitlStatusPanel from '@/components/HitlStatusPanel';
@@ -464,6 +464,7 @@ const ConsultantChatModal = ({ projectId, onClose }: { projectId: string; onClos
                 }}>
                     <div>
                         <h3 style={{ margin: 0, fontSize: '18px' }}>Client Chat</h3>
+                        <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748b' }}>Includes client onboarding conversation</p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', marginTop: '4px' }}>
                             <span style={{
                                 width: '8px', height: '8px', borderRadius: '50%',
@@ -568,6 +569,7 @@ export default function ProjectDetailPage() {
     const [enqueueing, setEnqueueing] = useState(false);
     const [buildOutputs, setBuildOutputs] = useState<any[]>([]);
     const [stageOutputs, setStageOutputs] = useState<any[]>([]);
+    const [projectConfig, setProjectConfig] = useState<{ stage_gates_json?: Record<string, boolean>; hitl_overrides_json?: any[] } | null>(null);
     const [showReportModal, setShowReportModal] = useState(false);
     const [reportJson, setReportJson] = useState<any>(null);
     const [reportTab, setReportTab] = useState<'summary' | 'raw'>('summary');
@@ -811,6 +813,8 @@ export default function ProjectDetailPage() {
             loadTeamData().catch(err => console.error('Team data load error:', err));
             // Load client preview (project members + Admin/Manager)
             projectsAPI.getClientPreview(projectId).then(r => setClientPreview(r.data || {})).catch(() => setClientPreview({}));
+            // Load project config (stage gates / HITL overrides)
+            projectConfigAPI.get(projectId).then(r => setProjectConfig(r.data)).catch(() => setProjectConfig(null));
         } catch (error) {
             console.error('Failed to load project data:', error);
             setError('Failed to load project data');
@@ -1996,6 +2000,25 @@ export default function ProjectDetailPage() {
                             <span className={`hitl-badge ${project.hitl_enabled ? 'on' : 'off'}`}>
                                 HITL: {project.hitl_enabled ? 'ON' : 'OFF'}
                             </span>
+                            {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
+                                <label className="hitl-toggle-in-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 12 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Project HITL:</span>
+                                    <input
+                                        type="checkbox"
+                                        checked={!!project.require_manual_review}
+                                        onChange={async (e) => {
+                                            try {
+                                                await projectsAPI.toggleHITL(projectId, e.target.checked);
+                                                setSuccess(`HITL ${e.target.checked ? 'enabled' : 'disabled'} for this project`);
+                                                await loadAllData();
+                                            } catch (err) {
+                                                setError('Failed to toggle HITL');
+                                            }
+                                        }}
+                                        style={{ width: 18, height: 18, cursor: 'pointer' }}
+                                    />
+                                </label>
+                            )}
                             {project.pending_approvals_count > 0 && (
                                 <span className="approval-badge">Approval pending ({project.pending_approvals_count})</span>
                             )}
@@ -2066,10 +2089,11 @@ export default function ProjectDetailPage() {
                         </div>
                     )}
 
-                    {isProjectOwner && project.status !== 'DRAFT' && (
+                    {((user?.role === 'ADMIN' || user?.role === 'MANAGER') || isProjectOwner) && project.status !== 'DRAFT' && (
                         <div className="header-actions" style={{ marginLeft: 'auto', marginRight: '24px' }}>
                             <button
                                 onClick={handleViewChatLogs}
+                                title="View chat history including client onboarding conversation"
                                 style={{
                                     background: '#3b82f6',
                                     color: 'white',
@@ -2144,6 +2168,8 @@ export default function ProjectDetailPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
                                 {stageOrder.map((stage) => {
                                     const output = stageOutputsByStage[stage];
+                                    const stageKey = stage.toLowerCase();
+                                    const stageGateEnabled = projectConfig?.stage_gates_json?.[stageKey] ?? false;
                                     return (
                                         <Card key={stage}>
                                             <CardHeader>
@@ -2151,14 +2177,36 @@ export default function ProjectDetailPage() {
                                             </CardHeader>
                                             <CardContent>
                                                 <div style={{ fontSize: 13, marginBottom: 6 }}>
-                                                    Status: {output?.status || '—'}
+                                                    Status: {output ? (typeof output.status === 'string' ? output.status : (output as any).status ?? '—') : 'Not run yet'}
                                                 </div>
                                                 <div style={{ fontSize: 13, marginBottom: 6 }}>
-                                                    Score: {output?.score ?? '—'}
+                                                    Score: {output ? (output.score != null ? output.score : '—') : '—'}
                                                 </div>
                                                 <div style={{ fontSize: 12, color: '#6b7280' }}>
-                                                    Last run: {output?.created_at ? new Date(output.created_at).toLocaleString() : '—'}
+                                                    Last run: {output?.created_at ? new Date(output.created_at).toLocaleString() : (output ? '—' : 'Not run yet')}
                                                 </div>
+                                                {(user?.role === 'ADMIN' || user?.role === 'MANAGER') && (
+                                                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid #e2e8f0' }}>
+                                                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={!!stageGateEnabled}
+                                                                onChange={async (e) => {
+                                                                    try {
+                                                                        const next = { ...(projectConfig?.stage_gates_json || {}), [stageKey]: e.target.checked };
+                                                                        await projectConfigAPI.update(projectId, { stage_gates_json: next });
+                                                                        setProjectConfig(prev => ({ ...prev, stage_gates_json: next }));
+                                                                        setSuccess(`Stage HITL ${e.target.checked ? 'on' : 'off'} for ${stage.replace('_', ' ')}`);
+                                                                    } catch (err) {
+                                                                        setError('Failed to update stage HITL');
+                                                                    }
+                                                                }}
+                                                                style={{ width: 16, height: 16, cursor: 'pointer' }}
+                                                            />
+                                                            Stage HITL
+                                                        </label>
+                                                    </div>
+                                                )}
                                                 {canEnqueueStage(stage) && (
                                                     <div style={{ marginTop: 8 }}>
                                                         <Button variant="secondary" onClick={() => handleEnqueueStage(stage)}>
@@ -2740,7 +2788,7 @@ export default function ProjectDetailPage() {
                 )}
 
                 {/* Client Preview - visible to project members and Admin/Manager */}
-                <div className="client-preview-section">
+                <div className="client-preview-section" style={{ marginTop: '28px', marginBottom: '32px' }}>
                     <div className="section-header">
                         <h2>🌐 Client Preview</h2>
                         <div className="section-header-actions">
@@ -2852,11 +2900,16 @@ export default function ProjectDetailPage() {
                             }}>
                                 <div>
                                     <strong>👤 Client requested to talk to a human consultant.</strong>
-                                    <p style={{ margin: '6px 0 0', fontSize: '14px', opacity: 0.95 }}>Assign a consultant below so they can reach out. You can pick from available capacity.</p>
+                                    <p style={{ margin: '6px 0 0', fontSize: '14px', opacity: 0.95 }}>Assign a consultant below so they can reach out. You can pick from available capacity. Client onboarding chat is saved — consultants can view full conversation history.</p>
                                 </div>
-                                <button type="button" className="btn-add" onClick={() => setShowTeamModal(true)} style={{ flexShrink: 0 }}>
-                                    ✏️ Assign consultant
-                                </button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                    <button type="button" className="btn-secondary" onClick={handleViewChatLogs} style={{ whiteSpace: 'nowrap' }}>
+                                        💬 View chat history
+                                    </button>
+                                    <button type="button" className="btn-add" onClick={() => setShowTeamModal(true)}>
+                                        ✏️ Assign consultant
+                                    </button>
+                                </div>
                             </div>
                         )}
                         <div className="team-grid">

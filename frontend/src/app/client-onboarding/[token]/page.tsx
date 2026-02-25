@@ -4285,12 +4285,17 @@ export default function ClientOnboardingPage() {
                 .chatbot-header-close {
                     background: none;
                     border: none;
-                    color: white;
+                    color: #ffffff !important;
                     cursor: pointer;
                     padding: 4px 8px;
                     font-size: 18px;
                     line-height: 1;
                     opacity: 0.95;
+                }
+
+                .chatbot-header-human-btn *,
+                .chatbot-header-close * {
+                    color: #ffffff !important;
                 }
 
                 .chatbot-header-human-btn:hover:not(:disabled),

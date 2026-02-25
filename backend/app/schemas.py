@@ -339,6 +339,7 @@ class ProjectConfigUpdate(BaseModel):
     stage_gates_json: Optional[Dict[str, Any]] = None
     thresholds_json: Optional[Dict[str, Any]] = None
     hitl_enabled: Optional[bool] = None
+    hitl_overrides_json: Optional[List[Dict[str, Any]]] = None
 
 
 class ProjectConfigResponse(BaseModel):
@@ -349,6 +350,7 @@ class ProjectConfigResponse(BaseModel):
     stage_gates_json: Optional[Dict[str, Any]]
     thresholds_json: Optional[Dict[str, Any]]
     hitl_enabled: bool
+    hitl_overrides_json: Optional[List[Dict[str, Any]]] = None
     updated_at: datetime
 
 
