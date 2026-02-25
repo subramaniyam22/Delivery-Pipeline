@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 JOB_TYPE_BLUEPRINT_GENERATE = "template.blueprint.generate"
 JOB_TYPE_TEMPLATE_PREVIEW = "template.preview.generate"
+JOB_TYPE_CLIENT_PREVIEW = "project.client_preview.generate"
 LEASE_SECONDS = 120
 BACKOFF_BASE_SECONDS = 10
 BACKOFF_MAX_SECONDS = 900  # 15 min

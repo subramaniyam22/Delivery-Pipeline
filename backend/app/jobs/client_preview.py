@@ -181,6 +181,7 @@ def run_client_preview_pipeline(
                     pass
             project.client_preview_status = "generating"
             project.client_preview_error = None
+            project.client_preview_started_at = datetime.utcnow()
             session.commit()
             try:
                 assets = render_client_preview_assets(blueprint, contract)
@@ -188,6 +189,7 @@ def run_client_preview_pipeline(
                 logger.exception("Client preview render failed: %s", e)
                 project.client_preview_status = "failed"
                 project.client_preview_error = str(e)
+                project.client_preview_started_at = None
                 session.commit()
                 _client_preview_semaphore.release()
                 return {"status": "failed", "error": str(e)}
@@ -198,6 +200,7 @@ def run_client_preview_pipeline(
             if total_size > PREVIEW_BUNDLE_MAX_BYTES:
                 project.client_preview_status = "failed"
                 project.client_preview_error = f"Bundle size {total_size} exceeds max {PREVIEW_BUNDLE_MAX_BYTES}"
+                project.client_preview_started_at = None
                 session.commit()
                 _client_preview_semaphore.release()
                 return {"status": "failed", "error": project.client_preview_error}
@@ -208,6 +211,7 @@ def run_client_preview_pipeline(
                 logger.exception("Client preview upload failed: %s", e)
                 project.client_preview_status = "failed"
                 project.client_preview_error = f"Upload failed: {e}"
+                project.client_preview_started_at = None
                 session.commit()
                 _client_preview_semaphore.release()
                 return {"status": "failed", "error": str(e)}
@@ -227,6 +231,7 @@ def run_client_preview_pipeline(
             project.client_preview_thumbnail_url = thumbnail_url
             project.client_preview_status = "ready"
             project.client_preview_error = None
+            project.client_preview_started_at = None
             project.client_preview_last_generated_at = datetime.utcnow()
             project.client_preview_hash = new_hash
             session.add(PipelineEvent(project_id=project_id, stage_key="3_build", event_type="CLIENT_PREVIEW_READY", details_json={"preview_url": preview_url}))
@@ -251,10 +256,12 @@ def run_client_preview_pipeline(
                 _client_preview_semaphore.release()
                 project.client_preview_status = "failed"
                 project.client_preview_error = "S3 not configured for template zip preview"
+                project.client_preview_started_at = None
                 session.commit()
                 return {"status": "failed", "error": project.client_preview_error}
             project.client_preview_status = "generating"
             project.client_preview_error = None
+            project.client_preview_started_at = datetime.utcnow()
             session.commit()
             try:
                 with tempfile.TemporaryDirectory() as workdir:
@@ -269,6 +276,7 @@ def run_client_preview_pipeline(
                 project.client_preview_thumbnail_url = None
                 project.client_preview_status = "ready"
                 project.client_preview_error = None
+                project.client_preview_started_at = None
                 project.client_preview_last_generated_at = datetime.utcnow()
                 project.client_preview_hash = new_hash
                 session.add(PipelineEvent(project_id=project_id, stage_key="3_build", event_type="CLIENT_PREVIEW_READY", details_json={"preview_url": preview_url}))
@@ -279,6 +287,7 @@ def run_client_preview_pipeline(
                 logger.exception("Client preview (s3_zip) failed: %s", e)
                 project.client_preview_status = "failed"
                 project.client_preview_error = str(e)
+                project.client_preview_started_at = None
                 session.commit()
                 _client_preview_semaphore.release()
                 return {"status": "failed", "error": str(e)}
@@ -286,6 +295,7 @@ def run_client_preview_pipeline(
         _client_preview_semaphore.release()
         project.client_preview_status = "failed"
         project.client_preview_error = "Template has no blueprint and no ZIP source. Generate blueprint or use a template with upload."
+        project.client_preview_started_at = None
         session.commit()
         return {"status": "failed", "error": project.client_preview_error}
     except Exception as e:
@@ -300,6 +310,7 @@ def run_client_preview_pipeline(
                 if project:
                     project.client_preview_status = "failed"
                     project.client_preview_error = str(e)
+                    project.client_preview_started_at = None
                     session.commit()
             except Exception:
                 pass

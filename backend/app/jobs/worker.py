@@ -24,6 +24,7 @@ from app.services.pipeline_orchestrator import on_job_success, on_job_failure
 from app.services.job_queue import (
     JOB_TYPE_BLUEPRINT_GENERATE,
     JOB_TYPE_TEMPLATE_PREVIEW,
+    JOB_TYPE_CLIENT_PREVIEW,
     claim_next_generic_job,
     extend_lease,
     mark_generic_job_failed,
@@ -105,6 +106,13 @@ def _run_generic_job(job, db) -> bool:
                 return True
             from app.jobs.template_preview import run_template_preview_pipeline
             run_template_preview_pipeline(UUID(template_id), db=db)
+        elif job_type == JOB_TYPE_CLIENT_PREVIEW:
+            project_id = payload.get("project_id")
+            if not project_id:
+                mark_generic_job_failed(job_id, "Missing project_id in payload", db=db)
+                return True
+            from app.jobs.client_preview import run_client_preview_pipeline
+            run_client_preview_pipeline(UUID(project_id), force=payload.get("force", False), db=db)
         else:
             mark_generic_job_failed(job_id, f"Unknown job type: {job_type}", db=db)
             return True

@@ -32,13 +32,22 @@ def _contract_to_client_dataset(contract: Dict[str, Any]) -> Dict[str, Any]:
         accent = theme_colors.get("accent") or "#3b82f6"
     else:
         primary, secondary, accent = "#2563eb", "#1e40af", "#3b82f6"
-    logo_url = brand.get("logo_url") or "https://placehold.co/200x80/2563eb/white?text=Logo"
+    logo_url = (brand.get("logo_url") or "").strip() or "https://placehold.co/200x80/2563eb/white?text=Logo"
     images_json = brand.get("images") or []
     if isinstance(images_json, list) and images_json:
-        gallery_images = [
-            (img.get("url") or img) if isinstance(img, dict) else str(img)
-            for img in images_json[:6]
-        ]
+        gallery_images = []
+        for img in images_json[:12]:
+            u = None
+            if isinstance(img, dict):
+                u = (img.get("url") or img.get("path") or img.get("file_path") or (img.get("storage_key") if isinstance(img.get("storage_key"), str) and img.get("storage_key", "").startswith("http") else None))
+                if u:
+                    u = str(u).strip()
+            elif isinstance(img, str):
+                u = img.strip() if img else None
+            if u and u.startswith(("http://", "https://", "data:")):
+                gallery_images.append(u)
+        if not gallery_images:
+            gallery_images = ["https://placehold.co/800x500?text=Client+content+pending"]
     else:
         gallery_images = ["https://placehold.co/800x500?text=Client+content+pending"]
     copy_text = fundamentals.get("copy_text") or req.get("copy_scope_notes") or "Client content pending."
@@ -113,20 +122,23 @@ def _blueprint_with_client_tokens(blueprint: Dict[str, Any], contract: Dict[str,
 
 
 def _client_images_as_template_images(contract: Dict[str, Any]) -> Dict[str, List[str]]:
-    """Build category -> [urls] from contract onboarding brand.images so hero/gallery/feature_split use client uploads."""
+    """Build category -> [urls] from contract onboarding brand.images and logo so hero/gallery/feature_split use client uploads."""
     ob = (contract or {}).get("onboarding") or {}
     brand = ob.get("brand") or {}
     images_json = brand.get("images") or []
-    if not isinstance(images_json, list) or not images_json:
-        return {}
+    logo_url = (brand.get("logo_url") or "").strip()
     urls: List[str] = []
-    for img in images_json[:12]:
+    if logo_url and logo_url.startswith(("http://", "https://", "data:")):
+        urls.append(logo_url)
+    for img in (images_json if isinstance(images_json, list) else [])[:12]:
         if isinstance(img, dict):
-            u = img.get("url") or img.get("path")
+            u = img.get("url") or img.get("path") or img.get("file_path")
             if u:
-                urls.append(str(u))
-        elif isinstance(img, str):
-            urls.append(img)
+                u = str(u).strip()
+                if u.startswith(("http://", "https://", "data:")):
+                    urls.append(u)
+        elif isinstance(img, str) and img.strip().startswith(("http://", "https://", "data:")):
+            urls.append(img.strip())
     if not urls:
         return {}
     # Spread to all section categories so hero, gallery, feature_split get client images (no relative 404s)

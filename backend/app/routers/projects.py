@@ -1408,10 +1408,24 @@ def get_client_preview(
             project.created_by_user_id,
         ):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this project's preview")
+    # If stuck in "generating" for > 10 min, mark as failed so user can regenerate
+    preview_status = getattr(project, "client_preview_status", "not_generated")
+    started_at = getattr(project, "client_preview_started_at", None)
+    if preview_status == "generating" and started_at:
+        try:
+            if (datetime.utcnow() - started_at).total_seconds() > 600:
+                project.client_preview_status = "failed"
+                project.client_preview_error = "Preview generation timed out. Regenerate from project or client onboarding."
+                project.client_preview_started_at = None
+                db.commit()
+                db.refresh(project)
+                preview_status = "failed"
+        except Exception:
+            pass
     return {
         "preview_url": getattr(project, "client_preview_url", None),
         "thumbnail_url": getattr(project, "client_preview_thumbnail_url", None),
-        "status": getattr(project, "client_preview_status", "not_generated"),
+        "status": preview_status,
         "last_generated_at": project.client_preview_last_generated_at.isoformat() if getattr(project, "client_preview_last_generated_at", None) else None,
         "error": getattr(project, "client_preview_error", None),
     }

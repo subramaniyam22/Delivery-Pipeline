@@ -33,11 +33,11 @@ def _brand_with_resolved_urls(ob: OnboardingData) -> Dict[str, Any]:
     logo_file_path = ob.logo_file_path
     images = list(ob.images_json or [])
     try:
-        from app.services.storage import get_storage_backend
+        from app.services.storage import get_storage_backend, S3_PRESIGN_MAX_EXPIRY_SECONDS
         storage = get_storage_backend()
         if getattr(storage, "get_url", None):
             if logo_file_path:
-                fresh = storage.get_url(logo_file_path, expires_seconds=3600)
+                fresh = storage.get_url(logo_file_path, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
                 if fresh:
                     logo_url = fresh
             for i, img in enumerate(images):
@@ -45,7 +45,7 @@ def _brand_with_resolved_urls(ob: OnboardingData) -> Dict[str, Any]:
                     continue
                 key = img.get("storage_key") or img.get("file_path") or img.get("path")
                 if key:
-                    fresh = storage.get_url(key, expires_seconds=3600)
+                    fresh = storage.get_url(key, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
                     if fresh:
                         images[i] = {**img, "url": fresh}
     except Exception:

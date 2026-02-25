@@ -201,6 +201,7 @@ class Project(Base):
     client_preview_url = Column(String(1000), nullable=True)
     client_preview_thumbnail_url = Column(String(1000), nullable=True)
     client_preview_status = Column(String(30), default="not_generated", nullable=False)  # not_generated | generating | ready | failed
+    client_preview_started_at = Column(DateTime, nullable=True)  # set when status becomes generating; used to timeout stuck runs
     client_preview_last_generated_at = Column(DateTime, nullable=True)
     client_preview_hash = Column(String(64), nullable=True)
     client_preview_error = Column(Text, nullable=True)

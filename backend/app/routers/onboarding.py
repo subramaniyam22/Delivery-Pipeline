@@ -31,7 +31,7 @@ from app.config import Settings, settings
 logger = logging.getLogger(__name__)
 from app.services.email_service import send_client_reminder_email
 from app.services.config_service import get_config
-from app.services.storage import get_storage_backend, get_preview_storage_backend
+from app.services.storage import get_storage_backend, get_preview_storage_backend, S3_PRESIGN_MAX_EXPIRY_SECONDS
 from app.services.onboarding_agent import validate_onboarding_submission
 
 router = APIRouter(prefix="/projects", tags=["onboarding"])
@@ -408,7 +408,7 @@ def get_onboarding_data(
     try:
         storage = get_storage_backend()
         if getattr(storage, "get_url", None) and onboarding.logo_file_path:
-            fresh = storage.get_url(onboarding.logo_file_path, expires_seconds=3600)
+            fresh = storage.get_url(onboarding.logo_file_path, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
             if fresh:
                 onboarding.logo_url = fresh
         images = list(onboarding.images_json or [])
@@ -417,7 +417,7 @@ def get_onboarding_data(
                 continue
             key = img.get("storage_key") or img.get("file_path")
             if key and getattr(storage, "get_url", None):
-                fresh = storage.get_url(key, expires_seconds=3600)
+                fresh = storage.get_url(key, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
                 if fresh:
                     images[i] = {**img, "url": fresh}
         if images != (onboarding.images_json or []):
@@ -728,11 +728,26 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
     client_preview = None
     if project and hasattr(project, "client_preview_status"):
         status = getattr(project, "client_preview_status", "not_generated")
+        # If stuck in "generating" for > 10 min, mark as failed so client can use Regenerate preview
+        started_at = getattr(project, "client_preview_started_at", None)
+        if status == "generating" and started_at:
+            try:
+                delta_sec = (datetime.utcnow() - started_at).total_seconds()
+                if delta_sec > 600:  # 10 minutes
+                    project.client_preview_status = "failed"
+                    project.client_preview_error = "Preview generation timed out. Click Regenerate preview to try again."
+                    project.client_preview_started_at = None
+                    db.commit()
+                    status = "failed"
+            except Exception as e:
+                logger.warning("Client preview timeout check failed: %s", e)
         client_preview = {
             "preview_url": getattr(project, "client_preview_url", None),
             "thumbnail_url": getattr(project, "client_preview_thumbnail_url", None),
             "status": status,
         }
+        if status == "failed":
+            client_preview["error"] = getattr(project, "client_preview_error", None)
         if status == "ready" and onboarding.client_access_token:
             client_preview["preview_proxy_path"] = f"/projects/client-onboarding/{onboarding.client_access_token}/preview/"
     client_wants_full_validation = _get_custom_field(onboarding, "client_wants_full_validation") if onboarding else None
@@ -749,6 +764,30 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
     if cfg_tooltip and cfg_tooltip.value_json is not None:
         field_tooltip = cfg_tooltip.value_json if isinstance(cfg_tooltip.value_json, str) else (cfg_tooltip.value_json.get("value") if isinstance(cfg_tooltip.value_json, dict) else None)
     field_tooltip = field_tooltip or "Each required field must have a value or be marked Not Applicable / Not Needed."
+
+    # Refresh presigned URLs so client sees logo/images without 403 (expired URLs).
+    # URLs use 7-day expiry (AWS max for presigned). Each page load gets fresh URLs, so after 7 days
+    # the user just reloads the page to get new links; only if they keep the same page open >7 days would images break.
+    logo_url_out = onboarding.logo_url
+    images_out = list(onboarding.images_json or [])
+    try:
+        storage = get_storage_backend()
+        if getattr(storage, "get_url", None):
+            if onboarding.logo_file_path:
+                fresh = storage.get_url(onboarding.logo_file_path, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
+                if fresh:
+                    logo_url_out = fresh
+            for i, img in enumerate(images_out):
+                if not isinstance(img, dict):
+                    continue
+                key = img.get("storage_key") or img.get("file_path") or img.get("path")
+                if key:
+                    fresh = storage.get_url(key, expires_seconds=S3_PRESIGN_MAX_EXPIRY_SECONDS)
+                    if fresh:
+                        images_out[i] = {**img, "url": fresh}
+    except Exception as e:
+        logger.warning("Refresh presigned URLs for client onboarding assets failed: %s", e)
+
     return {
         "project_title": project.title if project else "Unknown Project",
         "project_id": str(onboarding.project_id),
@@ -763,9 +802,9 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
         "preview_iteration_count": preview_iteration_count,
         "client_preview_max_iterations": client_preview_max_iterations,
         "data": {
-            "logo_url": onboarding.logo_url,
+            "logo_url": logo_url_out,
             "logo_file_path": onboarding.logo_file_path,
-            "images": onboarding.images_json,
+            "images": images_out,
             "copy_text": onboarding.copy_text,
             "use_custom_copy": onboarding.use_custom_copy,
             "custom_copy_base_price": onboarding.custom_copy_base_price,
@@ -822,7 +861,7 @@ def regenerate_client_preview(
         )
     onboarding.preview_iteration_count = current_count + 1
     db.commit()
-    background_tasks.add_task(_run_client_preview_after_submit, project.id, force=True)
+    _enqueue_or_run_client_preview(project.id, force=True, db=db, background_tasks=background_tasks)
     return {"message": "Preview generation started. This page will update when it is ready.", "preview_iteration_count": current_count + 1}
 
 
@@ -1028,6 +1067,33 @@ def _run_client_preview_after_submit(project_id: UUID, force: bool = False) -> N
         session.close()
 
 
+def _enqueue_or_run_client_preview(
+    project_id: UUID,
+    force: bool,
+    db: Session,
+    background_tasks: Optional[BackgroundTasks] = None,
+) -> None:
+    """Enqueue client preview job so a worker runs it (reliable on Render). Fall back to in-process task if enqueue fails."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    try:
+        from app.services.job_queue import enqueue_job, JOB_TYPE_CLIENT_PREVIEW
+        enqueue_job(
+            type=JOB_TYPE_CLIENT_PREVIEW,
+            payload={"project_id": str(project_id), "force": force},
+            idempotency_key=f"client_preview:{project_id}",
+            db=db,
+        )
+        if project and hasattr(project, "client_preview_status"):
+            project.client_preview_status = "generating"
+            project.client_preview_error = None
+            db.commit()
+        logger.info("Client preview job enqueued for project %s", project_id)
+    except Exception as e:
+        logger.warning("Client preview enqueue failed, running in-process: %s", e)
+        if background_tasks:
+            background_tasks.add_task(_run_client_preview_after_submit, project_id, force)
+
+
 @client_router.post("/{token}/submit")
 async def submit_client_onboarding_form(
     token: str,
@@ -1174,7 +1240,7 @@ async def _submit_client_onboarding_impl(
         if current_count < max_iterations:
             onboarding.preview_iteration_count = current_count + 1
             db.commit()
-            background_tasks.add_task(_run_client_preview_after_submit, project.id)
+            _enqueue_or_run_client_preview(project.id, force=False, db=db, background_tasks=background_tasks)
 
     notification_sent = False
     recipients = []

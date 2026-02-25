@@ -533,6 +533,18 @@ export default function ClientOnboardingPage() {
     const [regeneratingPreview, setRegeneratingPreview] = useState(false);
     const [requestHumanSent, setRequestHumanSent] = useState(false);
     const [requestHumanLoading, setRequestHumanLoading] = useState(false);
+    const [previewGeneratingLong, setPreviewGeneratingLong] = useState(false);
+
+    // When preview has been "generating" for >5 min, show "taking longer than usual" (worker may be slow or stuck)
+    useEffect(() => {
+        const status = formData?.client_preview?.status;
+        if (status !== 'generating') {
+            setPreviewGeneratingLong(false);
+            return;
+        }
+        const t = setTimeout(() => setPreviewGeneratingLong(true), 5 * 60 * 1000);
+        return () => clearTimeout(t);
+    }, [formData?.client_preview?.status]);
 
     // Effect to initialize toggles based on data
     useEffect(() => {
@@ -1298,6 +1310,9 @@ export default function ClientOnboardingPage() {
                                     <p style={{ margin: '12px 0 0', fontSize: '13px', color: '#64748b' }}>This can take 2–5 minutes. This page will update when it is ready—no need to refresh.</p>
                                     {previewProgress >= 95 && (
                                         <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>If it’s been more than 5 minutes, preview may still be processing on our servers or your consultant can share the link once it’s ready.</p>
+                                    )}
+                                    {previewGeneratingLong && (
+                                        <p style={{ margin: '10px 0 0', fontSize: '13px', color: '#b45309', fontWeight: 600 }}>Taking longer than usual. You can try &quot;Regenerate preview&quot; below or ask your consultant to check status.</p>
                                     )}
                                     {typeof formData.preview_iteration_count === 'number' && typeof formData.client_preview_max_iterations === 'number' && (formData.client_preview_max_iterations - formData.preview_iteration_count) > 0 && (
                                         <div style={{ marginTop: '16px' }}>
@@ -4145,7 +4160,12 @@ export default function ClientOnboardingPage() {
                                         className="chatbot-header-human-btn"
                                         aria-label="Talk to a human consultant"
                                     >
-                                        {requestHumanLoading ? '…' : '👤'}
+                                        {requestHumanLoading ? '…' : (
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }} aria-hidden>
+                                                <circle cx="12" cy="8" r="4" />
+                                                <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+                                            </svg>
+                                        )}
                                     </button>
                                 )}
                                 <button onClick={() => setShowChatbot(false)} className="chatbot-header-close" aria-label="Close chat">×</button>
@@ -4291,11 +4311,15 @@ export default function ClientOnboardingPage() {
                     font-size: 18px;
                     line-height: 1;
                     opacity: 0.95;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
                 }
 
-                .chatbot-header-human-btn *,
+                .chatbot-header-human-btn svg,
                 .chatbot-header-close * {
                     color: #ffffff !important;
+                    stroke: #ffffff !important;
                 }
 
                 .chatbot-header-human-btn:hover:not(:disabled),

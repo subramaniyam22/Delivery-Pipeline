@@ -352,8 +352,8 @@ def _render_section(
     return f'<section class="section-unknown" style="padding: 24px; background: #f1f5f9; border-radius: 8px;"><p style="margin: 0;">Section: {html_module.escape(stype)} (placeholder)</p></section>'
 
 
-def _nav_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
-    """Build nav with relative hrefs (index.html, slug.html) so preview works from S3 subpath."""
+def _nav_html(blueprint: Dict[str, Any], tokens: Dict[str, Any], logo_url: Optional[str] = None) -> str:
+    """Build nav with relative hrefs (index.html, slug.html) so preview works from S3 subpath. Optional logo_url shows client logo."""
     nav = blueprint.get("navigation") or {}
     items = nav.get("items") or []
     primary = tokens.get("primary", "#2563eb")
@@ -370,7 +370,10 @@ def _nav_html(blueprint: Dict[str, Any], tokens: Dict[str, Any]) -> str:
         f'<a href="{_href_for_slug(item.get("href") or "")}" style="color: {text_on_primary}; text-decoration: none; padding: 8px 16px;">{html_module.escape(item.get("label") or "")}</a>'
         for item in items if isinstance(item, dict)
     )
-    return f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main navigation"><a href="index.html" style="color: {text_on_primary}; text-decoration: none; font-weight: 600;">{html_module.escape((blueprint.get("meta") or {}).get("name") or "Home")}</a>{links}</nav>'
+    logo_part = ""
+    if logo_url and logo_url.startswith(("http://", "https://", "data:")):
+        logo_part = f'<img src="{html_module.escape(logo_url)}" alt="Logo" style="height: 36px; max-width: 140px; object-fit: contain; margin-right: 12px; vertical-align: middle;" />'
+    return f'<nav style="background: {primary}; padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" aria-label="Main navigation">{logo_part}<a href="index.html" style="color: {text_on_primary}; text-decoration: none; font-weight: 600;">{html_module.escape((blueprint.get("meta") or {}).get("name") or "Home")}</a>{links}</nav>'
 
 
 def _footer_href(href: str) -> str:
@@ -447,7 +450,8 @@ def _render_one_page_html(
     for i, sec in enumerate(page.get("sections") or []):
         if isinstance(sec, dict):
             sections_html.append(_render_section(sec, tokens, demo_dataset, env, template_images, section_index=i))
-    nav = _nav_html(blueprint_json, tokens)
+    logo_url = (demo_dataset.get("brand") or {}).get("logo_url") if demo_dataset else None
+    nav = _nav_html(blueprint_json, tokens, logo_url=logo_url)
     footer = _footer_html(blueprint_json, tokens)
     meta_name = (blueprint_json.get("meta") or {}).get("name") or "Preview"
     title = page.get("title") or "Home"
