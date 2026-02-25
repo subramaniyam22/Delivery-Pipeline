@@ -1,14 +1,14 @@
 """
 Render client preview assets from template blueprint + delivery contract.
 Uses real client onboarding data (brand, content) with graceful fallbacks.
-Single-page output so nav links use in-page anchors and work with one pre-signed URL (no 403 on other pages).
+Multi-page output: index.html plus one {slug}.html per page so users can navigate to all pages.
 """
 from __future__ import annotations
 
 import copy
 from typing import Any, Dict, List
 
-from app.services.preview_renderer import render_preview_assets_single_page
+from app.services.preview_renderer import render_preview_assets
 from app.services.demo_preview_data import _default_dataset
 
 
@@ -139,7 +139,7 @@ def render_client_preview_assets(
 ) -> Dict[str, str]:
     """
     Render preview assets using blueprint structure and client data from contract.
-    Uses single-page output (in-page anchors) so nav links work with one URL (no 403 on other pages).
+    Multi-page: index.html plus one {slug}.html per page so users can navigate to all pages.
     Passes client-uploaded images as template_images so hero/gallery/feature sections show them.
     Returns dict of path -> content (str). Never raises; missing data uses placeholders.
     """
@@ -149,8 +149,7 @@ def render_client_preview_assets(
         client_dataset = _contract_to_client_dataset(contract_json)
         blueprint_with_tokens = _blueprint_with_client_tokens(blueprint_json, contract_json or {})
         client_template_images = _client_images_as_template_images(contract_json or {})
-        # Single-page: one index.html with #section-0, #section-1, ... so navigation doesn't trigger new requests (403 with pre-signed URLs).
-        assets = render_preview_assets_single_page(
+        assets = render_preview_assets(
             blueprint_with_tokens, client_dataset, template_images=client_template_images
         )
         return assets

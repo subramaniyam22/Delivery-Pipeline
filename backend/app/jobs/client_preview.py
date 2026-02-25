@@ -2,15 +2,17 @@
 Client preview pipeline: render from template blueprint + delivery contract,
 upload to storage, update project client_preview_* fields.
 Throttled; concurrency limited; never crashes worker loop.
+Prefers blueprint path when template has blueprint (multi-page, client images); ZIP path injects client images into built HTML/CSS.
 """
 from __future__ import annotations
 
 import hashlib
 import logging
 import os
+import re
 import threading
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -27,6 +29,63 @@ from app.services.storage import (
 from app.services.thumbnail import generate_thumbnail
 
 logger = logging.getLogger(__name__)
+
+# Map common built-site image stems to contract brand image list (use first N for categories)
+_STEM_TO_CATEGORY = {"hero": "exterior", "careers": "people", "services": "lifestyle", "office": "interior"}
+
+
+def _inject_client_images_into_dist(dist_path: str, contract: Dict[str, Any]) -> None:
+    """Replace assets/img/* in HTML/CSS under dist_path with client-uploaded image URLs from contract. Modifies files in place."""
+    ob = (contract or {}).get("onboarding") or {}
+    brand = ob.get("brand") or {}
+    images_json = brand.get("images") or []
+    if not isinstance(images_json, list) or not images_json:
+        return
+    urls: List[str] = []
+    for img in images_json[:12]:
+        if isinstance(img, dict):
+            u = img.get("url") or img.get("path")
+            if u:
+                urls.append(str(u))
+        elif isinstance(img, str):
+            urls.append(img)
+    if not urls:
+        return
+    by_category: Dict[str, List[str]] = {cat: urls for cat in ("exterior", "interior", "lifestyle", "people", "neighborhood")}
+    pattern = re.compile(
+        r'(src=|url\()(\s*["\']?)(assets/img/[^"\')\s]+)(["\']?)',
+        re.IGNORECASE,
+    )
+
+    def replacer(match: re.Match) -> str:
+        prefix, quote1, path, quote2 = match.groups()
+        stem = os.path.splitext(os.path.basename(path))[0].lower().replace(" ", "_")
+        url = None
+        if stem in by_category and by_category[stem]:
+            url = by_category[stem][0]
+        else:
+            fallback = _STEM_TO_CATEGORY.get(stem)
+            if fallback and fallback in by_category and by_category[fallback]:
+                url = by_category[fallback][0]
+        if url:
+            return f"{prefix}{quote1}{url}{quote2}"
+        return match.group(0)
+
+    for root, _dirs, files in os.walk(dist_path):
+        for name in files:
+            if not (name.endswith(".html") or name.endswith(".css")):
+                continue
+            path = os.path.join(root, name)
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read()
+                new_content = pattern.sub(replacer, content)
+                if new_content != content:
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(new_content)
+            except Exception as e:
+                logger.warning("Inject client images into %s: %s", path, e)
+
 
 CLIENT_PREVIEW_RATE_LIMIT_MINUTES = 5
 CLIENT_PREVIEW_CONCURRENCY = int(os.getenv("CLIENT_PREVIEW_CONCURRENCY", "2"))
@@ -100,7 +159,82 @@ def run_client_preview_pipeline(
             session.commit()
             return {"status": "failed", "error": "Template not found"}
 
-        # S3 ZIP path: build from template zip, upload to previews/{project_id}/{run_id}/site/
+        # Prefer blueprint path when template has blueprint: multi-page (index.html + slug.html) + client images
+        blueprint = getattr(template, "blueprint_json", None)
+        if blueprint and isinstance(blueprint, dict):
+            # Blueprint path: multi-page, client images from contract
+            blueprint_hash = getattr(template, "blueprint_hash", None) or hashlib.sha256(str(blueprint).encode()).hexdigest()[:16]
+            pc = session.query(ProjectContract).filter(ProjectContract.project_id == project_id).first()
+            contract_version = (pc.version or 1) if pc else 1
+            new_hash = hashlib.sha256(f"{blueprint_hash}:{contract_version}".encode()).hexdigest()
+            if not force and getattr(project, "client_preview_hash", None) == new_hash and getattr(project, "client_preview_status", None) == "ready":
+                _client_preview_semaphore.release()
+                return {"status": "skipped", "message": "Preview already up to date"}
+            last_at = getattr(project, "client_preview_last_generated_at", None)
+            if not force and last_at:
+                try:
+                    delta_sec = (datetime.utcnow() - last_at).total_seconds()
+                    if delta_sec < CLIENT_PREVIEW_RATE_LIMIT_MINUTES * 60:
+                        _client_preview_semaphore.release()
+                        return {"status": "skipped", "message": "Rate limited"}
+                except Exception:
+                    pass
+            project.client_preview_status = "generating"
+            project.client_preview_error = None
+            session.commit()
+            try:
+                assets = render_client_preview_assets(blueprint, contract)
+            except Exception as e:
+                logger.exception("Client preview render failed: %s", e)
+                project.client_preview_status = "failed"
+                project.client_preview_error = str(e)
+                session.commit()
+                _client_preview_semaphore.release()
+                return {"status": "failed", "error": str(e)}
+            total_size = sum(
+                len(c.encode("utf-8") if isinstance(c, str) else c)
+                for c in assets.values()
+            )
+            if total_size > PREVIEW_BUNDLE_MAX_BYTES:
+                project.client_preview_status = "failed"
+                project.client_preview_error = f"Bundle size {total_size} exceeds max {PREVIEW_BUNDLE_MAX_BYTES}"
+                session.commit()
+                _client_preview_semaphore.release()
+                return {"status": "failed", "error": project.client_preview_error}
+            prefix = f"projects/{project_id}/preview/v{contract_version}"
+            try:
+                preview_url = upload_preview_bundle(prefix, assets)
+            except Exception as e:
+                logger.exception("Client preview upload failed: %s", e)
+                project.client_preview_status = "failed"
+                project.client_preview_error = f"Upload failed: {e}"
+                session.commit()
+                _client_preview_semaphore.release()
+                return {"status": "failed", "error": str(e)}
+            thumbnail_url = None
+            try:
+                thumb_bytes = generate_thumbnail(
+                    blueprint_json=blueprint,
+                    preview_url=preview_url,
+                    title=((contract.get("onboarding") or {}).get("primary_contact") or {}).get("company_name") or project.client_name or "Client Preview",
+                    subtitle=project.title or "",
+                )
+                if thumb_bytes:
+                    thumbnail_url = upload_thumbnail(prefix, thumb_bytes)
+            except Exception as e:
+                logger.warning("Client preview thumbnail failed: %s", e)
+            project.client_preview_url = preview_url
+            project.client_preview_thumbnail_url = thumbnail_url
+            project.client_preview_status = "ready"
+            project.client_preview_error = None
+            project.client_preview_last_generated_at = datetime.utcnow()
+            project.client_preview_hash = new_hash
+            session.add(PipelineEvent(project_id=project_id, stage_key="3_build", event_type="CLIENT_PREVIEW_READY", details_json={"preview_url": preview_url}))
+            session.commit()
+            _client_preview_semaphore.release()
+            return {"status": "ready", "preview_url": preview_url, "thumbnail_url": thumbnail_url}
+
+        # S3 ZIP path (no blueprint): build from template zip, inject client images, upload
         build_source = getattr(template, "build_source_type", None)
         source_ref = getattr(template, "build_source_ref", None)
         if build_source in ("s3_zip", "s3") and source_ref:
@@ -127,6 +261,7 @@ def run_client_preview_pipeline(
                     repo_dir = clone_template(template, workdir)
                     _inject_client_contract(repo_dir, contract)
                     dist_path, _ = build_site(repo_dir)
+                    _inject_client_images_into_dist(dist_path, contract)
                     run_id = f"preview-{new_hash}"
                     upload_preview_site(str(project_id), run_id, dist_path)
                     preview_url = get_preview_public_url(str(project_id), run_id, "")
@@ -148,83 +283,11 @@ def run_client_preview_pipeline(
                 _client_preview_semaphore.release()
                 return {"status": "failed", "error": str(e)}
 
-        blueprint = getattr(template, "blueprint_json", None)
-        if not blueprint or not isinstance(blueprint, dict):
-            _client_preview_semaphore.release()
-            project.client_preview_status = "failed"
-            project.client_preview_error = "Template has no blueprint"
-            session.commit()
-            return {"status": "failed", "error": "Template has no blueprint"}
-        blueprint_hash = getattr(template, "blueprint_hash", None) or hashlib.sha256(str(blueprint).encode()).hexdigest()[:16]
-        pc = session.query(ProjectContract).filter(ProjectContract.project_id == project_id).first()
-        contract_version = (pc.version or 1) if pc else 1
-        new_hash = hashlib.sha256(f"{blueprint_hash}:{contract_version}".encode()).hexdigest()
-        if not force and getattr(project, "client_preview_hash", None) == new_hash and getattr(project, "client_preview_status", None) == "ready":
-            _client_preview_semaphore.release()
-            return {"status": "skipped", "message": "Preview already up to date"}
-        last_at = getattr(project, "client_preview_last_generated_at", None)
-        if not force and last_at:
-            try:
-                delta_sec = (datetime.utcnow() - last_at).total_seconds()
-                if delta_sec < CLIENT_PREVIEW_RATE_LIMIT_MINUTES * 60:
-                    _client_preview_semaphore.release()
-                    return {"status": "skipped", "message": "Rate limited"}
-            except Exception:
-                pass
-        project.client_preview_status = "generating"
-        project.client_preview_error = None
-        session.commit()
-        try:
-            assets = render_client_preview_assets(blueprint, contract)
-        except Exception as e:
-            logger.exception("Client preview render failed: %s", e)
-            project.client_preview_status = "failed"
-            project.client_preview_error = str(e)
-            session.commit()
-            _client_preview_semaphore.release()
-            return {"status": "failed", "error": str(e)}
-        total_size = sum(
-            len(c.encode("utf-8") if isinstance(c, str) else c)
-            for c in assets.values()
-        )
-        if total_size > PREVIEW_BUNDLE_MAX_BYTES:
-            project.client_preview_status = "failed"
-            project.client_preview_error = f"Bundle size {total_size} exceeds max {PREVIEW_BUNDLE_MAX_BYTES}"
-            session.commit()
-            _client_preview_semaphore.release()
-            return {"status": "failed", "error": project.client_preview_error}
-        prefix = f"projects/{project_id}/preview/v{contract_version}"
-        try:
-            preview_url = upload_preview_bundle(prefix, assets)
-        except Exception as e:
-            logger.exception("Client preview upload failed: %s", e)
-            project.client_preview_status = "failed"
-            project.client_preview_error = f"Upload failed: {e}"
-            session.commit()
-            _client_preview_semaphore.release()
-            return {"status": "failed", "error": str(e)}
-        thumbnail_url = None
-        try:
-            thumb_bytes = generate_thumbnail(
-                blueprint_json=blueprint,
-                preview_url=preview_url,
-                title=((contract.get("onboarding") or {}).get("primary_contact") or {}).get("company_name") or project.client_name or "Client Preview",
-                subtitle=project.title or "",
-            )
-            if thumb_bytes:
-                thumbnail_url = upload_thumbnail(prefix, thumb_bytes)
-        except Exception as e:
-            logger.warning("Client preview thumbnail failed: %s", e)
-        project.client_preview_url = preview_url
-        project.client_preview_thumbnail_url = thumbnail_url
-        project.client_preview_status = "ready"
-        project.client_preview_error = None
-        project.client_preview_last_generated_at = datetime.utcnow()
-        project.client_preview_hash = new_hash
-        session.add(PipelineEvent(project_id=project_id, stage_key="3_build", event_type="CLIENT_PREVIEW_READY", details_json={"preview_url": preview_url}))
-        session.commit()
         _client_preview_semaphore.release()
-        return {"status": "ready", "preview_url": preview_url, "thumbnail_url": thumbnail_url}
+        project.client_preview_status = "failed"
+        project.client_preview_error = "Template has no blueprint and no ZIP source. Generate blueprint or use a template with upload."
+        session.commit()
+        return {"status": "failed", "error": project.client_preview_error}
     except Exception as e:
         logger.exception("Client preview pipeline failed: %s", e)
         try:

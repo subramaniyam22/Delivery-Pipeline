@@ -1219,8 +1219,21 @@ def get_team_assignments(
                 "region": tester.region.value if tester.region else None
             }
     
+    # Client requested human consultant (from audit log) — show so manager/admin can assign
+    from app.models import AuditLog
+    client_requested_human = (
+        db.query(AuditLog.id)
+        .filter(
+            AuditLog.project_id == project_id,
+            AuditLog.action == "CLIENT_REQUESTED_HUMAN",
+        )
+        .limit(1)
+        .first()
+    ) is not None
+
     return {
         "team": team,
+        "client_requested_human": client_requested_human,
         "permissions": {
             "can_assign_consultant": can_assign_all or can_assign_region,
             "can_assign_pc": can_assign_all or can_assign_region,

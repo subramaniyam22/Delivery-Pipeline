@@ -677,6 +677,7 @@ export default function ProjectDetailPage() {
     });
     const [assigningTeam, setAssigningTeam] = useState(false);
     const [assignmentRationale, setAssignmentRationale] = useState<Record<string, { user_id?: string; reasons?: string[]; score?: number; auto_assigned?: boolean }>>({});
+    const [clientRequestedHuman, setClientRequestedHuman] = useState(false);
     const [autoAssigning, setAutoAssigning] = useState(false);
     const [showOverrideModal, setShowOverrideModal] = useState(false);
     const [overrideForm, setOverrideForm] = useState({ role: 'builder', user_id: '', comment: '' });
@@ -922,6 +923,7 @@ export default function ProjectDetailPage() {
                 setTeamAssignments(teamData?.team || teamData?.teamAssignments || {});
                 setTeamPermissions(teamData?.permissions || {});
                 setAssignmentSequence(teamData?.assignment_sequence || {});
+                setClientRequestedHuman(!!teamData?.client_requested_human);
                 const assignData = assignmentsRes?.data;
                 if (assignData?.rationale && typeof assignData.rationale === 'object') {
                     setAssignmentRationale(assignData.rationale);
@@ -2842,6 +2844,20 @@ export default function ProjectDetailPage() {
                                 )}
                             </div>
                         </div>
+                        {clientRequestedHuman && !teamAssignments.consultant && (teamPermissions?.can_assign_consultant || canAssignConsultant) && (
+                            <div className="client-requested-human-banner" style={{
+                                padding: '14px 20px', marginBottom: '16px', borderRadius: '12px', border: '1px solid #f59e0b',
+                                background: '#fffbeb', color: '#92400e', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px'
+                            }}>
+                                <div>
+                                    <strong>👤 Client requested to talk to a human consultant.</strong>
+                                    <p style={{ margin: '6px 0 0', fontSize: '14px', opacity: 0.95 }}>Assign a consultant below so they can reach out. You can pick from available capacity.</p>
+                                </div>
+                                <button type="button" className="btn-add" onClick={() => setShowTeamModal(true)} style={{ flexShrink: 0 }}>
+                                    ✏️ Assign consultant
+                                </button>
+                            </div>
+                        )}
                         <div className="team-grid">
                             {project.require_manual_review && (
                                 <div className={`team-card ${teamAssignments.consultant ? 'assigned' : 'unassigned'}`}>

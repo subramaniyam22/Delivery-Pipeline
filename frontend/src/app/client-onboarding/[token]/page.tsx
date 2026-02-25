@@ -4131,7 +4131,21 @@ export default function ClientOnboardingPage() {
                     <div className="chatbot-window">
                         <div className="chatbot-header">
                             <h4>Consultant AI</h4>
-                            <button onClick={() => setShowChatbot(false)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer' }}>×</button>
+                            <div className="chatbot-header-actions">
+                                {!requestHumanSent && (
+                                    <button
+                                        type="button"
+                                        onClick={handleRequestHumanConsultant}
+                                        disabled={requestHumanLoading}
+                                        title="Talk to a human consultant"
+                                        className="chatbot-header-human-btn"
+                                        aria-label="Talk to a human consultant"
+                                    >
+                                        {requestHumanLoading ? '…' : '👤'}
+                                    </button>
+                                )}
+                                <button onClick={() => setShowChatbot(false)} className="chatbot-header-close" aria-label="Close chat">×</button>
+                            </div>
                         </div>
                         <div className="chatbot-body" ref={chatContainerRef}>
                             {chatMessages.map((msg, idx) => (
@@ -4142,20 +4156,6 @@ export default function ClientOnboardingPage() {
                                 </div>
                             ))}
                         </div>
-                        {!requestHumanSent && (
-                            <div style={{ padding: '8px 12px 12px', borderTop: '1px solid #e2e8f0' }}>
-                                <button
-                                    type="button"
-                                    onClick={handleRequestHumanConsultant}
-                                    disabled={requestHumanLoading}
-                                    style={{
-                                        width: '100%', padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: 'white', fontWeight: 600, fontSize: '14px', cursor: requestHumanLoading ? 'not-allowed' : 'pointer', opacity: requestHumanLoading ? 0.8 : 1,
-                                    }}
-                                >
-                                    {requestHumanLoading ? 'Sending…' : 'I want to talk to a human'}
-                                </button>
-                            </div>
-                        )}
                         <form className="chatbot-input" onSubmit={handleSendMessage}>
                             <input
                                 type="text"
@@ -4269,6 +4269,34 @@ export default function ClientOnboardingPage() {
                     font-size: 16px;
                     font-weight: 600;
                     color: white !important;
+                }
+
+                .chatbot-header-actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .chatbot-header-human-btn,
+                .chatbot-header-close {
+                    background: none;
+                    border: none;
+                    color: white;
+                    cursor: pointer;
+                    padding: 4px 8px;
+                    font-size: 18px;
+                    line-height: 1;
+                    opacity: 0.95;
+                }
+
+                .chatbot-header-human-btn:hover:not(:disabled),
+                .chatbot-header-close:hover {
+                    opacity: 1;
+                }
+
+                .chatbot-header-human-btn:disabled {
+                    cursor: not-allowed;
+                    opacity: 0.7;
                 }
                 
                 .chatbot-body {
