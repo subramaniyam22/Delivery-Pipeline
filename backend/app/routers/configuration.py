@@ -653,11 +653,18 @@ def generate_template_preview(
     template = db.query(TemplateRegistry).filter(TemplateRegistry.id == template_id).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    if template.source_type == "git":
-        raise HTTPException(status_code=400, detail="Preview generation is only supported for AI templates")
-    blueprint = getattr(template, "blueprint_json", None)
-    if not blueprint or not isinstance(blueprint, dict):
-        raise HTTPException(status_code=400, detail="Generate blueprint first")
+    build_source = getattr(template, "build_source_type", None)
+    source_ref = getattr(template, "build_source_ref", None)
+    use_zip_path = build_source in ("s3_zip", "s3") and source_ref
+    if template.source_type == "git" and not use_zip_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload a template ZIP (Config > template > upload) so we can build the preview from it, or use an AI template.",
+        )
+    if not use_zip_path:
+        blueprint = getattr(template, "blueprint_json", None)
+        if not blueprint or not isinstance(blueprint, dict):
+            raise HTTPException(status_code=400, detail="Generate blueprint first")
     data = body or {}
     force = data.get("force", False)
     sync_mode = data.get("sync", False)
