@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from app.config import settings
 from app.db import get_db
-from app.models import ChatLog, Project, User, Role
+from app.models import ChatLog, Project, User
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 import logging
@@ -233,33 +233,13 @@ Guidelines:
             parts = content.split("ACTION_REQUEST_HUMAN|")
             action = "handoff"
             content = parts[1].strip() if len(parts) > 1 else "Request sent."
-            
-            # Send URGENT ALERT to Consultant
-            if project_id:
+            # Notify consultant (if assigned), all managers, and all admins
+            if project_id and project:
                 try:
-                    # Re-query if specific details needed, but we have project object
-                    # Re-query if specific details needed, but we have project object
-                    recipients = []
-                    if project and project.consultant_user_id:
-                        recipients.append(str(project.consultant_user_id))
-                    
-                    if not recipients:
-                        managers = db.query(User).filter(User.role == Role.MANAGER).all()
-                        recipients = [str(m.id) for m in managers]
-
-                    if recipients:
-                         logger.info(f"Sending Urgent Alert to {len(recipients)} recipients (Consultant/Managers)")
-                         for recipient_id in recipients:
-                            await notification_manager.send_personal_message({
-                                "type": "URGENT_ALERT",
-                                "project_id": str(project.id),
-                                "project_title": project.title,
-                                "message": f"Client for {project.title} requested a human consultant."
-                            }, recipient_id, db)
-                    else:
-                         logger.warning(f"No consultant assigned for project {project_id} and no managers found, cannot send alert.")
+                    from app.services.notification_service import notify_human_consultant_request
+                    await notify_human_consultant_request(str(project.id), project.title or "Project", db)
                 except Exception as e:
-                    logger.error(f"Failed to send urgent alert: {e}")
+                    logger.error("Failed to send urgent alert: %s", e)
         
         # 2. Log Bot Response
         if project_id:

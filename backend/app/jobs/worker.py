@@ -150,6 +150,12 @@ def _run_autopilot_sweeper() -> None:
             run_onboarding_reminders_and_hold(db, max_projects=30)
             run_onboarding_idle_nudge(db, max_projects=20)
             run_autopilot_sweeper(db, max_projects=50)
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            logger.warning("Autopilot sweeper failed: %s", e)
         finally:
             db.close()
     except Exception as e:

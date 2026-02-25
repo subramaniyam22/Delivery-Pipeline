@@ -330,6 +330,10 @@ export const clientAPI = {
         api.post(`/projects/client-onboarding/${token}/submit`, data),
     setFullValidationChoice: (token: string, proceed: boolean) =>
         api.post(`/projects/client-onboarding/${token}/full-validation-choice`, { proceed }),
+    regeneratePreview: (token: string) =>
+        api.post(`/projects/client-onboarding/${token}/regenerate-preview`),
+    requestHumanConsultant: (token: string) =>
+        api.post(`/projects/client-onboarding/${token}/request-human`),
     uploadLogo: (token: string, file: File) => {
         const formData = new FormData();
         formData.append('file', file);

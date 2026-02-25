@@ -530,6 +530,9 @@ export default function ClientOnboardingPage() {
     const [templateDetailDrawer, setTemplateDetailDrawer] = useState<Template | null>(null);
     const [templateGalleryFilters, setTemplateGalleryFilters] = useState<{ category?: string; style?: string; tag?: string }>({});
     const [submissionStatus, setSubmissionStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+    const [regeneratingPreview, setRegeneratingPreview] = useState(false);
+    const [requestHumanSent, setRequestHumanSent] = useState(false);
+    const [requestHumanLoading, setRequestHumanLoading] = useState(false);
 
     // Effect to initialize toggles based on data
     useEffect(() => {
@@ -1006,6 +1009,51 @@ export default function ClientOnboardingPage() {
         }
     };
 
+    const handleRegeneratePreview = async () => {
+        if (!formData) return;
+        const remaining = typeof formData.client_preview_max_iterations === 'number' && typeof formData.preview_iteration_count === 'number'
+            ? Math.max(0, formData.client_preview_max_iterations - formData.preview_iteration_count)
+            : 1;
+        if (remaining <= 0) return;
+        setRegeneratingPreview(true);
+        setError('');
+        try {
+            await clientAPI.regeneratePreview(token);
+            setFormData(prev => prev ? {
+                ...prev,
+                preview_iteration_count: (prev.preview_iteration_count ?? 0) + 1,
+                client_preview: { ...prev.client_preview, status: 'generating', preview_url: prev.client_preview?.preview_url, thumbnail_url: prev.client_preview?.thumbnail_url } as any,
+            } : null);
+            setPreviewProgress(0);
+            previewProgressStartRef.current = null;
+            await loadFormData();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to retry preview');
+        } finally {
+            setRegeneratingPreview(false);
+        }
+    };
+
+    const handleRequestHumanConsultant = async () => {
+        if (requestHumanSent || requestHumanLoading) return;
+        setRequestHumanLoading(true);
+        setError('');
+        try {
+            await clientAPI.requestHumanConsultant(token);
+            setRequestHumanSent(true);
+            setChatMessages(prev => [...prev, {
+                text: "We've notified the team. A consultant or team member will reach out to you shortly.",
+                isBot: true,
+                sender: 'bot',
+            }]);
+            scrollToBottom();
+        } catch (err: any) {
+            setError(err.response?.data?.detail || 'Failed to send request. Please try again.');
+        } finally {
+            setRequestHumanLoading(false);
+        }
+    };
+
     const setEtaInDays = (field: string, days: number) => {
         const targetDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
         const isoDate = targetDate.toISOString().slice(0, 10);
@@ -1247,6 +1295,20 @@ export default function ClientOnboardingPage() {
                                     {previewProgress >= 95 && (
                                         <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>If it’s been more than 5 minutes, preview may still be processing on our servers or your consultant can share the link once it’s ready.</p>
                                     )}
+                                    {typeof formData.preview_iteration_count === 'number' && typeof formData.client_preview_max_iterations === 'number' && (formData.client_preview_max_iterations - formData.preview_iteration_count) > 0 && (
+                                        <div style={{ marginTop: '16px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={handleRegeneratePreview}
+                                                disabled={regeneratingPreview}
+                                                style={{
+                                                    padding: '10px 18px', borderRadius: '8px', border: '1px solid #166534', background: 'white', color: '#166534', fontWeight: 600, cursor: regeneratingPreview ? 'not-allowed' : 'pointer', opacity: regeneratingPreview ? 0.7 : 1,
+                                                }}
+                                            >
+                                                {regeneratingPreview ? 'Regenerating…' : 'Regenerate preview'}
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                             {formData.client_preview.status === 'ready' && formData.client_preview.preview_url && (
@@ -1297,7 +1359,21 @@ export default function ClientOnboardingPage() {
                                 </>
                             )}
                             {formData.client_preview.status === 'failed' && (
-                                <p style={{ margin: '16px 0 0', fontSize: '14px', color: '#b91c1c' }}>Preview generation failed. You can try again by selecting another template and resubmitting, or contact your consultant.</p>
+                                <div style={{ marginTop: '16px' }}>
+                                    <p style={{ margin: '0 0 12px', fontSize: '14px', color: '#b91c1c' }}>Preview generation failed. You can try again below or contact your consultant.</p>
+                                    {typeof formData.preview_iteration_count === 'number' && typeof formData.client_preview_max_iterations === 'number' && (formData.client_preview_max_iterations - formData.preview_iteration_count) > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={handleRegeneratePreview}
+                                            disabled={regeneratingPreview}
+                                            style={{
+                                                padding: '10px 18px', borderRadius: '8px', border: '1px solid #166534', background: '#166534', color: 'white', fontWeight: 600, cursor: regeneratingPreview ? 'not-allowed' : 'pointer', opacity: regeneratingPreview ? 0.7 : 1,
+                                            }}
+                                        >
+                                            {regeneratingPreview ? 'Regenerating…' : 'Regenerate preview'}
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </>
                     )}
@@ -4066,6 +4142,20 @@ export default function ClientOnboardingPage() {
                                 </div>
                             ))}
                         </div>
+                        {!requestHumanSent && (
+                            <div style={{ padding: '8px 12px 12px', borderTop: '1px solid #e2e8f0' }}>
+                                <button
+                                    type="button"
+                                    onClick={handleRequestHumanConsultant}
+                                    disabled={requestHumanLoading}
+                                    style={{
+                                        width: '100%', padding: '10px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: 'white', fontWeight: 600, fontSize: '14px', cursor: requestHumanLoading ? 'not-allowed' : 'pointer', opacity: requestHumanLoading ? 0.8 : 1,
+                                    }}
+                                >
+                                    {requestHumanLoading ? 'Sending…' : 'I want to talk to a human'}
+                                </button>
+                            </div>
+                        )}
                         <form className="chatbot-input" onSubmit={handleSendMessage}>
                             <input
                                 type="text"

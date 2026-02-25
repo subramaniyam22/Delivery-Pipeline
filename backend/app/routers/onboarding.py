@@ -783,10 +783,48 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
         "copy_pricing": COPY_PRICING_TIERS,
     }
 
+
+@client_router.post("/{token}/regenerate-preview")
+def regenerate_client_preview(
+    token: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Let the client retrigger website preview generation (e.g. when stuck at 95%). Uses one preview attempt if under limit."""
+    onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Invalid or expired link")
+    if onboarding.token_expires_at and onboarding.token_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410, detail="This link has expired")
+    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not onboarding.submitted_at:
+        raise HTTPException(status_code=400, detail="Submit the form first before generating a preview.")
+    if not (onboarding.selected_template_id or onboarding.theme_preference):
+        raise HTTPException(status_code=400, detail="Select a template or theme first.")
+    max_iterations = 3
+    try:
+        cfg = get_config(db, "decision_policies_json")
+        if cfg and isinstance(cfg.value_json, dict) and cfg.value_json.get("client_preview_max_iterations") is not None:
+            max_iterations = int(cfg.value_json["client_preview_max_iterations"])
+    except (TypeError, ValueError):
+        pass
+    current_count = getattr(onboarding, "preview_iteration_count", 0) or 0
+    if current_count >= max_iterations:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You have used all {max_iterations} preview attempts. Contact your consultant to request more.",
+        )
+    onboarding.preview_iteration_count = current_count + 1
+    db.commit()
+    background_tasks.add_task(_run_client_preview_after_submit, project.id, force=True)
+    return {"message": "Preview generation started. This page will update when it is ready.", "preview_iteration_count": current_count + 1}
+
+
 def get_active_templates(db: Session):
     """Return published TemplateRegistry templates for client onboarding (replaces ThemeTemplate)."""
     try:
-        from uuid import UUID
         from sqlalchemy import or_
         # Show active, published templates with preview ready. Allow validation not_run or passed (hide only failed).
         db_templates = db.query(TemplateRegistry).filter(
@@ -826,6 +864,25 @@ def get_active_templates(db: Session):
         pass
     return []
 
+
+@client_router.post("/{token}/request-human")
+async def request_human_consultant(token: str, db: Session = Depends(get_db)):
+    """Client requests to talk to a human. Notifies assigned consultant, all managers, and all admins so they can assign/respond."""
+    onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Invalid or expired link")
+    if onboarding.token_expires_at and onboarding.token_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410, detail="This link has expired")
+    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        from app.services.notification_service import notify_human_consultant_request
+        await notify_human_consultant_request(str(project.id), project.title or "Project", db)
+    except Exception as e:
+        logger.exception("Failed to send human request notifications: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to notify team. Please try again or contact support.")
+    return {"message": "Your request has been sent. A consultant or team member will reach out to you shortly."}
 
 
 @client_router.put("/{token}")
@@ -886,13 +943,13 @@ def update_client_onboarding_form(token: str, data: dict, db: Session = Depends(
     }
 
 
-def _run_client_preview_after_submit(project_id: UUID) -> None:
+def _run_client_preview_after_submit(project_id: UUID, force: bool = False) -> None:
     """Background task: generate client website preview when AI approved and template selected."""
     from app.db import SessionLocal
     from app.jobs.client_preview import run_client_preview_pipeline
     session = SessionLocal()
     try:
-        run_client_preview_pipeline(project_id, force=False, db=session)
+        run_client_preview_pipeline(project_id, force=force, db=session)
     except Exception as e:
         logger.exception("Client preview generation failed after submit: %s", e)
     finally:
