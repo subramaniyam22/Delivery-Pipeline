@@ -1971,6 +1971,7 @@ export default function ProjectDetailPage() {
 
     if (!project || !user) return null;
 
+    const showConsultantStep = project.require_manual_review || clientRequestedHuman;
     const stageOrder = ['SALES', 'ONBOARDING', 'ASSIGNMENT', 'BUILD', 'TEST', 'DEFECT_VALIDATION', 'COMPLETE'];
     const stageOutputsByStage = stageOrder.reduce((acc: any, stage) => {
         acc[stage] = stageOutputs.find((o) => o.stage === stage);
@@ -2859,7 +2860,7 @@ export default function ProjectDetailPage() {
                             </div>
                         )}
                         <div className="team-grid">
-                            {project.require_manual_review && (
+                            {showConsultantStep && (
                                 <div className={`team-card ${teamAssignments.consultant ? 'assigned' : 'unassigned'}`}>
                                     <div className="team-role-icon">💼</div>
                                     <div className="team-role-label">Consultant</div>
@@ -4072,9 +4073,9 @@ export default function ProjectDetailPage() {
                                 {user?.role === 'PC' && user?.region === 'INDIA' && <><br /><span className="region-note">📝 As a PC, you can assign Builder and Tester from India region</span></>}
                             </p>
 
-                            {/* Assignment Progress */}
+                            {/* Assignment Progress - show Consultant when HITL or when client requested human */}
                             <div className="assignment-progress">
-                                {project.require_manual_review && (
+                                {showConsultantStep && (
                                     <>
                                         <div className={`progress-step ${assignmentSequence.consultant_assigned ? 'completed' : assignmentSequence.next_to_assign === 'consultant' ? 'current' : ''}`}>
                                             <span className="step-number">1</span>
@@ -4084,17 +4085,17 @@ export default function ProjectDetailPage() {
                                     </>
                                 )}
                                 <div className={`progress-step ${assignmentSequence.pc_assigned ? 'completed' : assignmentSequence.next_to_assign === 'pc' ? 'current' : ''}`}>
-                                    <span className="step-number">2</span>
+                                    <span className="step-number">{showConsultantStep ? 2 : 1}</span>
                                     <span className="step-label">PC</span>
                                 </div>
                                 <div className="progress-line" />
                                 <div className={`progress-step ${assignmentSequence.builder_assigned ? 'completed' : assignmentSequence.next_to_assign === 'builder' ? 'current' : ''}`}>
-                                    <span className="step-number">3</span>
+                                    <span className="step-number">{showConsultantStep ? 3 : 2}</span>
                                     <span className="step-label">Builder</span>
                                 </div>
                                 <div className="progress-line" />
                                 <div className={`progress-step ${assignmentSequence.tester_assigned ? 'completed' : assignmentSequence.next_to_assign === 'tester' ? 'current' : ''}`}>
-                                    <span className="step-number">4</span>
+                                    <span className="step-number">{showConsultantStep ? 4 : 3}</span>
                                     <span className="step-label">Tester</span>
                                 </div>
                             </div>
@@ -4112,8 +4113,8 @@ export default function ProjectDetailPage() {
                                 </div>
                             )}
 
-                            {/* Role Selection Cards - Order: CONSULTANT, PC, BUILDER, TESTER */}
-                            {['CONSULTANT', 'PC', 'BUILDER', 'TESTER'].filter(role => role !== 'CONSULTANT' || project.require_manual_review).map((role) => {
+                            {/* Role Selection Cards - Order: CONSULTANT, PC, BUILDER, TESTER - show Consultant when HITL or client requested human */}
+                            {['CONSULTANT', 'PC', 'BUILDER', 'TESTER'].filter(role => role !== 'CONSULTANT' || showConsultantStep).map((role) => {
                                 // Permission check
                                 const canAssignThisRole =
                                     (role === 'CONSULTANT' && canAssignConsultant) ||
@@ -4121,10 +4122,10 @@ export default function ProjectDetailPage() {
                                     (role === 'BUILDER' && canAssignBuilder) ||
                                     (role === 'TESTER' && canAssignTester);
 
-                                // Sequential check
+                                // Sequential check - when Consultant step is shown, PC requires consultant assigned first
                                 const isSequenceAllowed =
                                     (role === 'CONSULTANT') ||
-                                    (role === 'PC' && (assignmentSequence.consultant_assigned || teamFormData.consultant_user_id)) ||
+                                    (role === 'PC' && (!showConsultantStep || assignmentSequence.consultant_assigned || teamFormData.consultant_user_id)) ||
                                     (role === 'BUILDER' && (assignmentSequence.pc_assigned || teamFormData.pc_user_id)) ||
                                     (role === 'TESTER' && (assignmentSequence.builder_assigned || teamFormData.builder_user_id));
 

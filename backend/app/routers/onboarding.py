@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm.attributes import flag_modified
 from app.db import get_db
-from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus, TemplateRegistry, OnboardingReviewStatus
+from app.models import User, Role, Project, OnboardingData, ProjectTask, ClientReminder, Stage, TaskStatus, TemplateRegistry, OnboardingReviewStatus, ProjectContract
 from app.schemas import (
     OnboardingDataCreate,
     OnboardingDataUpdate,
@@ -30,7 +31,7 @@ from app.config import Settings, settings
 logger = logging.getLogger(__name__)
 from app.services.email_service import send_client_reminder_email
 from app.services.config_service import get_config
-from app.services.storage import get_storage_backend
+from app.services.storage import get_storage_backend, get_preview_storage_backend
 from app.services.onboarding_agent import validate_onboarding_submission
 
 router = APIRouter(prefix="/projects", tags=["onboarding"])
@@ -726,11 +727,14 @@ def get_client_onboarding_form(token: str, db: Session = Depends(get_db)):
     
     client_preview = None
     if project and hasattr(project, "client_preview_status"):
+        status = getattr(project, "client_preview_status", "not_generated")
         client_preview = {
             "preview_url": getattr(project, "client_preview_url", None),
             "thumbnail_url": getattr(project, "client_preview_thumbnail_url", None),
-            "status": getattr(project, "client_preview_status", "not_generated"),
+            "status": status,
         }
+        if status == "ready" and onboarding.client_access_token:
+            client_preview["preview_proxy_path"] = f"/projects/client-onboarding/{onboarding.client_access_token}/preview/"
     client_wants_full_validation = _get_custom_field(onboarding, "client_wants_full_validation") if onboarding else None
     preview_iteration_count = getattr(onboarding, "preview_iteration_count", 0) or 0
     client_preview_max_iterations = 3
@@ -863,6 +867,74 @@ def get_active_templates(db: Session):
     except Exception:
         pass
     return []
+
+
+def _client_preview_prefix(project_id: UUID, db: Session) -> Optional[str]:
+    """Return S3/storage prefix for client preview (projects/{id}/preview/v{version}) or None."""
+    pc = db.query(ProjectContract).filter(ProjectContract.project_id == project_id).first()
+    if not pc:
+        return None
+    return f"projects/{project_id}/preview/v{pc.version or 1}"
+
+
+@client_router.get("/{token}/preview")
+@client_router.get("/{token}/preview/")
+def get_client_preview_index(token: str, db: Session = Depends(get_db)):
+    """Serve client preview index.html so iframe and nav links stay on same origin (avoids S3 403 on other pages)."""
+    onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Invalid or expired link")
+    if onboarding.token_expires_at and onboarding.token_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410, detail="This link has expired")
+    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+    if not project or getattr(project, "client_preview_status", None) != "ready":
+        raise HTTPException(status_code=404, detail="Preview not available")
+    prefix = _client_preview_prefix(project.id, db)
+    if not prefix:
+        raise HTTPException(status_code=404, detail="Preview not available")
+    key = f"{prefix}/index.html"
+    try:
+        backend = get_preview_storage_backend()
+        data = backend.read_bytes(key)
+    except Exception as e:
+        logger.warning("Client preview read failed key=%s: %s", key, e)
+        raise HTTPException(status_code=404, detail="Preview not found")
+    return Response(content=data, media_type="text/html; charset=utf-8")
+
+
+@client_router.get("/{token}/preview/{path:path}")
+def get_client_preview_path(token: str, path: str, db: Session = Depends(get_db)):
+    """Serve a client preview file by path (e.g. amenities.html, assets/style.css) so multi-page nav works."""
+    onboarding = db.query(OnboardingData).filter(OnboardingData.client_access_token == token).first()
+    if not onboarding:
+        raise HTTPException(status_code=404, detail="Invalid or expired link")
+    if onboarding.token_expires_at and onboarding.token_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410, detail="This link has expired")
+    project = db.query(Project).filter(Project.id == onboarding.project_id).first()
+    if not project or getattr(project, "client_preview_status", None) != "ready":
+        raise HTTPException(status_code=404, detail="Preview not available")
+    prefix = _client_preview_prefix(project.id, db)
+    if not prefix:
+        raise HTTPException(status_code=404, detail="Preview not available")
+    path = (path or "").strip().lstrip("/")
+    if not path or path.endswith("/"):
+        path = path.rstrip("/") or "index.html"
+    key = f"{prefix}/{path}"
+    try:
+        backend = get_preview_storage_backend()
+        data = backend.read_bytes(key)
+    except Exception as e:
+        logger.warning("Client preview read failed key=%s: %s", key, e)
+        raise HTTPException(status_code=404, detail="Preview not found")
+    media_type = "text/html; charset=utf-8" if path.endswith(".html") else None
+    if not media_type and path.endswith(".css"):
+        media_type = "text/css; charset=utf-8"
+    if not media_type and path.endswith(".js"):
+        media_type = "application/javascript; charset=utf-8"
+    if not media_type:
+        import mimetypes
+        media_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+    return Response(content=data, media_type=media_type)
 
 
 @client_router.post("/{token}/request-human")

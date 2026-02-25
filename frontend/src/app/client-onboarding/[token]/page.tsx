@@ -68,7 +68,7 @@ interface OnboardingFormData {
     field_sentinels?: Record<string, FieldSentinelValue>;
     submitted_at?: string | null;
     missing_fields_eta_json?: Record<string, string>;
-    client_preview?: { preview_url?: string; thumbnail_url?: string; status?: string } | null;
+    client_preview?: { preview_url?: string; thumbnail_url?: string; status?: string; preview_proxy_path?: string } | null;
     client_wants_full_validation?: boolean | null;
     preview_iteration_count?: number;
     client_preview_max_iterations?: number;
@@ -1038,6 +1038,9 @@ export default function ClientOnboardingPage() {
         if (requestHumanSent || requestHumanLoading) return;
         setRequestHumanLoading(true);
         setError('');
+        const userMessage = 'I want to talk to a project consultant';
+        setChatMessages(prev => [...prev, { text: userMessage, isBot: false, sender: 'user' }]);
+        scrollToBottom();
         try {
             await clientAPI.requestHumanConsultant(token);
             setRequestHumanSent(true);
@@ -1045,6 +1048,7 @@ export default function ClientOnboardingPage() {
                 text: "We've notified the team. A consultant or team member will reach out to you shortly.",
                 isBot: true,
                 sender: 'bot',
+                highlight: true,
             }]);
             scrollToBottom();
         } catch (err: any) {
@@ -1311,15 +1315,15 @@ export default function ClientOnboardingPage() {
                                     )}
                                 </div>
                             )}
-                            {formData.client_preview.status === 'ready' && formData.client_preview.preview_url && (
+                            {formData.client_preview.status === 'ready' && (formData.client_preview.preview_url || formData.client_preview.preview_proxy_path) && (
                                 <>
                                     <div style={{ marginTop: '20px', padding: '16px', background: 'rgba(255,255,255,0.7)', borderRadius: '12px', border: '1px solid #bbf7d0' }}>
                                         <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#166534', fontWeight: 600 }}>Built by our Specialist Builder (using AI)</p>
                                         <div style={{ marginBottom: '12px' }}>
-                                            <iframe src={formData.client_preview.preview_url} title="Website preview" style={{ width: '100%', height: 420, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff' }} />
+                                            <iframe src={formData.client_preview.preview_proxy_path ? `${(process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')}${formData.client_preview.preview_proxy_path}` : formData.client_preview.preview_url!} title="Website preview" style={{ width: '100%', height: 420, border: '1px solid #e2e8f0', borderRadius: '8px', background: '#fff' }} />
                                         </div>
                                         <a
-                                            href={formData.client_preview.preview_url}
+                                            href={formData.client_preview.preview_proxy_path ? `${(process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')}${formData.client_preview.preview_proxy_path}` : formData.client_preview.preview_url!}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             style={{
@@ -4149,7 +4153,7 @@ export default function ClientOnboardingPage() {
                         </div>
                         <div className="chatbot-body" ref={chatContainerRef}>
                             {chatMessages.map((msg, idx) => (
-                                <div key={idx} className={`chat-message ${msg.isBot ? 'bot' : 'user'}`} style={!msg.isBot ? { marginLeft: 'auto', background: '#2563eb', color: 'white' } : {}}>
+                                <div key={idx} className={`chat-message ${msg.isBot ? 'bot' : 'user'} ${msg.highlight ? 'chat-message-highlight' : ''}`} style={!msg.isBot ? { marginLeft: 'auto', background: '#2563eb', color: 'white' } : {}}>
                                     {msg.sender === 'consultant' && <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#2563eb', marginBottom: '2px' }}>Consultant</div>}
                                     {msg.sender === 'bot' && <div style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', marginBottom: '2px' }}>AI Assistant</div>}
                                     <p style={{ margin: 0 }}>{msg.text}</p>
@@ -4337,6 +4341,12 @@ export default function ClientOnboardingPage() {
                 
                 .chat-message.user *, .chat-message.user p {
                     color: white !important;
+                }
+
+                .chat-message.chat-message-highlight {
+                    border: 2px solid #2563eb;
+                    background: #eff6ff !important;
+                    box-shadow: 0 0 0 1px #93c5fd;
                 }
 
                 .chatbot-input {
