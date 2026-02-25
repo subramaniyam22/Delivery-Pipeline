@@ -1024,7 +1024,7 @@ function ConfigurationPageContent() {
     const canGenerateTemplatePreview = (template: TemplateRegistry) => {
         const isGit = template.source_type === 'git' || (!template.source_type && !!template.repo_url);
         const hasZipSource = (template.build_source_type === 's3_zip' || template.build_source_type === 's3') && !!template.build_source_ref;
-        if (isGit) return hasZipSource;
+        if (isGit) return hasZipSource || !!template.blueprint_json;
         return !!template.blueprint_json;
     };
 

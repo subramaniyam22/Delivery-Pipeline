@@ -657,10 +657,12 @@ def generate_template_preview(
     source_ref = getattr(template, "build_source_ref", None)
     use_zip_path = build_source in ("s3_zip", "s3") and source_ref
     if template.source_type == "git" and not use_zip_path:
-        raise HTTPException(
-            status_code=400,
-            detail="Upload a template ZIP (Config > template > upload) so we can build the preview from it, or use an AI template.",
-        )
+        blueprint_check = getattr(template, "blueprint_json", None)
+        if not blueprint_check or not isinstance(blueprint_check, dict):
+            raise HTTPException(
+                status_code=400,
+                detail="Generate blueprint first (Blueprint tab), or upload a template ZIP to generate preview.",
+            )
     if not use_zip_path:
         blueprint = getattr(template, "blueprint_json", None)
         if not blueprint or not isinstance(blueprint, dict):
