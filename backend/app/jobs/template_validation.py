@@ -17,6 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models import AdminConfig, Project, TemplateRegistry, TemplateValidationJob
+from app.jobs.template_blueprint import _blueprint_hash
+from app.jobs.template_preview import run_template_preview_pipeline
+from app.services.validation_fix import apply_color_contrast_fix, get_fix_actions
 from app.services.validation_runner import (
     aggregate_results,
     run_axe,
@@ -53,6 +56,7 @@ def run_template_validation_pipeline(
     force: bool = False,
     project_id: Optional[UUID] = None,
     db: Optional[Session] = None,
+    auto_fix_attempted: bool = False,
 ) -> Dict[str, Any]:
     """
     Load template, resolve thresholds, compute validation_hash.
@@ -104,6 +108,33 @@ def run_template_validation_pipeline(
         else:
             template.preview_error = None
         session.commit()
+
+        # Auto-fix: on first failure, apply color-contrast fix if applicable and re-run once.
+        if not passed and not auto_fix_attempted:
+            fix_actions = get_fix_actions(summary)
+            color_contrast = next(
+                (a for a in fix_actions if a.get("type") == "color_contrast" and a.get("applicable")),
+                None,
+            )
+            blueprint = getattr(template, "blueprint_json", None)
+            if color_contrast and isinstance(blueprint, dict) and blueprint:
+                try:
+                    fixed = apply_color_contrast_fix(blueprint)
+                    template.blueprint_json = fixed
+                    template.blueprint_hash = _blueprint_hash(fixed)
+                    session.commit()
+                    _validation_semaphore.release()
+                    run_template_preview_pipeline(template_id, db=session)
+                    return run_template_validation_pipeline(
+                        template_id,
+                        force=True,
+                        project_id=project_id,
+                        db=session,
+                        auto_fix_attempted=True,
+                    )
+                except Exception as fix_err:
+                    logger.warning("Auto-fix (color-contrast) failed, returning original result: %s", fix_err)
+
         _validation_semaphore.release()
         return {"status": "passed" if passed else "failed", "passed": passed, "validation_hash": new_hash, "failed_reasons": summary.get("failed_reasons", [])}
     except Exception as e:

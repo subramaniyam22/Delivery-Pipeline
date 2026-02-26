@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -18,17 +19,94 @@ from app.services import artifact_service
 
 logger = logging.getLogger(__name__)
 
+# GitHub archive: no git required. ref can be branch or tag.
+_GITHUB_ARCHIVE_BRANCH = "https://github.com/{owner}/{repo}/archive/refs/heads/{ref}.zip"
+_GITHUB_ARCHIVE_TAG = "https://github.com/{owner}/{repo}/archive/refs/tags/{ref}.zip"
+
+
+def _parse_github_repo(repo_url: Optional[str]) -> Optional[Tuple[str, str]]:
+    """Return (owner, repo) if repo_url is a GitHub URL, else None."""
+    if not repo_url:
+        return None
+    url = (repo_url or "").strip().rstrip("/")
+    # https://github.com/owner/repo or .git
+    m = re.match(r"https?://(?:www\.)?github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$", url, re.I)
+    if m:
+        return m.group(1), m.group(2)
+    # git@github.com:owner/repo.git
+    m = re.match(r"git@github\.com:([^/]+)/([^/]+?)(?:\.git)?/?$", url, re.I)
+    if m:
+        return m.group(1), m.group(2)
+    return None
+
+
+def _download_github_archive(owner: str, repo: str, ref: str, dest_dir: str) -> bool:
+    """
+    Download GitHub repo archive (branch or tag) and extract into dest_dir.
+    Returns True on success. Extraction puts files in dest_dir/repo-ref/; we move contents up to dest_dir.
+    """
+    # Try branch first (most common), then tag
+    for url in (
+        _GITHUB_ARCHIVE_BRANCH.format(owner=owner, repo=repo, ref=ref),
+        _GITHUB_ARCHIVE_TAG.format(owner=owner, repo=repo, ref=ref),
+    ):
+        try:
+            r = requests.get(url, timeout=60, allow_redirects=True)
+            r.raise_for_status()
+        except Exception as e:
+            logger.debug("GitHub archive %s failed: %s", url, e)
+            continue
+        zip_path = os.path.join(dest_dir, "archive.zip")
+        os.makedirs(dest_dir, exist_ok=True)
+        try:
+            with open(zip_path, "wb") as f:
+                f.write(r.content)
+            with zipfile.ZipFile(zip_path, "r") as z:
+                z.extractall(dest_dir)
+            # Archive extracts to repo-ref/ or repo-commit/; move contents to dest_dir
+            entries = [e for e in os.listdir(dest_dir) if e != "archive.zip"]
+            if len(entries) == 1 and os.path.isdir(os.path.join(dest_dir, entries[0])):
+                inner = os.path.join(dest_dir, entries[0])
+                for name in os.listdir(inner):
+                    shutil.move(os.path.join(inner, name), os.path.join(dest_dir, name))
+                os.rmdir(inner)
+            os.remove(zip_path)
+            return True
+        except Exception as e:
+            logger.warning("Extract GitHub archive failed: %s", e)
+            if os.path.exists(zip_path):
+                try:
+                    os.remove(zip_path)
+                except OSError:
+                    pass
+            return False
+    return False
+
+
+def _git_available() -> bool:
+    try:
+        subprocess.run(
+            ["git", "--version"],
+            capture_output=True,
+            timeout=5,
+        )
+        return True
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return False
+
 
 def clone_template(template: TemplateRegistry, workdir: str) -> str:
     """
     Get template source into workdir/template. Uses build_source_type/build_source_ref when set
     (versioned clone); otherwise falls back to repo_url + default_branch.
-    - git + build_source_ref: clone that branch/tag (immutable ref).
+    - git + build_source_ref: clone that branch/tag (immutable ref); uses GitHub archive when
+      possible to avoid requiring git on the host.
     - s3 + build_source_ref: download zip from S3 key and expand.
     """
     repo_dir = os.path.join(workdir, "template")
     source_type = getattr(template, "build_source_type", None)
     source_ref = getattr(template, "build_source_ref", None)
+    repo_url = (template.repo_url or "").strip()
 
     if source_type in ("s3", "s3_zip") and source_ref:
         # Versioned artifact: download zip from S3 and expand
@@ -49,19 +127,48 @@ def clone_template(template: TemplateRegistry, workdir: str) -> str:
         except Exception as e:
             raise RuntimeError(f"Template S3 source failed ({source_ref}): {e}") from e
 
+    # Git path: prefer GitHub archive (no git required), then git clone
+    branch_or_tag = None
     if source_type == "git" and source_ref:
-        # Versioned git ref (branch or tag)
-        branch_or_tag = source_ref
-        subprocess.run(
-            ["git", "clone", "--depth", "1", "--branch", branch_or_tag, template.repo_url, repo_dir],
-            check=True,
-        )
-        return repo_dir
+        branch_or_tag = source_ref.strip()
+    if not branch_or_tag:
+        branch_or_tag = (template.default_branch or "main").strip()
 
-    # Fallback: repo_url + default_branch
-    branch = (template.default_branch or "main").strip()
+    if not repo_url:
+        raise RuntimeError("Template has no repo_url; cannot clone or download source.")
+
+    parsed = _parse_github_repo(repo_url)
+    if parsed:
+        owner, repo = parsed
+        if _download_github_archive(owner, repo, branch_or_tag, repo_dir):
+            return repo_dir
+        # Fallback to git if available (e.g. private repo)
+        if _git_available():
+            if os.path.isdir(repo_dir):
+                shutil.rmtree(repo_dir, ignore_errors=True)
+            try:
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", "--branch", branch_or_tag, repo_url, repo_dir],
+                    check=True,
+                )
+                return repo_dir
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(
+                    f"GitHub archive download failed and git clone failed: {e.stderr or e}"
+                ) from e
+        raise RuntimeError(
+            "Could not download template from GitHub (e.g. private repo or invalid ref). "
+            "For private repos, install Git on this server and ensure it is on the system PATH."
+        )
+
+    # Non-GitHub URL: require git
+    if not _git_available():
+        raise RuntimeError(
+            "Git is required for templates from this source. "
+            "Please install Git and ensure it is on the system PATH."
+        )
     subprocess.run(
-        ["git", "clone", "--depth", "1", "--branch", branch, template.repo_url, repo_dir],
+        ["git", "clone", "--depth", "1", "--branch", branch_or_tag, repo_url, repo_dir],
         check=True,
     )
     return repo_dir
