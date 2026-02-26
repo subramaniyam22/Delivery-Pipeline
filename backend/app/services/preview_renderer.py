@@ -168,6 +168,17 @@ SECTION_SNIPPETS = {
 }
 
 
+def _text_accessible_on_background(text_hex: str, bg_hex: str) -> str:
+    """Return a foreground color that meets WCAG AA (4.5:1) on bg. Used for body/section text to fix color-contrast."""
+    t_rgb = _hex_to_rgb(text_hex)
+    b_rgb = _hex_to_rgb(bg_hex)
+    t_lum = _relative_luminance(*t_rgb)
+    b_lum = _relative_luminance(*b_rgb)
+    if _contrast_ratio(t_lum, b_lum) >= 4.5:
+        return text_hex
+    return "#ffffff" if b_lum < 0.4 else "#1a1a2e"
+
+
 def _get_tokens(blueprint: Dict[str, Any]) -> Dict[str, Any]:
     tokens = (blueprint.get("tokens") or {}) if isinstance(blueprint, dict) else {}
     colors = tokens.get("colors") or {}
@@ -177,11 +188,14 @@ def _get_tokens(blueprint: Dict[str, Any]) -> Dict[str, Any]:
     primary = colors.get("primary") or "#2563eb"
     accent = colors.get("accent") or "#3b82f6"
     background = colors.get("background") or "#ffffff"
+    text_raw = colors.get("text") or "#0f172a"
+    text_accessible = _text_accessible_on_background(text_raw, background)
     return {
         "primary": primary,
         "secondary": (colors.get("secondary") or "#1e40af"),
         "background": background,
-        "text": (colors.get("text") or "#0f172a"),
+        "text": text_accessible,
+        "text_raw": text_raw,
         "accent": accent,
         "text_light": _contrast_text_on(primary),
         "text_on_primary": _contrast_text_on(primary),
@@ -347,8 +361,9 @@ def _render_section(
     if not aria_label:
         type_label = _SECTION_TYPE_LABELS.get(stype) or stype.replace("_", " ").title()
         aria_label = f"{type_label} {section_index + 1}"
-    # role="region" + aria-label so content is in landmarks (Axe region rule) and one main is preserved
-    aria_attr = f'role="region" aria-label="{html_module.escape(aria_label)}"' if aria_label else 'role="region"'
+    # Use only aria-label on <section> (implicit role="region") to satisfy aria-roles and landmark-unique
+    safe_label = html_module.escape(str(aria_label).strip() or "Content region")
+    aria_attr = f'aria-label="{safe_label}"'
     slots = _get_demo_slots(stype, content_slots, demo, template_images, image_prompt_category)
     ctx = {**tokens, **slots, "aria_attr": aria_attr}
     if stype in SECTION_SNIPPETS:

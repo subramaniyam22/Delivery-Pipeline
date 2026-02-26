@@ -207,6 +207,90 @@ def run_template_preview_pipeline(
                     _preview_semaphore.release()
                 return {"status": "failed", "error": str(e)}
 
+        source_type_attr = getattr(template, "source_type", None)
+        repo_url = getattr(template, "repo_url", None)
+        use_git_path = (build_source == "git" or (source_type_attr == "git" and repo_url)) and repo_url
+        if use_git_path:
+            # Preview from Git: clone repo, build site, upload dist as preview (no blueprint required)
+            try:
+                from app.runners.site_builder import clone_template, build_site
+                with tempfile.TemporaryDirectory() as workdir:
+                    repo_dir = clone_template(template, workdir)
+                    dist_path, _ = build_site(repo_dir)
+                    dist_index = os.path.join(dist_path, "index.html")
+                    if not os.path.isfile(dist_index):
+                        raise RuntimeError("Template build did not produce dist/index.html")
+                    assets = {}
+                    for root, _dirs, files in os.walk(dist_path):
+                        for f in files:
+                            if ".." in f or f.startswith("."):
+                                continue
+                            abs_path = os.path.join(root, f)
+                            rel = os.path.relpath(abs_path, dist_path).replace("\\", "/")
+                            with open(abs_path, "rb") as fp:
+                                content = fp.read()
+                            if rel.endswith((".html", ".css", ".js", ".json", ".txt", ".xml", ".ico", ".svg")):
+                                try:
+                                    assets[rel] = content.decode("utf-8", errors="replace")
+                                except Exception:
+                                    assets[rel] = content
+                            else:
+                                assets[rel] = content
+                    meta = getattr(template, "meta_json", None) or {}
+                    if isinstance(meta.get("images"), dict):
+                        zip_template_images = {k: v if isinstance(v, list) else [v] for k, v in meta["images"].items() if v}
+                        _inject_template_images_into_zip_assets(assets, zip_template_images)
+                    total_size = sum(len(c) if isinstance(c, bytes) else len(c.encode("utf-8")) for c in assets.values())
+                    if total_size > PREVIEW_BUNDLE_MAX_BYTES:
+                        template.preview_status = "failed"
+                        template.preview_error = f"Built site size {total_size} exceeds max {PREVIEW_BUNDLE_MAX_BYTES}"
+                        session.commit()
+                        if acquired:
+                            _preview_semaphore.release()
+                        return {"status": "failed", "error": template.preview_error}
+                    prefix = _template_prefix(template)
+                    try:
+                        delete_preview_bundle(prefix)
+                    except Exception:
+                        pass
+                    preview_url = upload_preview_bundle(prefix, assets)
+                thumbnail_bytes = None
+                try:
+                    thumbnail_bytes = generate_thumbnail(
+                        blueprint_json={"meta": {"name": template.name, "category": getattr(template, "category", "") or ""}},
+                        preview_url=preview_url,
+                        title=template.name or "Preview",
+                        subtitle="",
+                    )
+                except Exception as e:
+                    logger.warning("Thumbnail generation failed (continuing): %s", e)
+                thumbnail_url = None
+                if thumbnail_bytes:
+                    try:
+                        thumbnail_url = upload_thumbnail(prefix, thumbnail_bytes)
+                    except Exception as e:
+                        logger.warning("Thumbnail upload failed: %s", e)
+                template.preview_url = preview_url
+                template.preview_thumbnail_url = thumbnail_url
+                template.preview_status = "ready"
+                template.preview_error = None
+                template.preview_last_generated_at = datetime.utcnow()
+                template.validation_status = "not_run"
+                template.validation_hash = None
+                session.commit()
+                if acquired:
+                    _preview_semaphore.release()
+                return {"status": "ready", "preview_url": preview_url, "thumbnail_url": thumbnail_url}
+            except Exception as e:
+                logger.exception("Preview from Git failed: %s", e)
+                template.preview_status = "failed"
+                template.preview_error = str(e)
+                template.preview_last_generated_at = datetime.utcnow()
+                session.commit()
+                if acquired:
+                    _preview_semaphore.release()
+                return {"status": "failed", "error": str(e)}
+
         blueprint = getattr(template, "blueprint_json", None)
         if not blueprint or not isinstance(blueprint, dict):
             template.preview_status = "failed"

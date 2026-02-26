@@ -61,6 +61,15 @@ interface TemplateRegistry {
     build_source_ref?: string | null;
 }
 
+/** Return display label for template source (AI Generated, GitHub, or Template ZIP). */
+function getTemplateSourceLabel(t: TemplateRegistry): string {
+    const buildSource = (t.build_source_type || '').toLowerCase();
+    if (buildSource === 's3_zip' || buildSource === 's3') return 'Template ZIP';
+    const sourceType = (t.source_type || '').toLowerCase();
+    if (sourceType === 'git' || buildSource === 'git') return 'GitHub';
+    return 'AI Generated';
+}
+
 /** Normalize API error detail (string, array of {msg}, or object) to a single string so it's safe to render in JSX. */
 function formatApiErrorDetail(detail: unknown): string {
     if (detail == null) return '';
@@ -1022,9 +1031,10 @@ function ConfigurationPageContent() {
     };
 
     const canGenerateTemplatePreview = (template: TemplateRegistry) => {
-        const isGit = template.source_type === 'git' || (!template.source_type && !!template.repo_url);
         const hasZipSource = (template.build_source_type === 's3_zip' || template.build_source_type === 's3') && !!template.build_source_ref;
-        if (isGit) return hasZipSource || !!template.blueprint_json;
+        if (hasZipSource) return true;
+        const isGit = template.source_type === 'git' || template.build_source_type === 'git' || (!template.source_type && !!template.repo_url);
+        if (isGit) return !!template.repo_url || !!template.blueprint_json;
         return !!template.blueprint_json;
     };
 
@@ -1221,7 +1231,7 @@ function ConfigurationPageContent() {
             return;
         }
         if (!canGenerateTemplatePreview(template)) {
-            setError(template.source_type === 'git' ? 'Upload a template ZIP first (template upload flow).' : 'Generate blueprint first.');
+            setError((template.source_type === 'git' || template.build_source_type === 'git') ? 'Add repo URL, upload a template ZIP, or generate a blueprint first.' : 'Generate blueprint first.');
             return;
         }
         setTemplateDetailSubTab('preview');
@@ -1843,8 +1853,11 @@ function ConfigurationPageContent() {
                                                 )}
                                                 <div style={{ flex: 1, minWidth: 0 }}>
                                                     <div style={{ fontWeight: 600, fontSize: '13px' }}>{t.name}</div>
-                                                    <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '10px', background: t.status === 'published' ? '#ecfdf5' : t.status === 'draft' ? '#f1f5f9' : '#eff6ff', color: t.status === 'published' ? '#047857' : '#475569' }}>{t.status || 'draft'}</span>
-                                                    {t.preview_status === 'ready' && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '10px', background: '#dcfce7', color: '#166534', marginLeft: '4px' }}>Preview</span>}
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                                        <span style={{ fontSize: '11px', padding: '2px 6px', borderRadius: '10px', background: t.status === 'published' ? '#ecfdf5' : t.status === 'draft' ? '#f1f5f9' : '#eff6ff', color: t.status === 'published' ? '#047857' : '#475569' }}>{t.status || 'draft'}</span>
+                                                        <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '10px', background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd' }} title="Source">{getTemplateSourceLabel(t)}</span>
+                                                        {t.preview_status === 'ready' && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '10px', background: '#dcfce7', color: '#166534' }}>Preview</span>}
+                                                    </div>
                                                     <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                                                         {(t.feature_tags_json || t.features_json || []).slice(0, 3).map((tag: string) => (
                                                             <span key={tag} style={{ fontSize: '10px', color: '#64748b' }}>{tag}</span>
@@ -1874,7 +1887,7 @@ function ConfigurationPageContent() {
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
                                             Validate
                                             </button>
-                                            <button type="button" onClick={() => { setTemplateDetailSubTab('preview'); handleGeneratePreview(selectedTemplate); }} disabled={!canEditTemplates || !canGenerateTemplatePreview(selectedTemplate) || selectedTemplate.preview_status === 'generating' || previewPolling} title={!canGenerateTemplatePreview(selectedTemplate) ? (selectedTemplate.source_type === 'git' ? 'Upload template ZIP first (Config > template > upload)' : 'Generate blueprint first') : 'Build preview and switch to Preview tab'} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && canGenerateTemplatePreview(selectedTemplate) && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>
+                                            <button type="button" onClick={() => { setTemplateDetailSubTab('preview'); handleGeneratePreview(selectedTemplate); }} disabled={!canEditTemplates || !canGenerateTemplatePreview(selectedTemplate) || selectedTemplate.preview_status === 'generating' || previewPolling} title={!canGenerateTemplatePreview(selectedTemplate) ? (selectedTemplate.source_type === 'git' || selectedTemplate.build_source_type === 'git' ? 'Add repo URL, or upload template ZIP, or generate blueprint' : 'Generate blueprint first') : 'Build preview and switch to Preview tab'} style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', border: '1px solid #2563eb', color: '#2563eb', borderRadius: '6px', fontSize: '12px', cursor: (canEditTemplates && canGenerateTemplatePreview(selectedTemplate) && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}>
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 3l14 9-14 9V3z"/></svg>
                                             Generate Preview
                                             </button>
@@ -2146,7 +2159,7 @@ function ConfigurationPageContent() {
                                                     type="button"
                                                     onClick={() => handleGeneratePreview(selectedTemplate)}
                                                     disabled={!canEditTemplates || !canGenerateTemplatePreview(selectedTemplate) || selectedTemplate.preview_status === 'generating' || previewPolling}
-                                                    title={!canGenerateTemplatePreview(selectedTemplate) ? (selectedTemplate.source_type === 'git' ? 'Upload template ZIP first' : 'Generate blueprint first') : selectedTemplate.preview_status === 'generating' || previewPolling ? 'Generating…' : 'Runs in background; may not complete on free tier'}
+                                                    title={!canGenerateTemplatePreview(selectedTemplate) ? ((selectedTemplate.source_type === 'git' || selectedTemplate.build_source_type === 'git') ? 'Add repo URL, upload ZIP, or generate blueprint' : 'Generate blueprint first') : selectedTemplate.preview_status === 'generating' || previewPolling ? 'Generating…' : 'Runs in background; may not complete on free tier'}
                                                     style={{ padding: '8px 16px', background: (selectedTemplate.preview_status === 'ready' ? '#e0f2fe' : '#2563eb'), color: (selectedTemplate.preview_status === 'ready' ? '#0369a1' : 'white'), border: '1px solid ' + (selectedTemplate.preview_status === 'ready' ? '#0ea5e9' : '#2563eb'), borderRadius: '6px', fontSize: '13px', cursor: (canEditTemplates && canGenerateTemplatePreview(selectedTemplate) && selectedTemplate.preview_status !== 'generating' && !previewPolling) ? 'pointer' : 'not-allowed' }}
                                                 >
                                                     {selectedTemplate.preview_status === 'generating' || previewPolling ? 'Generating…' : selectedTemplate.preview_status === 'ready' ? 'Regenerate Preview' : 'Generate Preview'}
@@ -2176,7 +2189,7 @@ function ConfigurationPageContent() {
                                                 <div style={{ padding: '12px', background: '#fee2e2', borderRadius: '8px', color: '#991b1b', fontSize: '13px', marginBottom: '12px' }}>{selectedTemplate.preview_error}</div>
                                             )}
                                             {!canGenerateTemplatePreview(selectedTemplate) && (
-                                                <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>{selectedTemplate.source_type === 'git' ? 'Upload a template ZIP (e.g. from your Git repo build) in the template upload flow, then Generate Preview.' : 'Generate a blueprint first in the Blueprint tab, then generate the preview.'}</p>
+                                                <p style={{ margin: 0, color: '#64748b', fontSize: '13px' }}>{(selectedTemplate.source_type === 'git' || selectedTemplate.build_source_type === 'git') ? 'Add a repo URL (GitHub template), or upload a template ZIP, or generate a blueprint; then Generate Preview.' : 'Generate a blueprint first in the Blueprint tab, then generate the preview.'}</p>
                                             )}
                                             {selectedTemplate.preview_status === 'ready' && (selectedTemplate.preview_url || getPreviewIframeUrl(selectedTemplate)) ? (
                                                 <>
@@ -2735,7 +2748,7 @@ function ConfigurationPageContent() {
                                     <button
                                         onClick={() => handleGeneratePreview(previewTemplate)}
                                         disabled={!canEditTemplates || !canGenerateTemplatePreview(previewTemplate)}
-                                        title={!canGenerateTemplatePreview(previewTemplate) ? (previewTemplate.source_type === 'git' ? 'Upload template ZIP first' : 'Generate blueprint first') : 'Runs in background'}
+                                        title={!canGenerateTemplatePreview(previewTemplate) ? ((previewTemplate.source_type === 'git' || previewTemplate.build_source_type === 'git') ? 'Add repo URL, upload ZIP, or generate blueprint' : 'Generate blueprint first') : 'Runs in background'}
                                         style={{
                                             padding: '8px 16px',
                                             background: '#2563eb',

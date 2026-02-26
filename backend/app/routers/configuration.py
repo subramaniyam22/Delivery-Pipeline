@@ -232,6 +232,8 @@ def create_template(
             name=(data.name or "Untitled Template")[:255],
             repo_url=_trunc(data.repo_url, 1000),
             default_branch=_trunc(data.default_branch or ("main" if source_type == "git" else None), 255),
+            build_source_type="git" if source_type == "git" else None,
+            build_source_ref=_trunc(data.default_branch or "main", 1000) if source_type == "git" else None,
             meta_json=data.meta_json if isinstance(getattr(data, "meta_json", None), dict) else {},
             description=data.description,
             features_json=data.features_json if isinstance(data.features_json, list) else [],
@@ -655,18 +657,13 @@ def generate_template_preview(
         raise HTTPException(status_code=404, detail="Template not found")
     build_source = getattr(template, "build_source_type", None)
     source_ref = getattr(template, "build_source_ref", None)
+    repo_url = getattr(template, "repo_url", None)
     use_zip_path = build_source in ("s3_zip", "s3") and source_ref
-    if template.source_type == "git" and not use_zip_path:
-        blueprint_check = getattr(template, "blueprint_json", None)
-        if not blueprint_check or not isinstance(blueprint_check, dict):
-            raise HTTPException(
-                status_code=400,
-                detail="Generate blueprint first (Blueprint tab), or upload a template ZIP to generate preview.",
-            )
-    if not use_zip_path:
+    use_git_path = (build_source == "git" or template.source_type == "git") and repo_url
+    if not use_zip_path and not use_git_path:
         blueprint = getattr(template, "blueprint_json", None)
         if not blueprint or not isinstance(blueprint, dict):
-            raise HTTPException(status_code=400, detail="Generate blueprint first")
+            raise HTTPException(status_code=400, detail="Generate blueprint first (or use a template from GitHub/ZIP with repo or upload).")
     data = body or {}
     force = data.get("force", False)
     sync_mode = data.get("sync", False)
