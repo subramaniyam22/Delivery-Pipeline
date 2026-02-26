@@ -133,7 +133,31 @@ def build_site(local_path: str) -> Tuple[str, str]:
         if os.path.isdir(subdir) and os.path.exists(os.path.join(subdir, "index.html")):
             return subdir, candidate
 
-    raise RuntimeError("No build strategy found for template")
+    # Single root folder: many ZIPs have one top-level dir (e.g. "my-site/") with the site inside
+    try:
+        entries = [e for e in os.listdir(local_path) if not e.startswith(".")]
+        if len(entries) == 1:
+            only = os.path.join(local_path, entries[0])
+            if os.path.isdir(only):
+                return build_site(only)
+    except OSError:
+        pass
+
+    # Any immediate subdir with index.html (e.g. "site/index.html")
+    try:
+        for name in os.listdir(local_path):
+            if name.startswith("."):
+                continue
+            subdir = os.path.join(local_path, name)
+            if os.path.isdir(subdir) and os.path.exists(os.path.join(subdir, "index.html")):
+                return subdir, name
+    except OSError:
+        pass
+
+    raise RuntimeError(
+        "No build strategy found for template. Expected: package.json (npm build), build.sh, "
+        "index.html at root, or index.html inside dist/build/out/public or a subfolder."
+    )
 
 
 def package_build(dist_path: str, workdir: str) -> str:
