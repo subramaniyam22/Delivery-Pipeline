@@ -127,6 +127,12 @@ def build_site(local_path: str) -> Tuple[str, str]:
     if os.path.exists(os.path.join(local_path, "index.html")):
         return local_path, "static"
 
+    # Pre-built ZIP: common output dirs may already contain index.html (dist, build, out, public)
+    for candidate in ["dist", "build", "out", "public"]:
+        subdir = os.path.join(local_path, candidate)
+        if os.path.isdir(subdir) and os.path.exists(os.path.join(subdir, "index.html")):
+            return subdir, candidate
+
     raise RuntimeError("No build strategy found for template")
 
 
