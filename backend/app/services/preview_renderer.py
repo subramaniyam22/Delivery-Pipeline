@@ -209,11 +209,19 @@ def _is_relative_image_path(url: Any) -> bool:
     return True
 
 
+def _normalize_category_key(category: Optional[str]) -> str:
+    """Normalize section image_prompt_category for lookup (exterior, interior, etc.)."""
+    if not category or not isinstance(category, str):
+        return ""
+    return category.strip().lower().replace(" ", "_") or ""
+
+
 def _get_template_images_by_category(template_images: Optional[Dict[str, List[str]]], category: Optional[str]) -> List[str]:
     """Return list of URLs for a given category (exterior, interior, etc.) from template uploads. Falls back to 'general' then first non-empty category."""
     if not template_images:
         return []
-    for key in (category, (category or "").lower(), "general"):
+    norm = _normalize_category_key(category)
+    for key in (category, norm, "general"):
         if not key:
             continue
         urls = template_images.get(key)
@@ -245,13 +253,13 @@ def _get_demo_slots(
         out["hero_subtitle"] = slots.get("subtitle") or (demo.get("company") or {}).get("description") or "Your tagline here"
         out["cta_text"] = slots.get("cta_text") or "Get started"
         out["cta_href"] = slots.get("cta_href") or "#"
-        # Prefer uploaded template images over relative paths from blueprint (ZIP-derived paths like assets/img/hero.jpg 404 in preview)
+        # Prefer uploaded template images when available so blueprint uploads are always used in preview
         hero_from_slot = slots.get("hero_image_url") or slots.get("image")
         hero_imgs = _get_template_images_by_category(template_images, image_prompt_category or "exterior")
-        if hero_imgs and _is_relative_image_path(hero_from_slot):
+        if hero_imgs:
             out["hero_image_url"] = hero_imgs[0]
         else:
-            out["hero_image_url"] = hero_from_slot or (hero_imgs[0] if hero_imgs else None)
+            out["hero_image_url"] = hero_from_slot
     elif section_type == "trust_bar":
         out["trust_items"] = slots.get("items") or demo.get("amenities") or ["Trusted", "Secure", "Fast"]
     elif section_type == "amenities_grid":
@@ -260,15 +268,15 @@ def _get_demo_slots(
     elif section_type == "gallery_grid":
         out["gallery_title"] = slots.get("title") or "Gallery"
         gallery_from_template = _get_template_images_by_category(template_images, image_prompt_category or "exterior")
-        # Prefer uploaded template images over relative paths from blueprint (ZIP-derived paths 404 in preview)
-        slot_images = slots.get("images")
-        if slot_images is not None and isinstance(slot_images, list) and len(slot_images) > 0:
-            if gallery_from_template and any(_is_relative_image_path(u) for u in slot_images):
-                out["gallery_images"] = gallery_from_template
-            else:
-                out["gallery_images"] = slot_images
+        # Prefer uploaded template images when available so blueprint uploads are always used in preview
+        if gallery_from_template:
+            out["gallery_images"] = gallery_from_template
         else:
-            out["gallery_images"] = gallery_from_template or demo.get("gallery_images") or ["https://placehold.co/800x500?text=Image"]
+            slot_images = slots.get("images")
+            if slot_images is not None and isinstance(slot_images, list) and len(slot_images) > 0:
+                out["gallery_images"] = slot_images
+            else:
+                out["gallery_images"] = demo.get("gallery_images") or ["https://placehold.co/800x500?text=Image"]
     elif section_type == "floorplan_cards":
         out["floorplans_title"] = slots.get("title") or "Floor plans"
         out["floor_plans"] = slots.get("plans") or demo.get("floor_plans") or [{"name": "2B/2B", "beds": 2, "baths": 2, "rent_from": 1850, "image_url": "https://placehold.co/400x300?text=2B2B"}]
@@ -291,13 +299,13 @@ def _get_demo_slots(
     elif section_type == "feature_split":
         out["feature_heading"] = slots.get("heading") or "Feature"
         out["feature_body"] = slots.get("body") or "Description."
-        # Prefer uploaded template images over relative paths from blueprint (ZIP-derived paths 404 in preview)
+        # Prefer uploaded template images when available so blueprint uploads are always used in preview
         feature_from_slot = slots.get("feature_image_url") or slots.get("image")
         split_imgs = _get_template_images_by_category(template_images, image_prompt_category or "interior")
-        if split_imgs and _is_relative_image_path(feature_from_slot):
+        if split_imgs:
             out["feature_image_url"] = split_imgs[0]
         else:
-            out["feature_image_url"] = feature_from_slot or (split_imgs[0] if split_imgs else None)
+            out["feature_image_url"] = feature_from_slot
     elif section_type == "cta_banner":
         out["cta_heading"] = slots.get("heading") or "Get in touch"
         out["cta_subtext"] = slots.get("subtext") or "We'd love to hear from you."
@@ -505,6 +513,29 @@ def _slug_to_title_from_blueprint(blueprint: Dict[str, Any]) -> Dict[str, str]:
     return m
 
 
+def _default_sections_for_placeholder_page(page_title: str) -> List[Dict[str, Any]]:
+    """
+    Return a full set of sections for an internal/placeholder page so it shows real content
+    and images from the demo dataset (company description, gallery, testimonials, FAQ, etc.)
+    instead of only a trust bar. Each section is filled by _get_demo_slots from demo_dataset.
+    Uses multiple image_prompt_category values so template_images (e.g. client uploads) are
+    used across hero, feature, and gallery sections.
+    """
+    return [
+        {"type": "trust_bar", "content_slots": {}},
+        {"type": "hero", "content_slots": {"title": page_title}, "image_prompt_category": "exterior"},
+        {"type": "feature_split", "content_slots": {}, "image_prompt_category": "interior"},
+        {"type": "gallery_grid", "content_slots": {}, "image_prompt_category": "lifestyle"},
+        {"type": "amenities_grid", "content_slots": {}},
+        {"type": "floorplan_cards", "content_slots": {}},
+        {"type": "testimonials", "content_slots": {}},
+        {"type": "faq", "content_slots": {}},
+        {"type": "location_map", "content_slots": {}},
+        {"type": "contact_form", "content_slots": {}},
+        {"type": "cta_banner", "content_slots": {}},
+    ]
+
+
 def render_preview_assets(
     blueprint_json: Dict[str, Any],
     demo_dataset: Dict[str, Any],
@@ -543,7 +574,11 @@ body {{ margin: 0; box-sizing: border-box; }}
             continue
         if slug not in existing_slugs:
             title = slug_to_title.get(slug) or slug.replace("-", " ").title()
-            pages.append({"slug": slug, "title": title, "sections": [{"type": "trust_bar", "content_slots": {"items": [f"Welcome to {title}."]}}]})
+            pages.append({
+                "slug": slug,
+                "title": title,
+                "sections": _default_sections_for_placeholder_page(title),
+            })
             existing_slugs[slug] = pages[-1]
     out = {
         "index.html": _render_one_page_html(blueprint_json, demo_dataset, pages[0], template_images),

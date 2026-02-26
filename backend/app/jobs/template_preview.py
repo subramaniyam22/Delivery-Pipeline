@@ -220,7 +220,13 @@ def run_template_preview_pipeline(
         template_images = None
         meta = getattr(template, "meta_json", None) or {}
         if isinstance(meta.get("images"), dict):
-            template_images = {k: v if isinstance(v, list) else [v] for k, v in meta["images"].items() if v}
+            # Normalize keys to lowercase so section image_prompt_category (e.g. exterior) always matches
+            raw = {k: v if isinstance(v, list) else [v] for k, v in meta["images"].items() if v}
+            template_images = {}
+            for k, v in raw.items():
+                key = (k or "").strip().lower().replace(" ", "_")
+                if key:
+                    template_images[key] = v
         # Multi-page preview: index.html + one .html per linked page (nav/footer); served via API proxy so all links work
         assets = render_preview_assets(blueprint, demo_dataset, template_images)
         total_size = sum(

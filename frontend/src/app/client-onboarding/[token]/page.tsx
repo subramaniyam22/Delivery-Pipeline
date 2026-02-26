@@ -751,8 +751,7 @@ export default function ClientOnboardingPage() {
 
     const togglePhase = (phaseId: string) => {
         setActivePhase(prev => prev === phaseId ? null : phaseId);
-        // Refresh progress from server only when user clicks a section header
-        loadFormData();
+        // Do not refetch on expand/collapse so typing in text fields is not overwritten
     };
 
     const scrollToPhase = (phaseId: string) => {
@@ -764,6 +763,11 @@ export default function ClientOnboardingPage() {
             }
         }, 100);
     };
+
+    // Debounced save for requirements so we don't save on every keystroke (only 1.2s after last change)
+    const requirementsSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const requirementsPendingRef = useRef<RequirementsData | null>(null);
+    const DEBOUNCE_SAVE_MS = 1200;
 
     // Helper to update local state without triggering API save (for controlled inputs)
     const updateLocalData = (updates: Partial<OnboardingFormData['data']>) => {
@@ -780,12 +784,26 @@ export default function ClientOnboardingPage() {
         saveFormData({ requirements: next });
     };
 
-    // Update requirements locally (for onChange)
+    // Update requirements locally (onChange); schedule debounced save so we don't poll on every letter
     const updateRequirementsLocal = (updates: Partial<RequirementsData>) => {
         if (!formData) return;
         const current = formData.data.requirements || {};
         const next = { ...current, ...updates };
+        requirementsPendingRef.current = next;
         updateLocalData({ requirements: next });
+        if (requirementsSaveTimeoutRef.current) clearTimeout(requirementsSaveTimeoutRef.current);
+        requirementsSaveTimeoutRef.current = setTimeout(() => {
+            requirementsSaveTimeoutRef.current = null;
+            const toSave = requirementsPendingRef.current;
+            if (toSave && formData) saveFormData({ requirements: toSave });
+        }, DEBOUNCE_SAVE_MS);
+    };
+
+    const flushRequirementsSave = () => {
+        if (requirementsSaveTimeoutRef.current) {
+            clearTimeout(requirementsSaveTimeoutRef.current);
+            requirementsSaveTimeoutRef.current = null;
+        }
     };
 
     const updateContacts = (contacts: Array<{ name: string; email: string; role: string; is_primary: boolean }>) => {
@@ -1414,7 +1432,7 @@ export default function ClientOnboardingPage() {
                             <textarea
                                 value={formData.data.requirements?.project_summary || ''}
                                 onChange={(e) => updateRequirementsLocal({ project_summary: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                 onFocus={() => handleFieldFocus('project_summary', 'Project Summary')}
                                 rows={3}
                                 placeholder="Brief summary of the project requirements..."
@@ -1426,7 +1444,7 @@ export default function ClientOnboardingPage() {
                             <textarea
                                 value={formData.data.requirements?.project_notes || ''}
                                 onChange={(e) => updateRequirementsLocal({ project_notes: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                 onFocus={() => handleFieldFocus('project_notes', 'Project Notes')}
                                 rows={3}
                                 placeholder="Notes that apply to all locations..."
@@ -1740,7 +1758,7 @@ export default function ClientOnboardingPage() {
                                 <textarea
                                     value={formData.data.requirements?.copy_scope_notes || ''}
                                     onChange={(e) => updateRequirementsLocal({ copy_scope_notes: e.target.value })}
-                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                     onFocus={() => handleFieldFocus('copy_scope_notes', 'Copy Scope Notes')}
                                     rows={3}
                                     placeholder="Additional notes about copy scope..."
@@ -1943,7 +1961,7 @@ export default function ClientOnboardingPage() {
                                         <textarea
                                             value={formData.data.requirements?.template_references || ''}
                                             onChange={(e) => updateRequirementsLocal({ template_references: e.target.value })}
-                                            onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                            onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                             onFocus={() => handleFieldFocus('template_references', 'Design Parameters & Details')}
                                             rows={4}
                                             placeholder="Describe your vision, target audience, and key design elements..."
@@ -1957,7 +1975,7 @@ export default function ClientOnboardingPage() {
                                 <textarea
                                     value={formData.data.requirements?.reference_links || ''}
                                     onChange={(e) => updateRequirementsLocal({ reference_links: e.target.value })}
-                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                     onFocus={() => handleFieldFocus('reference_links', 'Reference links')}
                                     rows={3}
                                     placeholder="Add links to websites you like..."
@@ -1997,7 +2015,7 @@ export default function ClientOnboardingPage() {
                                     className="animate-fadeIn"
                                     value={formData.data.requirements?.brand_guidelines_details || ''}
                                     onChange={(e) => updateRequirementsLocal({ brand_guidelines_details: e.target.value })}
-                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                     onFocus={() => handleFieldFocus('brand_guidelines', 'Brand Guidelines')}
                                     rows={3}
                                     placeholder="Paste a link to your brand book or describe your guidelines..."
@@ -2025,7 +2043,7 @@ export default function ClientOnboardingPage() {
                                     type="text"
                                     value={formData.data.requirements?.color_notes || ''}
                                     onChange={(e) => updateRequirementsLocal({ color_notes: e.target.value })}
-                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                     onFocus={() => handleFieldFocus('color_notes', 'Color Notes')}
                                     placeholder="Hex codes or color notes"
                                 />
@@ -2051,7 +2069,7 @@ export default function ClientOnboardingPage() {
                                     type="text"
                                     value={formData.data.requirements?.font_notes || ''}
                                     onChange={(e) => updateRequirementsLocal({ font_notes: e.target.value })}
-                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                     onFocus={() => handleFieldFocus('font_notes', 'Font Notes')}
                                     placeholder="Font details or links"
                                 />
@@ -2084,7 +2102,7 @@ export default function ClientOnboardingPage() {
                                 <textarea
                                     value={formData.data.requirements?.custom_graphic_notes || ''}
                                     onChange={(e) => updateRequirementsLocal({ custom_graphic_notes: e.target.value })}
-                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                     onFocus={() => handleFieldFocus('custom_graphic_notes', 'Custom Graphic Notes')}
                                     rows={3}
                                     placeholder="Describe custom graphic needs..."
@@ -2132,7 +2150,7 @@ export default function ClientOnboardingPage() {
                                 <textarea
                                     value={formData.data.requirements?.navigation_notes || ''}
                                     onChange={(e) => updateRequirementsLocal({ navigation_notes: e.target.value })}
-                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                     rows={4}
                                     placeholder="List the pages you want on your menu..."
                                 />
@@ -2154,7 +2172,7 @@ export default function ClientOnboardingPage() {
                             <textarea
                                 value={formData.data.requirements?.stock_images_reference || ''}
                                 onChange={(e) => updateRequirementsLocal({ stock_images_reference: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                 rows={2}
                                 placeholder="Links or notes for stock images..."
                             />
@@ -2164,7 +2182,7 @@ export default function ClientOnboardingPage() {
                             <textarea
                                 value={formData.data.requirements?.floor_plan_images || ''}
                                 onChange={(e) => updateRequirementsLocal({ floor_plan_images: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                 onFocus={() => handleFieldFocus('floor_plan_images', 'Floor Plan Images')}
                                 rows={2}
                                 placeholder="Links or notes for floor plan images..."
@@ -2175,7 +2193,7 @@ export default function ClientOnboardingPage() {
                             <textarea
                                 value={formData.data.requirements?.sitemap || ''}
                                 onChange={(e) => updateRequirementsLocal({ sitemap: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                 onFocus={() => handleFieldFocus('sitemap', 'Sitemap')}
                                 rows={2}
                                 placeholder="Sitemap links or details..."
@@ -2186,7 +2204,7 @@ export default function ClientOnboardingPage() {
                             <textarea
                                 value={formData.data.requirements?.virtual_tours || ''}
                                 onChange={(e) => updateRequirementsLocal({ virtual_tours: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                 onFocus={() => handleFieldFocus('virtual_tours', 'Virtual Tours')}
                                 rows={2}
                                 placeholder="Virtual tour links..."
@@ -2197,7 +2215,7 @@ export default function ClientOnboardingPage() {
                             <textarea
                                 value={formData.data.requirements?.poi_categories || ''}
                                 onChange={(e) => updateRequirementsLocal({ poi_categories: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                 onFocus={() => handleFieldFocus('poi_categories', 'POI Categories')}
                                 rows={3}
                                 placeholder="POI categories and details..."
@@ -2230,7 +2248,7 @@ export default function ClientOnboardingPage() {
                                 <textarea
                                     value={formData.data.requirements?.specials_details || ''}
                                     onChange={(e) => updateRequirementsLocal({ specials_details: e.target.value })}
-                                    onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                    onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                     onFocus={() => handleFieldFocus('specials_details', 'Specials Details')}
                                     rows={2}
                                     placeholder="Describe specials to add..."
@@ -2330,7 +2348,7 @@ export default function ClientOnboardingPage() {
                             <textarea
                                 value={formData.data.requirements?.pages || ''}
                                 onChange={(e) => updateRequirementsLocal({ pages: e.target.value })}
-                                onBlur={() => saveFormData({ requirements: formData.data.requirements })}
+                                onBlur={() => { flushRequirementsSave(); saveFormData({ requirements: formData.data.requirements }); }}
                                 onFocus={() => handleFieldFocus('pages', 'Pages')}
                                 rows={2}
                                 placeholder="List pages (comma-separated)..."

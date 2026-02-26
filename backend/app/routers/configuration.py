@@ -1162,7 +1162,8 @@ def publish_template(
         t.is_default = False
     template.status = "published"
     template.is_published = True
-    template.version = (getattr(template, "version", None) or 1) + 1
+    # Do not increment version on publish: preview is stored at templates/{slug}/v{version};
+    # changing version would make the generated preview unreachable (404). Same design before/after publish.
     template.changelog = "Published"
     db.commit()
     db.refresh(template)
@@ -1193,7 +1194,7 @@ def unpublish_template(
         raise HTTPException(status_code=400, detail="Template is not published")
     template.is_published = False
     template.status = "validated"  # keep validated so they can edit and re-publish without re-running validation
-    template.version = (getattr(template, "version", None) or 1) + 1
+    # Do not increment version on unpublish so preview URL and design stay the same.
     template.changelog = "Unpublished"
     db.commit()
     db.refresh(template)

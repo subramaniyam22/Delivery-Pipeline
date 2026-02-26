@@ -50,13 +50,45 @@ def _contract_to_client_dataset(contract: Dict[str, Any]) -> Dict[str, Any]:
             gallery_images = ["https://placehold.co/800x500?text=Client+content+pending"]
     else:
         gallery_images = ["https://placehold.co/800x500?text=Client+content+pending"]
-    copy_text = fundamentals.get("copy_text") or req.get("copy_scope_notes") or "Client content pending."
+    copy_text = (fundamentals.get("copy_text") or req.get("copy_scope_notes") or "").strip()
     privacy_url = fundamentals.get("privacy_policy_url") or ""
+    privacy_text = (fundamentals.get("privacy_policy_text") or "").strip()
     primary_contact = ob.get("primary_contact") or {}
     brand_name = primary_contact.get("company_name") or primary_contact.get("name") or "Client"
     project_summary = (req.get("project_summary") or ob.get("summary") or "").strip()
     project_notes = (req.get("project_notes") or "").strip()
-    description = project_summary or project_notes or copy_text[:200] if copy_text else "Professional services."
+    # Use full client content across the site: hero, company, property, amenities, testimonials, faqs
+    description = project_summary or project_notes or (copy_text[:300] if copy_text else "Professional services.")
+    # Highlights and amenities from summary/notes/copy so internal pages have real content
+    highlights = []
+    if project_summary:
+        highlights.append(project_summary[:120])
+    if project_notes:
+        highlights.append(project_notes[:120])
+    if copy_text and len(highlights) < 3:
+        highlights.append(copy_text[:120])
+    if not highlights:
+        highlights = ["Client content pending"]
+    amenities_list = [s.strip() for s in (project_notes or copy_text or "").replace("\n", ",").split(",") if s.strip()][:10]
+    if not amenities_list:
+        amenities_list = highlights[:5] if len(highlights) > 1 else ["Client content pending"]
+    testimonials = []
+    if project_summary:
+        testimonials.append({"name": brand_name, "quote": project_summary[:200]})
+    if project_notes:
+        testimonials.append({"name": "Team", "quote": project_notes[:200]})
+    if copy_text:
+        testimonials.append({"name": brand_name, "quote": copy_text[:200]})
+    if not testimonials:
+        testimonials = [{"name": brand_name, "quote": "Client content pending."}]
+    faqs = []
+    if privacy_url or privacy_text:
+        faqs.append({"q": "Privacy policy", "a": privacy_text[:300] if privacy_text else f"See {privacy_url}"})
+    nav_notes = (req.get("navigation_notes") or "").strip()
+    if nav_notes:
+        faqs.append({"q": "Navigation & structure", "a": nav_notes[:200]})
+    if not faqs:
+        faqs = [{"q": "Contact", "a": primary_contact.get("email") or primary_contact.get("phone") or "See contact details."}]
     return {
         "brand": {
             "name": brand_name,
@@ -73,18 +105,18 @@ def _contract_to_client_dataset(contract: Dict[str, Any]) -> Dict[str, Any]:
             "name": brand_name,
             "address": primary_contact.get("address") or "Address pending",
             "geo": {"lat": 40.7128, "lng": -74.0060},
-            "highlights": [project_summary[:80]] if project_summary else ["Client content pending"],
+            "highlights": highlights,
         },
-        "amenities": [project_notes[:80]] if project_notes else (["Client content pending"] if not copy_text else [copy_text[:50]]),
+        "amenities": amenities_list,
         "gallery_images": gallery_images,
         "floor_plans": [
             {"name": "2B/2B", "beds": 2, "baths": 2, "sqft": 1100, "rent_from": 0, "image_url": gallery_images[0] if gallery_images else "https://placehold.co/400x300?text=Floor+plan"},
         ],
-        "testimonials": [{"name": brand_name, "quote": (project_summary or copy_text)[:100] if (project_summary or copy_text) else "Client content pending."}],
-        "faqs": [{"q": "Privacy", "a": f"Privacy policy: {privacy_url}" if privacy_url else "Client content pending."}],
+        "testimonials": testimonials,
+        "faqs": faqs,
         "policies": {"privacy_url": privacy_url, "terms_url": ""},
         "social_links": {},
-        "locations": [{"name": brand_name, "address": "Address pending", "geo": {"lat": 40.7128, "lng": -74.0060}}],
+        "locations": [{"name": brand_name, "address": primary_contact.get("address") or "Address pending", "geo": {"lat": 40.7128, "lng": -74.0060}}],
     }
 
 
