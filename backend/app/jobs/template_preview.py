@@ -47,7 +47,33 @@ _STEM_TO_CATEGORY_FALLBACK: Dict[str, str] = {
     "careers": "people",
     "services": "lifestyle",
     "office": "interior",
+    "placeholder": "exterior",
+    "hero_placeholder": "exterior",
+    "hero-placeholder": "exterior",
 }
+
+# Match src="..." or url(...) pointing at relative image paths (so we can replace with Blueprint-uploaded URLs).
+# Matches assets/img/, assets/images/, images/, img/, ./images/, etc. Excludes http(s): URLs.
+_IMAGE_PATH_PATTERN = re.compile(
+    r'(src=|url\()(\s*["\']?)((?!https?:)(?:\.\/)?(?:assets\/)?(?:images?\/)?[^"\')\s]*\.(?:jpe?g|png|gif|webp|svg))(\s*["\']?)',
+    re.IGNORECASE,
+)
+# Match data:image/... placeholders (common in Git-built templates: inline SVG/PNG placeholders).
+_DATA_URI_IMAGE_PATTERN = re.compile(
+    r'(src=|url\()(\s*["\']?)data:image/[^"\')\s]+(["\']?)',
+    re.IGNORECASE,
+)
+
+
+def _first_blueprint_image_url(by_category: Dict[str, list]) -> Optional[str]:
+    """Return first Blueprint image URL; prefer hero/exterior for main/hero slots."""
+    for key in ("hero", "exterior", "interior", "lifestyle", "people", "neighborhood"):
+        if key in by_category and by_category[key]:
+            return by_category[key][0]
+    for urls in by_category.values():
+        if urls:
+            return urls[0]
+    return None
 
 
 def _inject_template_images_into_zip_assets(
@@ -55,12 +81,11 @@ def _inject_template_images_into_zip_assets(
     template_images: Optional[Dict[str, list]] = None,
 ) -> None:
     """
-    Replace assets/img/* references in HTML/CSS with uploaded template image URLs (meta_json.images).
-    Modifies assets in place. template_images: category -> list of image URLs (from Template Registry uploads).
+    Replace local image references and data-URI placeholders with Blueprint-uploaded URLs (meta_json.images).
+    Paths: assets/img/, images/, img/, etc. Data URIs: data:image/svg+xml;base64,... (Git-built hero placeholders).
     """
     if not template_images:
         return
-    # Normalize to lowercase keys for matching (user categories may be "Exterior", "Careers", etc.)
     by_category: Dict[str, list] = {}
     for k, v in template_images.items():
         if not v:
@@ -69,10 +94,11 @@ def _inject_template_images_into_zip_assets(
         if key:
             by_category[key] = v if isinstance(v, list) else [v]
 
-    def replacer(match: re.Match) -> str:
+    first_url = _first_blueprint_image_url(by_category)
+
+    def path_replacer(match: re.Match) -> str:
         prefix, quote1, path, quote2 = match.groups()
-        # path is e.g. assets/img/hero.jpg or assets/img/careers.png
-        stem = os.path.splitext(os.path.basename(path))[0].lower().replace(" ", "_")
+        stem = os.path.splitext(os.path.basename(path))[0].lower().replace(" ", "_").replace("-", "_")
         url = None
         if stem in by_category and by_category[stem]:
             url = by_category[stem][0]
@@ -84,17 +110,19 @@ def _inject_template_images_into_zip_assets(
             return f"{prefix}{quote1}{url}{quote2}"
         return match.group(0)
 
-    # Match src="assets/img/..." or url('assets/img/...') or url("assets/img/...")
-    pattern = re.compile(
-        r'(src=|url\()(\s*["\']?)(assets/img/[^"\')\s]+)(["\']?)',
-        re.IGNORECASE,
-    )
+    def data_uri_replacer(match: re.Match) -> str:
+        prefix, quote1, _data_uri, quote2 = match.groups()
+        if first_url:
+            return f"{prefix}{quote1}{first_url}{quote2}"
+        return match.group(0)
+
     for rel, content in list(assets.items()):
         if not isinstance(content, str):
             continue
         if not (rel.endswith(".html") or rel.endswith(".css")):
             continue
-        new_content = pattern.sub(replacer, content)
+        new_content = _IMAGE_PATH_PATTERN.sub(path_replacer, content)
+        new_content = _DATA_URI_IMAGE_PATTERN.sub(data_uri_replacer, new_content)
         if new_content != content:
             assets[rel] = new_content
 
