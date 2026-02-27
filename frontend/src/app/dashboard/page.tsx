@@ -418,13 +418,21 @@ export default function DashboardPage() {
                             {STAGE_ORDER.map((stage) => {
                                 const count = executiveDashboard.projects_by_stage?.[stage] || 0;
                                 const stageProjects = getProjectsByStage(stage);
+                                const maxVisible = 3;
+                                const visible = stageProjects.slice(0, maxVisible);
+                                const remaining = stageProjects.length - maxVisible;
                                 return (
-                                    <div key={stage} role="button" onClick={() => count > 0 && (setExpandedHealthStatus(null), setExpandedStage(expandedStage === stage ? null : stage))} style={{ padding: '1.25rem', background: '#f8fafc', borderRadius: 12, textAlign: 'center', cursor: count > 0 ? 'pointer' : 'default', border: expandedStage === stage ? '2px solid #3b82f6' : '2px solid transparent' }}>
+                                    <div key={stage} className="dashboard-stage-card" role="button" onClick={() => count > 0 && (setExpandedHealthStatus(null), setExpandedStage(expandedStage === stage ? null : stage))} style={{ padding: '1.25rem', background: '#f8fafc', borderRadius: 12, textAlign: 'center', cursor: count > 0 ? 'pointer' : 'default', border: expandedStage === stage ? '2px solid #3b82f6' : '2px solid transparent', minWidth: 0 }}>
                                         <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{STAGE_ICONS[stage]}</div>
                                         <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{count}</div>
                                         <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>{STAGE_LABELS[stage]}</div>
                                         <div style={{ height: 4, background: '#e2e8f0', borderRadius: 2, overflow: 'hidden' }}><div style={{ width: `${(count / (executiveDashboard.total_projects || 1)) * 100}%`, height: '100%', background: 'linear-gradient(90deg, #3b82f6, #8b5cf6)', borderRadius: 2 }} /></div>
-                                        {stageProjects.length > 0 && <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.5rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stageProjects.slice(0, 2).map((p: any) => p.title).join(', ')}{stageProjects.length > 2 ? ` +${stageProjects.length - 2} more` : ''}</div>}
+                                        {stageProjects.length > 0 && (
+                                            <div className="dashboard-stage-projects" style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.5rem', textAlign: 'left', wordBreak: 'break-word' }}>
+                                                {visible.map((p: any) => <div key={p.id} style={{ marginBottom: '2px' }}>{p.title}</div>)}
+                                                {remaining > 0 && <div style={{ fontWeight: 600, color: '#64748b', marginTop: '2px' }}>+{remaining} more</div>}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -595,11 +603,21 @@ export default function DashboardPage() {
                 }
                 .dashboard-stages-grid {
                     display: grid;
-                    grid-template-columns: repeat(7, 1fr);
+                    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
                     gap: 1rem;
                 }
+                .dashboard-stage-card {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                }
+                .dashboard-stage-projects {
+                    width: 100%;
+                    max-height: 4.5em;
+                    overflow-y: auto;
+                }
                 @media (max-width: 1024px) {
-                    .dashboard-stages-grid { grid-template-columns: repeat(3, 1fr); }
+                    .dashboard-stages-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
                 }
                 @media (max-width: 768px) {
                     .dashboard-stages-grid { grid-template-columns: repeat(2, 1fr); }

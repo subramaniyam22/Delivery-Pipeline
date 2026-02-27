@@ -6,10 +6,12 @@ import { usePathname } from 'next/navigation';
 const SEGMENT_LABELS: Record<string, string> = {
     dashboard: 'Dashboard',
     projects: 'Projects',
+    project: 'Projects',
     create: 'Create',
     users: 'Manage Users',
     configuration: 'Configuration',
     'client-management': 'Clients',
+    'client-onboarding': 'Onboarding',
     capacity: 'Capacity',
     forecast: 'Forecast',
     'leave-management': 'Leave',
@@ -22,6 +24,10 @@ const SEGMENT_LABELS: Record<string, string> = {
     quality: 'Quality',
     'audit-logs': 'Audit Logs',
     'executive-dashboard': 'Executive Dashboard',
+    login: 'Login',
+    work: 'Work',
+    delivery: 'Delivery',
+    insights: 'Insights',
 };
 
 function getLabel(segment: string, isId = false): string {

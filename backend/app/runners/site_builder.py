@@ -95,6 +95,30 @@ def _git_available() -> bool:
         return False
 
 
+def resolve_template_root(repo_dir: str, template: TemplateRegistry) -> str:
+    """
+    Return the directory that contains the template app (package.json, build.sh, or index.html).
+    If template.repo_path is set (e.g. a subfolder name in the repo), that subfolder is used;
+    otherwise the repo root is used.
+    """
+    path = getattr(template, "repo_path", None)
+    if not path or not isinstance(path, str):
+        return repo_dir
+    path = path.strip().strip("/").replace("\\", "/")
+    if not path:
+        return repo_dir
+    # Disallow path traversal
+    if ".." in path or path.startswith("/"):
+        raise RuntimeError("Invalid template repo path: must be a relative folder name inside the repository.")
+    template_root = os.path.join(repo_dir, path)
+    if not os.path.isdir(template_root):
+        raise RuntimeError(
+            f"Template folder not found in repository: '{path}'. "
+            "Check that the repo path (folder name) matches a directory in your GitHub repo."
+        )
+    return template_root
+
+
 def clone_template(template: TemplateRegistry, workdir: str) -> str:
     """
     Get template source into workdir/template. Uses build_source_type/build_source_ref when set
@@ -263,7 +287,8 @@ def build_site(local_path: str) -> Tuple[str, str]:
 
     raise RuntimeError(
         "No build strategy found for template. Expected: package.json (npm build), build.sh, "
-        "index.html at root, or index.html inside dist/build/out/public or a subfolder."
+        "index.html at root, or index.html inside dist/build/out/public or a subfolder. "
+        "If your template lives in a subfolder of the repo, set the 'Repo path' (folder name) in the template so we look in that folder."
     )
 
 
@@ -315,8 +340,9 @@ def build_and_package(
 
     with tempfile.TemporaryDirectory() as workdir:
         repo_dir = clone_template(template, workdir)
+        template_root = resolve_template_root(repo_dir, template)
         if contract:
-            _inject_client_contract(repo_dir, contract)
+            _inject_client_contract(template_root, contract)
         baseline_dir = None
         baseline_src = os.path.join(repo_dir, "baseline")
         if os.path.isdir(baseline_src):
@@ -325,21 +351,18 @@ def build_and_package(
                 shutil.rmtree(baseline_dir)
             os.makedirs(os.path.dirname(baseline_dir), exist_ok=True)
             shutil.copytree(baseline_src, baseline_dir)
-        apply_assets(mapping_plan_json, assets, repo_dir)
-        dist_path, output_kind = build_site(repo_dir)
-        dist_dir = os.path.join(repo_dir, "dist")
-        if not os.path.isdir(dist_dir) or not os.path.isfile(os.path.join(dist_dir, "index.html")):
+        apply_assets(mapping_plan_json, assets, template_root)
+        dist_path, output_kind = build_site(template_root)
+        if not os.path.isdir(dist_path) or not os.path.isfile(os.path.join(dist_path, "index.html")):
             try:
-                children = os.listdir(repo_dir)
+                children = os.listdir(template_root)
             except OSError:
                 children = []
             raise RuntimeError(
                 "Template build output missing dist/index.html. "
                 "Ensure your template build produces a static site into /dist. "
-                f"Found: {children}"
+                f"Found in template root: {children}"
             )
-        dist_path = dist_dir
-        output_kind = "dist"
         zip_path = package_build(dist_path, workdir)
 
         with open(zip_path, "rb") as handle:

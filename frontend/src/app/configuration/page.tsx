@@ -8,6 +8,7 @@ import Navigation from '@/components/Navigation';
 import RequireCapability from '@/components/RequireCapability';
 import { Dialog } from '@/components/ui/dialog';
 import PageHeader from '@/components/PageHeader';
+import Breadcrumbs from '@/components/Breadcrumbs';
 
 type ConfigTab = 'template_registry' | 'sla' | 'thresholds' | 'preview_strategy' | 'hitl_gates' | 'decision_policies' | 'global_checklists' | 'learning';
 type TemplateDetailSubTab = 'overview' | 'preview' | 'validation' | 'versions' | 'blueprint' | 'performance' | 'evolution';
@@ -1690,6 +1691,7 @@ function ConfigurationPageContent() {
         <div className="page-wrapper">
             <Navigation />
             <main className="container" style={{ padding: '2rem var(--space-lg)', maxWidth: '1600px', width: '100%', margin: '0 auto' }}>
+                <Breadcrumbs />
                 <header style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <PageHeader
                         title="System Configuration"
@@ -2222,6 +2224,26 @@ function ConfigurationPageContent() {
                                                 {selectedTemplate.validation_last_run_at && <span style={{ color: '#64748b', fontSize: '12px' }}>Last run: {new Date(selectedTemplate.validation_last_run_at).toLocaleString()}</span>}
                                             </div>
                                             <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '12px' }}>Run Validation includes responsiveness (Lighthouse mobile viewport). Generate preview first.</p>
+                                            <details style={{ marginBottom: '16px', padding: '12px', background: '#f1f5f9', borderRadius: '8px', fontSize: '12px' }}>
+                                                <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#475569' }}>How pass/fail is decided</summary>
+                                                <ul style={{ margin: '8px 0 0', paddingLeft: '20px', color: '#64748b' }}>
+                                                    <li><strong>Overall:</strong> Pass = no failed checks; Fail = one or more checks below threshold or rule violations.</li>
+                                                    <li><strong>Lighthouse:</strong> Each category (performance, accessibility, SEO, best practices) must meet the configured minimum score (0–100).</li>
+                                                    <li><strong>Axe:</strong> Critical and serious violations must be within allowed max; moderate/minor may be allowed up to a limit.</li>
+                                                    <li><strong>Content:</strong> Required items (home, CTA, contact/lead form, viewport meta) must be present if enabled.</li>
+                                                    <li><strong>Copy/SEO:</strong> Scored by AI; &quot;Issues found&quot; means the summary describes what to improve.</li>
+                                                </ul>
+                                            </details>
+                                            <details style={{ marginBottom: '16px', padding: '12px', background: '#fffbeb', borderRadius: '8px', fontSize: '12px', border: '1px solid #fde68a' }}>
+                                                <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#92400e' }}>When something fails — what to improve</summary>
+                                                <ul style={{ margin: '8px 0 0', paddingLeft: '20px', color: '#78350f' }}>
+                                                    <li><strong>Lighthouse low score:</strong> Optimize that category (e.g. add alt text, fix contrast, improve performance). Re-run after updating the template.</li>
+                                                    <li><strong>Axe violations:</strong> Use the rule id and &quot;help&quot; text shown in Rule violations. Fix the markup (e.g. unique landmarks, ARIA labels) then re-run.</li>
+                                                    <li><strong>Content missing:</strong> Ensure the preview includes the required elements (e.g. a home section, CTA, contact/lead form, viewport meta).</li>
+                                                    <li><strong>Copy/SEO issues:</strong> Read the summary (e.g. expand meta descriptions, fix placeholder text) and update the blueprint or template content.</li>
+                                                    <li>Use <strong>Fix Blueprint</strong> below to get AI-suggested changes when validation fails.</li>
+                                                </ul>
+                                            </details>
                                             {selectedTemplate.preview_status !== 'ready' && <p style={{ margin: 0, color: '#64748b' }}>Generate preview first, then run validation.</p>}
                                             {selectedTemplate.blueprint_json && (
                                                 <>

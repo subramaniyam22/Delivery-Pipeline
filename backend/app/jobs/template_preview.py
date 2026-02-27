@@ -128,10 +128,11 @@ def run_template_preview_pipeline(
         if build_source in ("s3_zip", "s3") and source_ref:
             # Preview from ZIP: build the template from its ZIP and upload dist as preview (no blueprint required)
             try:
-                from app.runners.site_builder import clone_template, build_site
+                from app.runners.site_builder import clone_template, build_site, resolve_template_root
                 with tempfile.TemporaryDirectory() as workdir:
                     repo_dir = clone_template(template, workdir)
-                    dist_path, _ = build_site(repo_dir)
+                    template_root = resolve_template_root(repo_dir, template)
+                    dist_path, _ = build_site(template_root)
                     dist_index = os.path.join(dist_path, "index.html")
                     if not os.path.isfile(dist_index):
                         raise RuntimeError("Template build did not produce dist/index.html")
@@ -213,10 +214,11 @@ def run_template_preview_pipeline(
         if use_git_path:
             # Preview from Git: clone repo, build site, upload dist as preview (no blueprint required)
             try:
-                from app.runners.site_builder import clone_template, build_site
+                from app.runners.site_builder import clone_template, build_site, resolve_template_root
                 with tempfile.TemporaryDirectory() as workdir:
                     repo_dir = clone_template(template, workdir)
-                    dist_path, _ = build_site(repo_dir)
+                    template_root = resolve_template_root(repo_dir, template)
+                    dist_path, _ = build_site(template_root)
                     dist_index = os.path.join(dist_path, "index.html")
                     if not os.path.isfile(dist_index):
                         raise RuntimeError("Template build did not produce dist/index.html")
