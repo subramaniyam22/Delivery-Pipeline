@@ -41,7 +41,8 @@ def _template_prefix(template: TemplateRegistry) -> str:
     return f"templates/{slug}/v{version}"
 
 
-# Map common ZIP image filenames (stem) to template image category keys (user may upload by category name)
+# Map common ZIP image filenames (stem) to template image category keys (user may upload by category name).
+# Includes internal-page names (amenities, gallery, feature, etc.) so Blueprint images load on every page.
 _STEM_TO_CATEGORY_FALLBACK: Dict[str, str] = {
     "hero": "exterior",
     "careers": "people",
@@ -50,12 +51,21 @@ _STEM_TO_CATEGORY_FALLBACK: Dict[str, str] = {
     "placeholder": "exterior",
     "hero_placeholder": "exterior",
     "hero-placeholder": "exterior",
+    "amenities": "lifestyle",
+    "gallery": "exterior",
+    "feature": "exterior",
+    "about": "lifestyle",
+    "contact": "lifestyle",
+    "team": "people",
+    "community": "exterior",
+    "floorplan": "interior",
+    "logo": "exterior",
 }
 
-# Match src="..." or url(...) pointing at relative image paths (so we can replace with Blueprint-uploaded URLs).
-# Matches assets/img/, assets/images/, images/, img/, ./images/, etc. Excludes http(s): URLs.
+# Match src="..." or url(...) pointing at relative or root-relative image paths (so we can replace with Blueprint-uploaded URLs).
+# Matches /images/, images/, assets/img/, ./images/, etc. Excludes http(s): URLs.
 _IMAGE_PATH_PATTERN = re.compile(
-    r'(src=|url\()(\s*["\']?)((?!https?:)(?:\.\/)?(?:assets\/)?(?:images?\/)?[^"\')\s]*\.(?:jpe?g|png|gif|webp|svg))(\s*["\']?)',
+    r'(src=|url\()(\s*["\']?)((?!https?:)(?:\/)?(?:\.\/)?(?:assets\/)?(?:images?\/)?[^"\')\s]*\.(?:jpe?g|png|gif|webp|svg))(\s*["\']?)',
     re.IGNORECASE,
 )
 # Match data:image/... placeholders (common in Git-built templates: inline SVG/PNG placeholders).
@@ -106,6 +116,18 @@ def _inject_template_images_into_zip_assets(
             fallback = _STEM_TO_CATEGORY_FALLBACK.get(stem)
             if fallback and fallback in by_category and by_category[fallback]:
                 url = by_category[fallback][0]
+            else:
+                # Internal pages often use amenities-1.jpg, gallery-2.jpg: strip trailing _\d+ and try again
+                base_stem = re.sub(r"_\d+$", "", stem)
+                if base_stem and base_stem != stem:
+                    if base_stem in by_category and by_category[base_stem]:
+                        url = by_category[base_stem][0]
+                    else:
+                        fallback = _STEM_TO_CATEGORY_FALLBACK.get(base_stem)
+                        if fallback and fallback in by_category and by_category[fallback]:
+                            url = by_category[fallback][0]
+            if url is None and first_url:
+                url = first_url
         if url and isinstance(url, str):
             return f"{prefix}{quote1}{url}{quote2}"
         return match.group(0)
@@ -119,7 +141,7 @@ def _inject_template_images_into_zip_assets(
     for rel, content in list(assets.items()):
         if not isinstance(content, str):
             continue
-        if not (rel.endswith(".html") or rel.endswith(".css")):
+        if not (rel.endswith(".html") or rel.endswith(".css") or rel.endswith(".js")):
             continue
         new_content = _IMAGE_PATH_PATTERN.sub(path_replacer, content)
         new_content = _DATA_URI_IMAGE_PATTERN.sub(data_uri_replacer, new_content)
