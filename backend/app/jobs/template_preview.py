@@ -91,7 +91,8 @@ def _inject_template_images_into_zip_assets(
 ) -> None:
     """
     Replace local image references and data-URI placeholders with Blueprint-uploaded URLs (meta_json.images).
-    Paths: assets/img/, images/, img/, etc. Data URIs: data:image/svg+xml;base64,... (Git-built hero placeholders).
+    When a category has multiple images, cycle through them (gallery-1 -> first, gallery-2 -> second, etc.)
+    so inner pages show different images instead of the same one repeated.
     """
     if not template_images:
         return
@@ -104,29 +105,54 @@ def _inject_template_images_into_zip_assets(
             by_category[key] = v if isinstance(v, list) else [v]
 
     first_url = _first_blueprint_image_url(by_category)
+    # Per-category index so we cycle through multiple uploads (e.g. Gallery 1–6 get 6 different images)
+    category_index: Dict[str, int] = {}
+
+    def _pick_url(category_key: str, index_1based: Optional[int] = None) -> Optional[str]:
+        urls = by_category.get(category_key)
+        if not urls:
+            return None
+        if index_1based is not None and index_1based >= 1:
+            return urls[(index_1based - 1) % len(urls)]
+        idx = category_index.get(category_key, 0)
+        category_index[category_key] = idx + 1
+        return urls[idx % len(urls)]
+
+    def _category_and_index_for_stem(stem: str) -> tuple[Optional[str], Optional[int]]:
+        """Return (category_key, index_1based) for a filename stem. Handles hashed stems like gallery_1_a1b2c3d4."""
+        index_from_stem = None
+        mo = re.search(r"_(\d+)", stem)
+        if mo:
+            index_from_stem = int(mo.group(1))
+        if stem in by_category and by_category[stem]:
+            return stem, index_from_stem
+        fallback = _STEM_TO_CATEGORY_FALLBACK.get(stem)
+        if fallback and fallback in by_category and by_category[fallback]:
+            return fallback, index_from_stem
+        base_stem = re.sub(r"_\d+$", "", stem)
+        if base_stem and base_stem != stem:
+            if base_stem in by_category and by_category[base_stem]:
+                return base_stem, index_from_stem
+            fallback = _STEM_TO_CATEGORY_FALLBACK.get(base_stem)
+            if fallback and fallback in by_category and by_category[fallback]:
+                return fallback, index_from_stem
+        # Git-built bundles use hashed names: gallery-1-abc123 -> stem gallery_1_abc123; match by prefix
+        for known in ("gallery", "amenities", "feature", "hero", "exterior", "interior", "lifestyle", "people", "about", "contact", "team", "community", "floorplan", "logo"):
+            if stem.startswith(known + "_") or stem == known:
+                if known in by_category and by_category[known]:
+                    return known, index_from_stem
+                fb = _STEM_TO_CATEGORY_FALLBACK.get(known)
+                if fb and fb in by_category and by_category[fb]:
+                    return fb, index_from_stem
+        return None, None
 
     def path_replacer(match: re.Match) -> str:
         prefix, quote1, path, quote2 = match.groups()
         stem = os.path.splitext(os.path.basename(path))[0].lower().replace(" ", "_").replace("-", "_")
-        url = None
-        if stem in by_category and by_category[stem]:
-            url = by_category[stem][0]
-        else:
-            fallback = _STEM_TO_CATEGORY_FALLBACK.get(stem)
-            if fallback and fallback in by_category and by_category[fallback]:
-                url = by_category[fallback][0]
-            else:
-                # Internal pages often use amenities-1.jpg, gallery-2.jpg: strip trailing _\d+ and try again
-                base_stem = re.sub(r"_\d+$", "", stem)
-                if base_stem and base_stem != stem:
-                    if base_stem in by_category and by_category[base_stem]:
-                        url = by_category[base_stem][0]
-                    else:
-                        fallback = _STEM_TO_CATEGORY_FALLBACK.get(base_stem)
-                        if fallback and fallback in by_category and by_category[fallback]:
-                            url = by_category[fallback][0]
-            if url is None and first_url:
-                url = first_url
+        category_key, index_from_stem = _category_and_index_for_stem(stem)
+        url = _pick_url(category_key, index_from_stem) if category_key else None
+        if url is None and first_url:
+            url = first_url
         if url and isinstance(url, str):
             return f"{prefix}{quote1}{url}{quote2}"
         return match.group(0)
