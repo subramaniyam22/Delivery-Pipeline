@@ -576,14 +576,8 @@ def delete_template(
 
 
 def _template_preview_prefix(template: TemplateRegistry) -> str:
-    """Same logic as template_preview._template_prefix for proxy consistency."""
-    slug = (getattr(template, "slug", None) or "template")
-    if isinstance(slug, str):
-        slug = slug.replace(" ", "-").lower()[:64]
-    else:
-        slug = "template"
-    version = getattr(template, "version", None) or 1
-    return f"templates/{slug}/v{version}"
+    """Same logic as template_preview._template_prefix: unique per template so each has its own preview."""
+    return f"templates/{template.id}"
 
 
 @router.get("/api/templates/{template_id}/preview")
@@ -1159,8 +1153,8 @@ def publish_template(
         t.is_default = False
     template.status = "published"
     template.is_published = True
-    # Do not increment version on publish: preview is stored at templates/{slug}/v{version};
-    # changing version would make the generated preview unreachable (404). Same design before/after publish.
+    # Do not increment version on publish: preview is stored at templates/{template_id};
+    # changing version is independent of preview path. Same design before/after publish.
     template.changelog = "Published"
     db.commit()
     db.refresh(template)

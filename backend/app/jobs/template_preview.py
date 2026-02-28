@@ -36,9 +36,8 @@ _preview_semaphore = threading.Semaphore(PREVIEW_JOBS_CONCURRENCY)
 
 
 def _template_prefix(template: TemplateRegistry) -> str:
-    slug = (template.slug or "template").replace(" ", "-").lower()
-    version = getattr(template, "version", None) or 1
-    return f"templates/{slug}/v{version}"
+    """Unique prefix per template so previews don't overwrite each other (slug+version can collide)."""
+    return f"templates/{template.id}"
 
 
 # Map common ZIP image filenames (stem) to template image category keys (user may upload by category name).

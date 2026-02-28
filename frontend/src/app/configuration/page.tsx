@@ -1780,18 +1780,6 @@ function ConfigurationPageContent() {
                                 <option value="Corporate Trust">Corporate Trust</option>
                                 <option value="Luxury Lifestyle">Luxury Lifestyle</option>
                             </select>
-                            <label style={{ fontSize: '13px', color: '#64748b', marginLeft: '8px' }}>Default</label>
-                            <select
-                                value={defaultTemplateId}
-                                onChange={(e) => { const id = e.target.value; setDefaultTemplateId(id); saveDefaultTemplate(id); }}
-                                disabled={!canEditTemplates}
-                                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
-                            >
-                                <option value="">Select default</option>
-                                {templates.filter(t => t.is_published).map((t) => (
-                                    <option key={t.id} value={t.id}>{t.name}</option>
-                                ))}
-                            </select>
                             <button
                                 type="button"
                                 onClick={() => setShowCreateWizard(true)}
@@ -1837,7 +1825,7 @@ function ConfigurationPageContent() {
                                     {filteredTemplates.map((t) => (
                                         <div
                                             key={t.id}
-                                            onClick={() => setSelectedTemplateId(t.id)}
+                                            onClick={() => { setSelectedTemplateId(t.id); setTemplateDetailSubTab('overview'); }}
                                             style={{
                                                 padding: '12px',
                                                 borderRadius: '8px',
@@ -1849,9 +1837,9 @@ function ConfigurationPageContent() {
                                         >
                                             <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                                                 {t.preview_thumbnail_url ? (
-                                                    <img src={t.preview_thumbnail_url} alt="" style={{ width: '56px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
+                                                    <img src={t.preview_thumbnail_url} alt="" style={{ width: '56px', height: '40px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }} title="Preview thumbnail" />
                                                 ) : (
-                                                    <div style={{ width: '56px', height: '40px', borderRadius: '6px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: '#64748b' }}>{t.name?.slice(0, 2).toUpperCase()}</div>
+                                                    <div style={{ width: '56px', height: '40px', borderRadius: '6px', background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', color: '#64748b', flexShrink: 0 }} title={t.preview_status === 'ready' ? 'Generate preview to see thumbnail' : 'No preview yet'}>{t.name?.slice(0, 2).toUpperCase()}</div>
                                                 )}
                                                 <div style={{ flex: 1, minWidth: 0 }}>
                                                     <div style={{ fontWeight: 600, fontSize: '13px' }}>{t.name}</div>
@@ -1872,7 +1860,7 @@ function ConfigurationPageContent() {
                                 </div>
                             )}
                         </div>
-                        <div style={{ minWidth: 0 }}>
+                        <div style={{ minWidth: 0 }} key={selectedTemplate?.id ?? 'none'}>
                             {!selectedTemplate ? (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#94a3b8', fontSize: '14px' }}>Select a template</div>
                             ) : (
@@ -2202,7 +2190,7 @@ function ConfigurationPageContent() {
                                                         ))}
                                                     </div>
                                                     <div style={{ maxWidth: previewViewport === 'desktop' ? '100%' : previewViewport === 'tablet' ? '768px' : '375px', margin: '0 auto', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden', boxShadow: previewViewport !== 'desktop' ? '0 4px 12px rgba(0,0,0,0.1)' : 'none' }}>
-                                                        <iframe title="Preview" src={getPreviewIframeUrl(selectedTemplate) || selectedTemplate.preview_url!} style={{ width: '100%', height: previewViewport === 'mobile' ? '600px' : '400px', border: 'none', display: 'block' }} />
+                                                        <iframe key={selectedTemplate.id} title={`Preview: ${selectedTemplate.name}`} src={getPreviewIframeUrl(selectedTemplate) || selectedTemplate.preview_url!} style={{ width: '100%', height: previewViewport === 'mobile' ? '600px' : '400px', border: 'none', display: 'block' }} />
                                                     </div>
                                                 </>
                                             ) : canGenerateTemplatePreview(selectedTemplate) && selectedTemplate.preview_status !== 'failed' && (

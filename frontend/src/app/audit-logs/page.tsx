@@ -204,8 +204,8 @@ export default function AuditLogsPage() {
                                     <tr key={log.id}>
                                         <Td>{new Date(log.created_at).toLocaleString()}</Td>
                                         <Td>
-                                            <div>{log.actor?.name || log.actor_user_id}</div>
-                                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>{log.actor?.role || '—'}</div>
+                                            <div>{log.actor?.name ?? (log.actor_user_id ? String(log.actor_user_id) : 'System')}</div>
+                                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>{log.actor?.role ?? '—'}</div>
                                         </Td>
                                         <Td>{log.action}</Td>
                                         <Td>{log.project_id || log.payload_json?.template_id || log.payload_json?.user_id || '—'}</Td>
