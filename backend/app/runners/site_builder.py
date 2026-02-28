@@ -158,6 +158,12 @@ def clone_template(template: TemplateRegistry, workdir: str) -> str:
                 if os.path.isdir(repo_dir):
                     shutil.rmtree(repo_dir, ignore_errors=True)
             else:
+                err_str = str(e).lower()
+                if "nosuchkey" in err_str or "does not exist" in err_str or "not found" in err_str:
+                    raise RuntimeError(
+                        "Template ZIP not found in storage. Upload a template ZIP for this version "
+                        "(Template Registry → select template → Versions → Replace build source with .zip), then try Generate Preview again."
+                    ) from e
                 raise RuntimeError(f"Template S3 source failed ({source_ref}): {e}") from e
 
     # Git path: prefer GitHub archive (no git required), then git clone
