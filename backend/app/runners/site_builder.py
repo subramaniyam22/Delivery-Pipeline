@@ -149,7 +149,16 @@ def clone_template(template: TemplateRegistry, workdir: str) -> str:
             os.remove(zip_path)
             return repo_dir
         except Exception as e:
-            raise RuntimeError(f"Template S3 source failed ({source_ref}): {e}") from e
+            # If S3 key is missing (e.g. NoSuchKey) but template has repo_url, fall back to Git
+            if repo_url:
+                logger.warning(
+                    "Template S3 source failed (%s): %s; falling back to Git repo.",
+                    source_ref, e,
+                )
+                if os.path.isdir(repo_dir):
+                    shutil.rmtree(repo_dir, ignore_errors=True)
+            else:
+                raise RuntimeError(f"Template S3 source failed ({source_ref}): {e}") from e
 
     # Git path: prefer GitHub archive (no git required), then git clone
     branch_or_tag = None
