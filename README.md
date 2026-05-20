@@ -34,6 +34,26 @@ Key capabilities:
 - Debug endpoints gated in production; **GET /api/debug/chrome-path** (Admin/Manager) returns Chrome path for Render env
 - **Structured logging**: S3 upload keys, CloudFront URLs, and confirmation decisions logged for observability
 
+### 🚀 Recent Enhancements
+
+- **Robust Git & S3 Template Fallbacks**: 
+  - Automatically falls back to fetching directly from Git if the S3 `template.zip` is missing (`NoSuchKey` error) when a `repo_url` is specified.
+  - Supports GitHub templates with deep subfolders (`repo_path` support).
+  - Prefers the Git path for previewing templates that have a `repo_url` to avoid S3 `NoSuchKey` errors.
+- **Improved Preview Logic & Image Handling**:
+  - Isolated template preview prefixes by ID (`previews/{template_id}/...`) to prevent overlapping preview states.
+  - Added support for injecting root-relative paths and `.js` helper scripts into template ZIPs.
+  - Enhanced blueprint image loading on internal pages with stem fallbacks, base stems, and support for prefix-matched hashed image stems (e.g., `gallery_1_abc123`) inside GitHub templates.
+- **Enhanced Validation & Error UX**:
+  - Provides a friendly error and actionable troubleshooting guide when a template ZIP is missing from S3, directing users to upload it via the **Versions** tab.
+  - Clearer build-strategy errors that list top-level directories to help debug missing `dist/index.html` build outputs.
+  - Validation tab now displays helpful Axe accessibility violation rules (`rule id`, `impact`, and detailed description) along with copy/SEO feedback.
+- **Flexible ZIP Parsing**: Supports single-root-folder ZIP archives and nested subdirectories containing an `index.html`.
+- **Refined Dashboard & UI Layout**:
+  - Responsive **7-stage project pipeline layout** that utilizes equal columns, wrapping text, and compact grouping ("1 project + N more") to avoid ugly horizontal scrollbars.
+  - Consistent breadcrumbs and streamlined configuration options (removed unnecessary filters from the template registry).
+  - Fixed edge-case issues such as audit logs failing (500) during count operations by eliminating expensive joins.
+
 ## 🔐 Roles & Permissions
 
 | Role | Permissions |
@@ -598,6 +618,10 @@ This repo can have multiple Alembic heads in development. Use `alembic upgrade h
 
 ### Template build: "Template build output missing dist/index.html"
 - The worker requires the template build to produce a **dist** directory with **index.html** before packaging or uploading. Configure your template (e.g. `package.json` scripts or `build.sh`) so the build output goes to `dist/` and includes `dist/index.html`. The error message lists the top-level directory contents to help debug.
+
+### Template preview: "NoSuchKey" or missing template ZIP in S3
+- **Cause**: The template was created without an initial ZIP, or the ZIP failed to upload, resulting in an S3 `NoSuchKey` error when generating a preview.
+- **Fix**: Go to the template's **Versions** tab and upload/replace the build source ZIP. If a `repo_url` (GitHub repository) is configured, the system will automatically fall back to fetching the template directly from Git.
 
 ### Database Connection Issues
 ```bash
